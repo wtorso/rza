@@ -38,7 +38,7 @@ bad() { FAIL=$((FAIL+1)); echo "FAIL $1 -- $2"; }
 # stdout совпадает с tests/$1.expected
 run_good() {
     local t=$1
-    if ! $TR "tests/$t.rz3a" --emit-c -o "$BUILD/$t.c" \
+    if ! $TR "tests/$t.rza" --emit-c -o "$BUILD/$t.c" \
             2>"$BUILD/$t.trerr"; then
         bad "$t" "transpile failed (want exit 0)"; cat "$BUILD/$t.trerr"
         return
@@ -65,7 +65,7 @@ run_good() {
 # dead_link: транслируется и компилируется, при запуске exit!=0 и FAULT в stderr
 run_dead() {
     local t=dead_link
-    if ! $TR "tests/$t.rz3a" --emit-c -o "$BUILD/$t.c" \
+    if ! $TR "tests/$t.rza" --emit-c -o "$BUILD/$t.c" \
             2>"$BUILD/$t.trerr"; then
         bad "$t" "transpile failed (want exit 0: runtime-fault is legal)"
         cat "$BUILD/$t.trerr"
@@ -94,7 +94,7 @@ run_dead() {
 # незаконная программа: транспайлер exit 1, stderr содержит [$2]
 run_viol() {
     local t=$1 rule=$2
-    if $TR "tests/$t.rz3a" >"$BUILD/$t.out" \
+    if $TR "tests/$t.rza" >"$BUILD/$t.out" \
             2>"$BUILD/$t.err"; then
         bad "$t" "transpiler accepted invalid program (want exit 1)"
         return

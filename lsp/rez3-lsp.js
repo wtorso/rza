@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /*
- * rez3-lsp.js — LSP-сервер для REZ3-ASM (.rz3a).
+ * rez3-lsp.js — LSP-сервер для REZ3-ASM (.rza).
  *
  * Чистый Node.js, без внешних зависимостей: JSON-RPC 2.0 поверх stdio
  * (Content-Length framing). Диагностика делегируется транспайлеру
- * rez3asm: текст документа пишется во временный .rz3a, запускается
+ * rez3asm: текст документа пишется во временный .rza, запускается
  * `rez3asm <tmp>`, stderr парсится по формату
  * `VIOLATION line N [RULE]: message` (N — 1-based).
  *
@@ -203,7 +203,7 @@ async function validate(uri) {
   try {
     tmpFile = path.join(
       os.tmpdir(),
-      `rez3-lsp-${process.pid}-${seq}-${Date.now()}.rz3a`
+      `rez3-lsp-${process.pid}-${seq}-${Date.now()}.rza`
     );
     fs.writeFileSync(tmpFile, doc.text, "utf8");
   } catch (e) {

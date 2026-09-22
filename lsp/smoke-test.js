@@ -3,7 +3,7 @@
  * smoke-test.js — юнит-проверка rez3-lsp.js без VS Code.
  *
  * Говорит с сервером по stdio (spawn), шлёт initialize + didOpen с
- * текстом tests/viol_i2.rz3a, затем didChange с текстом tests/fib.rz3a.
+ * текстом tests/viol_i2.rza, затем didChange с текстом tests/fib.rza.
  * Проверяет:
  *   - viol_i2  -> есть диагностика с code "I2" на строке 5 (1-based);
  *   - fib      -> diagnostics пустой;
@@ -20,16 +20,18 @@ const path = require("path");
 const LSP_DIR = __dirname;
 const ROOT = path.resolve(LSP_DIR, "..");
 const SERVER = path.join(LSP_DIR, "rez3-lsp.js");
-const VIOL_FILE = path.join(ROOT, "tests", "viol_i2.rz3a");
-const FIB_FILE = path.join(ROOT, "tests", "fib.rz3a");
-const DOC_URI = "file:///smoke-test.rz3a";
+const VIOL_FILE = path.join(ROOT, "tests", "viol_i2.rza");
+const FIB_FILE = path.join(ROOT, "tests", "fib.rza");
+const DOC_URI = "file:///smoke-test.rza";
 
-// Путь к транспайлеру: .exe если собран, иначе python + rez3asm.py.
+// Путь к транспайлеру: rez3asm.exe (C3; собирается шагом 0 run_tests.sh).
 function resolveTranspiler() {
   const exe = path.join(ROOT, "rez3asm.exe");
-  if (fs.existsSync(exe)) return { transpilerPath: exe };
-  const py = path.join(ROOT, "rez3asm.py");
-  return { transpilerPath: "python", transpilerArgs: [py] };
+  if (!fs.existsSync(exe)) {
+    console.error(`FAIL - transpiler not found: ${exe} (run: bash run_tests.sh)`);
+    process.exit(1);
+  }
+  return { transpilerPath: exe };
 }
 
 let failures = 0;
@@ -142,13 +144,13 @@ async function main() {
   );
   notify("initialized", {});
 
-  // 1. didOpen с текстом viol_i2.rz3a -> ждём диагностику [I2] на строке 5.
+  // 1. didOpen с текстом viol_i2.rza -> ждём диагностику [I2] на строке 5.
   const violText = fs.readFileSync(VIOL_FILE, "utf8");
   let diagPromise = waitDiagnostics();
   notify("textDocument/didOpen", {
     textDocument: {
       uri: DOC_URI,
-      languageId: "rez3a",
+      languageId: "rza",
       version: 1,
       text: violText,
     },
@@ -171,7 +173,7 @@ async function main() {
     i2 && i2.severity === 1 && i2.source === "rez3asm"
   );
 
-  // 2. didChange с текстом fib.rz3a -> diagnostics пустой.
+  // 2. didChange с текстом fib.rza -> diagnostics пустой.
   const fibText = fs.readFileSync(FIB_FILE, "utf8");
   diagPromise = waitDiagnostics();
   notify("textDocument/didChange", {
