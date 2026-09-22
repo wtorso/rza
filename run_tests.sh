@@ -106,6 +106,54 @@ run_viol() {
     ok "$t"
 }
 
+# lib-режим: $1.rza --emit-lib + компиляция с tests/lib_harness.c, запуск,
+# сверка с tests/$1.expected
+run_lib() {
+    local t=$1
+    if ! $TR "tests/$t.rza" --emit-lib -o "$BUILD/$t.lib.c" \
+            2>"$BUILD/$t.trerr"; then
+        bad "$t" "transpile --emit-lib failed"; cat "$BUILD/$t.trerr"
+        return
+    fi
+    if ! $CC $CFLAGS "$BUILD/$t.lib.c" "tests/lib_harness.c" \
+            -o "$BUILD/$t.exe" 2>"$BUILD/$t.ccerr"; then
+        bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    if [ -s "$BUILD/$t.ccerr" ]; then
+        bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"
+    tr -d '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
+    if ! diff -u "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+        bad "$t" "stdout mismatch"
+        diff -u "tests/$t.expected" "$BUILD/$t.out.lf"
+        return
+    fi
+    ok "$t"
+}
+
+# lib-режим, только трансляция + компиляция (без запуска)
+run_lib_compile() {
+    local t=$1
+    if ! $TR "tests/$t.rza" --emit-lib -o "$BUILD/$t.lib.c" \
+            2>"$BUILD/$t.trerr"; then
+        bad "$t" "transpile --emit-lib failed"; cat "$BUILD/$t.trerr"
+        return
+    fi
+    if ! $CC $CFLAGS -c "$BUILD/$t.lib.c" -o "$BUILD/$t.lib.o" \
+            2>"$BUILD/$t.ccerr"; then
+        bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    if [ -s "$BUILD/$t.ccerr" ]; then
+        bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    ok "$t"
+}
+
 echo "== REZ3-ASM test run (compiler: $CC) =="
 for t in fib counter back_button cascade; do
     run_good "$t"
@@ -115,6 +163,9 @@ run_viol viol_i2        I2
 run_viol viol_i4        I4
 run_viol viol_jump      STRUCT
 run_viol viol_jump_casc STRUCT
+run_viol viol_scope     SCOPE
+run_lib lib_hello
+run_lib_compile lib_scope
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

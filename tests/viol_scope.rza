@@ -1,0 +1,11 @@
+; SCOPE: изоляция по медиаторам сохраняется и после AUDIT-3:
+; из proc нельзя адресовать глобальный медиатор на не-field ячейку.
+cav  main, field
+res  acc, main, 16
+med  acc_m, acc, main
+
+proc p:
+    load %r0, [acc_m + 0]      ; acc_m — на ячейку рамки main, не field
+    ret
+
+ret

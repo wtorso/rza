@@ -1,0 +1,18 @@
+; AUDIT-3: рамки и ячейки — общая хроника между proc (нужно для --emit-lib:
+; каждая proc — точка входа хоста, лайфсайкл рамок пересекает процедуры).
+proc game_boot:
+    cav  session, field
+    res  assets, session, 64
+    ret
+
+proc run_begin:
+    cav  run, session          ; рамка от другого proc — легально
+    res  grid, run, 256
+    med  grid_m, grid, run
+    ret
+
+proc run_end:
+    decay run                  ; run мертва; grid и медиаторы на ней — тоже
+    ret
+
+ret

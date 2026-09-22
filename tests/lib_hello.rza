@@ -1,0 +1,13 @@
+; lib-режим: proc экспортируется как rza_greet, верхний уровень — rza_boot.
+; Харнес (tests/lib_harness.c) зовёт rza_boot(); rza_greet(); печатает своё.
+res  hello, field, 16
+med  hello_m, hello, field
+
+proc greet:
+    mov   %r0, 42
+    store [hello_m + 0], %r0
+    load  %r1, [hello_m + 0]
+    print %r1                    ; 42
+    ret
+
+ret
