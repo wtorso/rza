@@ -4,7 +4,9 @@
 //
 // CLI:
 //   rez3asm file.rza                    только статическая проверка
-//   rez3asm file.rza --emit-c           C99 на stdout
+//   rez3asm file.rza --emit-c           C99 (программа с main) на stdout
+//   rez3asm file.rza --emit-lib         C99-библиотека без main: proc →
+//                                       rza_NAME, верхний уровень → rza_boot
 //   rez3asm file.rza --emit-c -o f.c    C99 в файл
 //
 // Один проход: разбор + I1..I4, DECAY, DUP, STRUCT, SCOPE. Все нарушения — в
@@ -110,6 +112,7 @@ int  cur_proc = 0;        // 0 = верхний уровень
 int  cur_casc = -1;       // индекс каскада или -1
 int  top_ret = 0;
 int  casc_seq = 0;
+bool g_lib_mode = false;   // --emit-lib: C99 без main, proc → rza_NAME
 String srcname;
 
 // --- утилиты -------------------------------------------------------------------
@@ -205,8 +208,9 @@ fn int find_frame(String name, int scope) {
             if (frames[i].scope == scope && frames[i].name == name) return (int)i;
         }
         if (name == "field") return 0;   // field — frames[0]
+        // AUDIT-3: рамки — общая хроника; proc видит и использует глобальные
         for (sz i = 0; i < frames.len(); i++) {
-            if (frames[i].scope == 0 && frames[i].name == name) return -2;
+            if (frames[i].scope == 0 && frames[i].name == name) return (int)i;
         }
         return -1;
     }
@@ -221,10 +225,9 @@ fn int find_cell(String name, int scope) {
         for (sz i = 0; i < cells.len(); i++) {
             if (cells[i].scope == scope && cells[i].name == name) return (int)i;
         }
+        // AUDIT-3: ячейки — общая хроника (как рамки); изоляция — по медиаторам
         for (sz i = 0; i < cells.len(); i++) {
-            if (cells[i].scope == 0 && cells[i].name == name) {
-                return frames[cells[i].owner].is_field ? (int)i : -2;
-            }
+            if (cells[i].scope == 0 && cells[i].name == name) return (int)i;
         }
         return -1;
     }
@@ -353,9 +356,10 @@ fn void op_cav(String rest, int line) {
     if (!frames[pf].alive) {
         viol(line, "I1", cat({"enter under dead frame ", parent})); return;
     }
-    if (!check_dup(name, line, cur_proc)) return;
+    if (!check_dup(name, line, 0)) return;
+    // AUDIT-3: рамки — общая хроника (scope 0), даже когда созданы в proc
     Frame f = { .name = name, .parent = pf, .alive = true, .gen = nextgen(),
-                .cname = cname_for("f_", name), .scope = cur_proc, .cap = 64 };
+                .cname = cname_for("f_", name), .scope = 0, .cap = 64 };
     frames.push(f);
     add_instr({ .op = Op.CAV, .line = line, .x = (int)frames.len() - 1, .y = pf });
 }
@@ -380,9 +384,10 @@ fn void op_res(String rest, int line) {
     if (!frames[f].alive) {
         viol(line, "I1", cat({"cell in dead frame ", name, " ", fname})); return;
     }
-    if (!check_dup(name, line, cur_proc)) return;
+    if (!check_dup(name, line, 0)) return;
+    // AUDIT-3: ячейки — общая хроника (scope 0)
     Cell cc = { .name = name, .owner = f, .cname = cname_for("c_", name),
-                .scope = cur_proc };
+                .scope = 0 };
     cells.push(cc);
     frames[f].res_bytes += (size + 15) & ~15;
     add_instr({ .op = Op.RES, .line = line, .x = (int)cells.len() - 1,
@@ -718,7 +723,7 @@ fn void open_casc(String rest, int line, bool is_async) {
     // OUT — всегда НОВАЯ ячейка (AUDIT-1/#6); для acasc — в field (#7)
     int out_cell = -1;
     int out_frame = -1;
-    if (check_name(outname, line) && check_dup(outname, line, cur_proc)) {
+    if (check_name(outname, line) && check_dup(outname, line, 0)) {
         if (is_async) {
             out_frame = 0;
         } else {
@@ -737,7 +742,7 @@ fn void open_casc(String rest, int line, bool is_async) {
             }
             Cell oc = { .name = outname, .owner = out_frame,
                         .cname = cname_for("c_", outname),
-                        .scope = cur_proc, .is_out = true };
+                        .scope = 0, .is_out = true };
             cells.push(oc);
             out_cell = (int)cells.len() - 1;
             frames[out_frame].outs += 1;
@@ -1166,11 +1171,17 @@ fn void emit_body(DString* out, int func) {
                             ins.a, label_cname(ins.block, ins.s1));
             case Op.CALL:
                 pad(out, ind);
-                out.appendf("%s();\n", procs[ins.x].cname);
+                if (g_lib_mode) {
+                    out.appendf("rza_%s();\n", procs[ins.x].name);
+                } else {
+                    out.appendf("%s();\n", procs[ins.x].cname);
+                }
             case Op.RET:
                 if (ins.func == 0) {
                     pad(out, ind);
-                    out.append_string("return 0;\n");
+                    // lib-режим: верхнеуровневый ret = конец rza_boot (void)
+                    out.append_string(g_lib_mode ? "return;\n"
+                                                 : "return 0;\n");
                 }
                 // ret процедуры: закрытие функции делает emit_proc
         }
@@ -1179,7 +1190,12 @@ fn void emit_body(DString* out, int func) {
 
 fn void emit_proc(DString* out, int pi) {
     Proc* p = &procs[pi];
-    out.appendf("static void %s(void) {\n", p.cname);
+    // lib-режим: процедура — экспортируемая точка входа хоста
+    if (g_lib_mode) {
+        out.appendf("void rza_%s(void) {\n", p.name);
+    } else {
+        out.appendf("static void %s(void) {\n", p.cname);
+    }
     uint rd, wr;
     scan_regs(pi + 1, &rd, &wr);
     emit_regs_decl(out, 1, rd | wr);
@@ -1191,15 +1207,11 @@ fn void emit_proc(DString* out, int pi) {
     out.append_string("}\n");
 }
 
-fn void emit_main(DString* out) {
-    out.append_string("int main(void) {\n");
-    uint rd, wr;
-    scan_regs(0, &rd, &wr);
-    emit_regs_decl(out, 1, rd | wr);
-    // глушим неиспользованные входы рантайма (адрес взят — warning-а нет)
+// глушилка неиспользованных static-входов рантайма (адрес взят — warning-а нет)
+fn void emit_silencers(DString* out) {
     bool used_cell = false;
     bool used_issue = false;
-    bool used_deref = false;
+    bool used_deref = g_lib_mode;   // lib экспортирует rza_deref_cell
     bool used_decay = procs.len() > 0;
     for (sz i = 0; i < instrs.len(); i++) {
         switch (instrs[i].op) {
@@ -1218,11 +1230,21 @@ fn void emit_main(DString* out) {
     if (!used_deref) out.append_string("    (void)&rez_deref_cell;\n");
     if (!used_decay) out.append_string("    (void)&rez_leave;\n");
     if (procs.len() == 0) out.append_string("    (void)&rez_frame_reset;\n");
-    for (sz i = 0; i < procs.len(); i++) {
-        if (!procs[i].called) {
-            out.appendf("    (void)&%s;\n", procs[i].cname);
+    if (!g_lib_mode) {
+        for (sz i = 0; i < procs.len(); i++) {
+            if (!procs[i].called) {
+                out.appendf("    (void)&%s;\n", procs[i].cname);
+            }
         }
     }
+}
+
+fn void emit_main(DString* out) {
+    out.append_string("int main(void) {\n");
+    uint rd, wr;
+    scan_regs(0, &rd, &wr);
+    emit_regs_decl(out, 1, rd | wr);
+    emit_silencers(out);
     out.appendf("    f_field = rez_enter(NULL, %d);\n", frames[0].cap);
     emit_body(out, 0);
     emit_writeonly_silence(out, 1, rd, wr);
@@ -1236,6 +1258,36 @@ fn void emit_main(DString* out) {
     }
     if (!last_ret) out.append_string("    return 0;\n");
     out.append_string("}\n");
+}
+
+// lib-режим: верхнеуровневый код — rza_boot (включая создание field)
+fn void emit_boot(DString* out) {
+    out.append_string("void rza_boot(void) {\n");
+    uint rd, wr;
+    scan_regs(0, &rd, &wr);
+    emit_regs_decl(out, 1, rd | wr);
+    emit_silencers(out);
+    out.appendf("    f_field = rez_enter(NULL, %d);\n", frames[0].cap);
+    emit_body(out, 0);
+    emit_writeonly_silence(out, 1, rd, wr);
+    out.append_string("}\n");
+}
+
+// lib-режим: геттеры для хоста (рамки, медиаторы) + обёртки над static-рантаймом
+fn void emit_host_api(DString* out) {
+    out.append_string("\n/* host API: рамки, медиаторы, арена */\n");
+    for (sz i = 0; i < frames.len(); i++) {
+        out.appendf("RezCavity *rza_frame_%s(void) { return %s; }\n",
+                    frames[i].name, fexpr((int)i));
+    }
+    for (sz i = 0; i < meds.len(); i++) {
+        out.appendf("RezCellMed rza_med_%s(void) { return %s; }\n",
+                    meds[i].name, meds[i].cname);
+    }
+    out.append_string("void *rza_arena_alloc(RezCavity *c, size_t size) "
+                      "{ return rez_arena_alloc(&c->arena, size); }\n");
+    out.append_string("void *rza_deref_cell(RezCellMed m) "
+                      "{ return rez_deref_cell(m); }\n");
 }
 
 fn String emit() {
@@ -1284,14 +1336,23 @@ fn String emit() {
     }
     out.append_string("\n");
     for (sz i = 0; i < procs.len(); i++) {
-        out.appendf("static void %s(void);\n", procs[i].cname);
+        if (g_lib_mode) {
+            out.appendf("void rza_%s(void);\n", procs[i].name);
+        } else {
+            out.appendf("static void %s(void);\n", procs[i].cname);
+        }
     }
     if (procs.len() > 0) out.append_string("\n");
     for (sz i = 0; i < procs.len(); i++) {
         emit_proc(&out, (int)i);
         out.append_string("\n");
     }
-    emit_main(&out);
+    if (g_lib_mode) {
+        emit_boot(&out);
+        emit_host_api(&out);
+    } else {
+        emit_main(&out);
+    }
     out.append_string("\n");
     return out.copy_str(mem);
 }
@@ -1319,6 +1380,9 @@ fn int main(String[] args) {
         String a = args[i];
         if (a == "--emit-c") {
             emit_c = true;
+        } else if (a == "--emit-lib") {
+            emit_c = true;
+            g_lib_mode = true;
         } else if (a == "-o") {
             i++;
             if (i >= args.len) {
@@ -1334,7 +1398,7 @@ fn int main(String[] args) {
         }
     }
     if (src.len == 0) {
-        io::eprintfn("usage: rez3asm file.rza [--emit-c] [-o file.c]");
+        io::eprintfn("usage: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]");
         return 2;
     }
     srcname = src;
