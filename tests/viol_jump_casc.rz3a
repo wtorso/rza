@@ -1,0 +1,15 @@
+; STRUCT: jmp из тела каскада наружу (выход только через endc или abort).
+cav  main, field
+res  acc, main, 16
+med  acc_m, acc, main
+
+mov  %r0, 7
+casc step: acc_m -> out[main]
+    store [acc_m + 0], %r0
+    jmp done            ; запрещённый выход из каскада
+endc
+
+done:
+print %r0
+decay main
+ret

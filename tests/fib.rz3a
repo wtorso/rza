@@ -1,0 +1,23 @@
+; field существует неявно; директивы fld нет
+cav  main, field
+res  acc, main, 16
+med  acc_m, acc, main
+
+mov  %r0, 0
+mov  %r1, 1
+mov  %r2, 10
+
+loop:
+    brz  %r2, done
+    add  %r3, %r0, %r1
+    mov  %r0, %r1
+    mov  %r1, %r3
+    dec  %r2
+    jmp  loop
+
+done:
+    store [acc_m + 0], %r0
+    load  %r4, [acc_m + 0]
+    print %r4                    ; 55: после 10 итераций (a,b)=(F(10),F(11))=(55,89); печатаем a
+    decay main
+    ret

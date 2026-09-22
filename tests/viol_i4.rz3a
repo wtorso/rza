@@ -1,0 +1,6 @@
+; I4: raise в соседнюю ветку (не к строгому предку).
+cav  a, field
+cav  b, field
+res  x, a, 16
+raise x, b              ; b — не предок a
+ret

@@ -1,0 +1,9 @@
+; STRUCT: jmp на метку другого лексического блока (тела proc).
+proc p:
+    mov %r0, 1
+inner:
+    print %r0
+    ret
+
+jmp inner               ; inner принадлежит блоку proc p
+ret

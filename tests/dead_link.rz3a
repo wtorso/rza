@@ -1,0 +1,12 @@
+; dead_link: статически легально (AUDIT-1/#3: load по мёртвому медиатору —
+; не violation), в runtime — FAULT в stderr и exit(1).
+cav  main, field
+res  acc, main, 16
+med  acc_m, acc, main
+
+mov  %r0, 42
+store [acc_m + 0], %r0
+decay main
+load %r1, [acc_m + 0]     ; runtime FAULT: dead mediator
+print %r1
+ret
