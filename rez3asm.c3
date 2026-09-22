@@ -1,11 +1,11 @@
 // ============================================================================
-// rez3asm.c3 — транспайлер REZ3-ASM (.rz3a) -> C99 (rez3.h + rez3ext.h).
+// rez3asm.c3 — транспайлер REZ3-ASM (.rza) -> C99 (rez3.h + rez3ext.h).
 // Порт rez3asm.py (Python 3) на C3 0.8.4, функциональный паритет 1:1.
 //
 // CLI:
-//   rez3asm file.rz3a                    только статическая проверка
-//   rez3asm file.rz3a --emit-c           C99 на stdout
-//   rez3asm file.rz3a --emit-c -o f.c    C99 в файл
+//   rez3asm file.rza                    только статическая проверка
+//   rez3asm file.rza --emit-c           C99 на stdout
+//   rez3asm file.rza --emit-c -o f.c    C99 в файл
 //
 // Один проход: разбор + I1..I4, DECAY, DUP, STRUCT, SCOPE. Все нарушения — в
 // stderr: "VIOLATION line N [RULE]: msg"; exit 1, если есть хотя бы одно
@@ -1334,7 +1334,7 @@ fn int main(String[] args) {
         }
     }
     if (src.len == 0) {
-        io::eprintfn("usage: rez3asm file.rz3a [--emit-c] [-o file.c]");
+        io::eprintfn("usage: rez3asm file.rza [--emit-c] [-o file.c]");
         return 2;
     }
     srcname = src;
