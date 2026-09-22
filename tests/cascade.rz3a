@@ -1,0 +1,50 @@
+; cascade: sync-каскад (стирание проверок на входе), acasc (field-only),
+; raise к строгому предку — легальные пути.
+cav  main, field
+res  a, main, 16
+res  b, main, 16
+med  a_m, a, main
+med  b_m, b, main
+
+mov  %r0, 20
+mov  %r1, 22
+store [a_m + 0], %r0
+store [b_m + 0], %r1
+
+casc addup: a_m,b_m -> total[main]
+    load  %r2, [a_m + 0]
+    load  %r3, [b_m + 0]
+    add   %r4, %r2, %r3
+    store [a_m + 8], %r4
+endc
+
+load  %r5, [a_m + 8]
+print %r5                  ; 42 = 20 + 22 (a + b, sync-каскад addup)
+
+; acasc: все медиаторы и OUT — только field
+res  g, field, 8
+med  g_m, g, field
+mov  %r0, 5
+store [g_m + 0], %r0
+
+acasc bump: g_m -> gout
+    load  %r1, [g_m + 0]
+    inc   %r1
+    store [g_m + 0], %r1
+endc
+
+load  %r2, [g_m + 0]
+print %r2                  ; 6 = 5 + 1 (acasc bump по field-ячейке)
+
+; raise: ячейка переприбивается к предку; старые медиаторы мертвы
+cav  tmp, main
+res  lifted, tmp, 8
+raise lifted, main
+med  lifted_m, lifted, main
+mov  %r6, 77
+store [lifted_m + 0], %r6   ; память физически в tmp — tmp ещё жив (SPEC 9)
+load  %r7, [lifted_m + 0]
+print %r7                  ; 77 — константа, записанная в lifted после raise
+decay tmp
+decay main
+ret

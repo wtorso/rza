@@ -1,0 +1,13 @@
+; «кнопка назад»: дочерняя рамка screen умирает,
+; опора draft в родителе session переживает её и умирает с session.
+cav  session, field
+cav  screen, session
+res  draft, session, 16
+med  draft_m, draft, session
+
+probe draft_m          ; ALIVE: screen жив, draft жив
+decay screen           ; «назад»: экран мёртв
+probe draft_m          ; ALIVE: draft пережил screen
+decay session
+probe draft_m          ; DEAD: владелец мёртв
+ret

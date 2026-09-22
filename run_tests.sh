@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# run_tests.sh — полный прогон REZ3-ASM: сборка транспайлера (C3), трансляция,
+# компиляция C99 (-pedantic -Wall -Wextra, ноль warnings), запуск, сверка,
+# негативные тесты. exit 0 только если всё зелёное.
+set -u
+cd "$(dirname "$0")"
+
+# компилятор C3 для транспайлера
+if   command -v c3c >/dev/null 2>&1; then C3C="c3c"
+elif [ -x "/c/Users/myski/AppData/Local/c3/c3c.exe" ]; then
+    C3C="/c/Users/myski/AppData/Local/c3/c3c.exe"
+else echo "FATAL: no c3c" >&2; exit 2; fi
+
+# компилятор C99 для сгенерированного кода
+if   command -v gcc   >/dev/null 2>&1; then CC="gcc"
+elif command -v zig   >/dev/null 2>&1; then CC="zig cc"
+elif command -v clang >/dev/null 2>&1; then CC="clang"
+else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
+
+CFLAGS="-std=c99 -pedantic -Wall -Wextra -I refs -I ."
+BUILD=build
+rm -rf "$BUILD"
+mkdir -p "$BUILD"
+
+# шаг 0: сборка транспайлера
+echo "== build rez3asm.exe (c3c) =="
+if ! $C3C compile rez3asm.c3 -o rez3asm; then
+    echo "FATAL: transpiler build failed" >&2
+    exit 2
+fi
+TR="./rez3asm.exe"
+
+PASS=0; FAIL=0
+ok()  { PASS=$((PASS+1)); echo "PASS $1"; }
+bad() { FAIL=$((FAIL+1)); echo "FAIL $1 -- $2"; }
+
+# легальная программа: транслируется, компилируется без warnings,
+# stdout совпадает с tests/$1.expected
+run_good() {
+    local t=$1
+    if ! $TR "tests/$t.rz3a" --emit-c -o "$BUILD/$t.c" \
+            2>"$BUILD/$t.trerr"; then
+        bad "$t" "transpile failed (want exit 0)"; cat "$BUILD/$t.trerr"
+        return
+    fi
+    if ! $CC $CFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
+            2>"$BUILD/$t.ccerr"; then
+        bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    if [ -s "$BUILD/$t.ccerr" ]; then
+        bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"
+    tr -d '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
+    if ! diff -u "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+        bad "$t" "stdout mismatch"
+        diff -u "tests/$t.expected" "$BUILD/$t.out.lf"
+        return
+    fi
+    ok "$t"
+}
+
+# dead_link: транслируется и компилируется, при запуске exit!=0 и FAULT в stderr
+run_dead() {
+    local t=dead_link
+    if ! $TR "tests/$t.rz3a" --emit-c -o "$BUILD/$t.c" \
+            2>"$BUILD/$t.trerr"; then
+        bad "$t" "transpile failed (want exit 0: runtime-fault is legal)"
+        cat "$BUILD/$t.trerr"
+        return
+    fi
+    if ! $CC $CFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
+            2>"$BUILD/$t.ccerr"; then
+        bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    if [ -s "$BUILD/$t.ccerr" ]; then
+        bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
+        return
+    fi
+    if "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
+        bad "$t" "exited 0 (want runtime fault)"
+        return
+    fi
+    if ! grep -q "FAULT" "$BUILD/$t.runerr"; then
+        bad "$t" "no FAULT in stderr"; cat "$BUILD/$t.runerr"
+        return
+    fi
+    ok "$t"
+}
+
+# незаконная программа: транспайлер exit 1, stderr содержит [$2]
+run_viol() {
+    local t=$1 rule=$2
+    if $TR "tests/$t.rz3a" >"$BUILD/$t.out" \
+            2>"$BUILD/$t.err"; then
+        bad "$t" "transpiler accepted invalid program (want exit 1)"
+        return
+    fi
+    if ! grep -q "\[$rule\]" "$BUILD/$t.err"; then
+        bad "$t" "no [$rule] in stderr"; cat "$BUILD/$t.err"
+        return
+    fi
+    ok "$t"
+}
+
+echo "== REZ3-ASM test run (compiler: $CC) =="
+for t in fib counter back_button cascade; do
+    run_good "$t"
+done
+run_dead
+run_viol viol_i2        I2
+run_viol viol_i4        I4
+run_viol viol_jump      STRUCT
+run_viol viol_jump_casc STRUCT
+echo "----------------------------------------"
+echo "PASS=$PASS FAIL=$FAIL"
+[ "$FAIL" -eq 0 ]
