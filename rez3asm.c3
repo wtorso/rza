@@ -245,8 +245,16 @@ fn int find_med(String name, int scope) {
         for (sz i = 0; i < meds.len(); i++) {
             if (meds[i].scope == 0 && meds[i].name == name) {
                 int fr = cells[meds[i].cell].owner;
-                return frames[fr].is_field ? (int)i : -2;
+                if (frames[fr].is_field) return (int)i;
+                // AUDIT-4: глобальная рамка (не чужая proc-рамка) — медиатор
+                // безопасен: рамка переживает любой вызов; смерть после
+                // определения proc ловится runtime-проверкой поколения.
+                return frames[fr].is_procframe ? -2 : (int)i;
             }
+        }
+        // имя есть, но в скоупе ДРУГОГО proc → [SCOPE] (AUDIT-4)
+        for (sz i = 0; i < meds.len(); i++) {
+            if (meds[i].name == name) return -2;
         }
         return -1;
     }
@@ -486,8 +494,9 @@ fn void op_probe(String rest, int line) {
 
 // --- память через медиатор -------------------------------------------------------
 // разбор "[med + off]"; при ошибке violation записано, возврат false
-fn bool parse_mem(String tok, int line, String* mname, int* off) {
+fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg) {
     String t = tok.trim();
+    *off_reg = -1;
     bool bad = false;
     if (t.len < 5 || t[0] != '[' || t[t.len - 1] != ']') {
         bad = true;
@@ -499,10 +508,15 @@ fn bool parse_mem(String tok, int line, String* mname, int* off) {
         } else {
             *mname = inner[:pi].trim();
             String os = inner[pi + 1..].trim();
-            if (!is_name(*mname) || !is_int(os) || os[0] == '-') {
+            if (!is_name(*mname)) {
                 bad = true;
-            } else {
+            } else if (is_int(os) && os[0] != '-') {
                 *off = os.to_int() ?? 0;
+            } else if (os.len == 3 && os[0] == '%' && os[1] == 'r' &&
+                       os[2] >= '0' && os[2] <= '9') {
+                *off_reg = (int)(os[2] - '0');   // AUDIT-4: [med + %rN]
+            } else {
+                bad = true;
             }
         }
     }
@@ -515,9 +529,9 @@ fn bool parse_mem(String tok, int line, String* mname, int* off) {
 }
 
 // разрешение медиатора для load/store; -1 = ошибка (violation записано)
-fn int resolve_mem_med(String tok, int line, String opname, int* off) {
+fn int resolve_mem_med(String tok, int line, String opname, int* off, int* off_reg) {
     String mname;
-    if (!parse_mem(tok, line, &mname, off)) return -1;
+    if (!parse_mem(tok, line, &mname, off, off_reg)) return -1;
     int mi = find_med(mname, cur_proc);
     if (mi == -2) { scope_viol(line, "mediator", mname); return -1; }
     if (mi < 0) {
@@ -539,24 +553,28 @@ fn int resolve_mem_med(String tok, int line, String opname, int* off) {
     return mi;
 }
 
-fn void op_load(String rest, int line) {
+fn void op_load2(String rest, int line, bool is_byte) {
     String[2] buf;
-    if (!split_ops_exact(rest, 2, line, "load", &buf)) return;
+    if (!split_ops_exact(rest, 2, line, is_byte ? "loadb" : "load", &buf)) return;
     int dst = parse_reg(buf[0], line);
     int off = 0;
-    int mi = resolve_mem_med(buf[1], line, "load", &off);
+    int off_reg = -1;
+    int mi = resolve_mem_med(buf[1], line, is_byte ? "loadb" : "load", &off, &off_reg);
     if (dst < 0 || mi < 0) return;
-    add_instr({ .op = Op.LOAD, .line = line, .a = dst, .x = mi, .b = off });
+    add_instr({ .op = Op.LOAD, .line = line, .a = dst, .x = mi, .b = off,
+                .c = off_reg, .flag = is_byte });
 }
 
 fn void op_store(String rest, int line) {
     String[2] buf;
     if (!split_ops_exact(rest, 2, line, "store", &buf)) return;
     int off = 0;
-    int mi = resolve_mem_med(buf[0], line, "store", &off);
+    int off_reg = -1;
+    int mi = resolve_mem_med(buf[0], line, "store", &off, &off_reg);
     int src = parse_reg(buf[1], line);
     if (mi < 0 || src < 0) return;
-    add_instr({ .op = Op.STORE, .line = line, .a = src, .x = mi, .b = off });
+    add_instr({ .op = Op.STORE, .line = line, .a = src, .x = mi, .b = off,
+                .c = off_reg, .flag = false });
 }
 
 // --- данные и поток ----------------------------------------------------------------
@@ -566,8 +584,12 @@ fn void op_mov(String rest, int line) {
     int dst = parse_reg(buf[0], line);
     if (dst < 0) return;
     if (is_int(buf[1])) {
-        add_instr({ .op = Op.MOV, .line = line, .a = dst,
-                    .b = buf[1].to_int() ?? 0, .flag = true });
+        int? v = buf[1].to_int();
+        if (catch v) {
+            viol(line, "STRUCT", cat({"immediate out of i32 range: ", buf[1]}));
+            return;
+        }
+        add_instr({ .op = Op.MOV, .line = line, .a = dst, .b = v, .flag = true });
         return;
     }
     int src = parse_reg(buf[1], line);
@@ -802,7 +824,8 @@ fn void parse_instr(String line, int n, bool in_casc) {
     else if (op == "raise") { op_raise(rest, n); }
     else if (op == "decay") { op_decay(rest, n); }
     else if (op == "probe") { op_probe(rest, n); }
-    else if (op == "load") { op_load(rest, n); }
+    else if (op == "load") { op_load2(rest, n, false); }
+    else if (op == "loadb") { op_load2(rest, n, true); }
     else if (op == "store") { op_store(rest, n); }
     else if (op == "mov") { op_mov(rest, n); }
     else if (op == "add") { op_alu3(op, "+", rest, n); }
@@ -965,8 +988,12 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
         Instr* ins = &instrs[i];
         if (ins.func != func) continue;
         switch (ins.op) {
-            case Op.LOAD:  *wr |= 1u << ins.a;
-            case Op.STORE: *rd |= 1u << ins.a;
+            case Op.LOAD:
+                *wr |= 1u << ins.a;
+                if (ins.c >= 0) *rd |= 1u << ins.c;
+            case Op.STORE:
+                *rd |= 1u << ins.a;
+                if (ins.c >= 0) *rd |= 1u << ins.c;
             case Op.MOV:
                 *wr |= 1u << ins.a;
                 if (!ins.flag) *rd |= 1u << ins.b;
@@ -1046,7 +1073,23 @@ fn void emit_body(DString* out, int func) {
                 out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
                             "arena overflow (cell %s)\\n\"); exit(1); }\n",
                             cells[ins.x].cname, ins.line, cells[ins.x].name);
+                // lib-режим: верхнеуровневые медиаторы на эту ячейку
+                // инициализируются сразу после её создания (AUDIT-4)
+                if (g_lib_mode) {
+                    for (sz j = 0; j < instrs.len(); j++) {
+                        Instr* mj = &instrs[j];
+                        if (mj.op != Op.MED || mj.func != 0) continue;
+                        if (meds[mj.x].cell != (int)ins.x) continue;
+                        pad(out, ind);
+                        out.appendf("%s = rez_issue_cell(%s, %s);\n",
+                                    meds[mj.x].cname, fexpr(ins.y),
+                                    cells[ins.x].cname);
+                    }
+                }
             case Op.MED:
+                // в lib-режиме верхнеуровневые медиаторы инициализируются
+                // лениво в геттерах (ячейка может не существовать при rza_boot)
+                if (g_lib_mode && ins.func == 0) break;
                 pad(out, ind);
                 out.appendf("%s = rez_issue_cell(%s, %s);\n",
                             meds[ins.x].cname,
@@ -1109,10 +1152,17 @@ fn void emit_body(DString* out, int func) {
                 cur_ca = -1;
             }
             case Op.LOAD:
+                DString oex = dstring::new(mem);
+                defer oex.free();
+                if (ins.c >= 0) { oex.appendf("r%d", ins.c); }
+                else { oex.appendf("%d", ins.b); }
                 if (in_casc) {
                     pad(out, ind);
-                    out.appendf("r%d = *(int64_t*)((char*)p_%s + %d);\n",
-                                ins.a, meds[ins.x].name, ins.b);
+                    out.appendf("r%d = %s((char*)p_%s + %s);\n",
+                                ins.a,
+                                ins.flag ? "(int64_t)*(unsigned char*)"
+                                         : "*(int64_t*)",
+                                meds[ins.x].name, oex.str_view());
                 } else {
                     pad(out, ind);
                     out.appendf("{ void *p = rez_deref_cell(%s);\n",
@@ -1122,14 +1172,21 @@ fn void emit_body(DString* out, int func) {
                                 "dead mediator %s\\n\"); exit(1); }\n",
                                 ins.line, meds[ins.x].name);
                     pad(out, ind);
-                    out.appendf("  r%d = *(int64_t*)((char*)p + %d); }\n",
-                                ins.a, ins.b);
+                    out.appendf("  r%d = %s((char*)p + %s); }\n",
+                                ins.a,
+                                ins.flag ? "(int64_t)*(unsigned char*)"
+                                         : "*(int64_t*)",
+                                oex.str_view());
                 }
             case Op.STORE:
+                DString sex = dstring::new(mem);
+                defer sex.free();
+                if (ins.c >= 0) { sex.appendf("r%d", ins.c); }
+                else { sex.appendf("%d", ins.b); }
                 if (in_casc) {
                     pad(out, ind);
-                    out.appendf("*(int64_t*)((char*)p_%s + %d) = r%d;\n",
-                                meds[ins.x].name, ins.b, ins.a);
+                    out.appendf("*(int64_t*)((char*)p_%s + %s) = r%d;\n",
+                                meds[ins.x].name, sex.str_view(), ins.a);
                 } else {
                     pad(out, ind);
                     out.appendf("{ void *p = rez_deref_cell(%s);\n",
@@ -1139,8 +1196,8 @@ fn void emit_body(DString* out, int func) {
                                 "dead mediator %s\\n\"); exit(1); }\n",
                                 ins.line, meds[ins.x].name);
                     pad(out, ind);
-                    out.appendf("  *(int64_t*)((char*)p + %d) = r%d; }\n",
-                                ins.b, ins.a);
+                    out.appendf("  *(int64_t*)((char*)p + %s) = r%d; }\n",
+                                sex.str_view(), ins.a);
                 }
             case Op.MOV:
                 pad(out, ind);
@@ -1281,8 +1338,13 @@ fn void emit_host_api(DString* out) {
                     frames[i].name, fexpr((int)i));
     }
     for (sz i = 0; i < meds.len(); i++) {
-        out.appendf("RezCellMed rza_med_%s(void) { return %s; }\n",
-                    meds[i].name, meds[i].cname);
+        // ленивая инициализация: в lib-режиме ячейка может создаваться proc'ом
+        // позже rza_boot; при первом обращении медиатор довыдаётся (AUDIT-4)
+        out.appendf("RezCellMed rza_med_%s(void) { "
+                    "if (!%s.cell) %s = rez_issue_cell(%s, %s); return %s; }\n",
+                    meds[i].name, meds[i].cname, meds[i].cname,
+                    fexpr(cells[meds[i].cell].owner), cells[meds[i].cell].cname,
+                    meds[i].cname);
     }
     out.append_string("void *rza_arena_alloc(RezCavity *c, size_t size) "
                       "{ return rez_arena_alloc(&c->arena, size); }\n");

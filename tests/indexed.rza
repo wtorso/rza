@@ -1,0 +1,45 @@
+; индексная адресация (AUDIT-4): load/loadb/store с регистровым смещением
+; [med + %rN]. Таблицы в ячейках — единственный способ адресации данных.
+cav  main, field
+res  tab, main, 64
+med  tab_m, tab, main
+
+; --- store/load с регистровым смещением: tab[i] = (i+1)*10, i=0..3
+mov  %r0, 0                  ; i
+mov  %r1, 10                 ; value
+mov  %r6, 4                  ; countdown
+mov  %r7, 8                  ; шаг смещения (ALU — только регистры)
+mov  %r8, 10                 ; шаг значения
+fill:
+    mov  %r2, %r0
+    mul  %r2, %r2, %r7       ; смещение = i*8
+    store [tab_m + %r2], %r1
+    add  %r1, %r1, %r8
+    inc  %r0
+    dec  %r6
+    brnz %r6, fill
+
+; --- сумма: 10+20+30+40 = 100
+mov  %r0, 0
+mov  %r4, 0
+mov  %r6, 4
+sum:
+    mov  %r2, %r0
+    mul  %r2, %r2, %r7
+    load %r3, [tab_m + %r2]
+    add  %r4, %r4, %r3
+    inc  %r0
+    dec  %r6
+    brnz %r6, sum
+print %r4                    ; 100 = 10+20+30+40
+
+; --- loadb: байты из i32-слова 0x44434241 (LE: 41 42 43 44)
+mov  %r0, 1145258561
+store [tab_m + 0], %r0
+loadb %r5, [tab_m + 0]       ; 0x41 = 65 (младший байт)
+loadb %r6, [tab_m + 3]       ; 0x44 = 68 (старший байт слова)
+add  %r7, %r5, %r6
+print %r7                    ; 133 = 65 + 68
+
+decay main
+ret
