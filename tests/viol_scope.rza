@@ -1,11 +1,14 @@
-; SCOPE: изоляция по медиаторам сохраняется и после AUDIT-3:
-; из proc нельзя адресовать глобальный медиатор на не-field ячейку.
-cav  main, field
-res  acc, main, 16
-med  acc_m, acc, main
+; SCOPE (AUDIT-4): медиатор, созданный внутри proc, виден только ему;
+; из другого proc — [SCOPE]. Глобальные медиаторы на ячейки обычных
+; глобальных рамок (field/session/mission) — легальны в любом proc.
+proc p1:
+    res  x, p1, 8
+    med  x_m, x, p1
+    load %r0, [x_m + 0]      ; легально: свой скоуп
+    ret
 
-proc p:
-    load %r0, [acc_m + 0]      ; acc_m — на ячейку рамки main, не field
+proc p2:
+    load %r0, [x_m + 0]      ; VIOLATION [SCOPE]: x_m создан в p1
     ret
 
 ret

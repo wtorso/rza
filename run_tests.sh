@@ -155,7 +155,7 @@ run_lib_compile() {
 }
 
 echo "== REZ3-ASM test run (compiler: $CC) =="
-for t in fib counter back_button cascade; do
+for t in fib counter back_button cascade indexed; do
     run_good "$t"
 done
 run_dead
