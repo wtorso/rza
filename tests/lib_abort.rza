@@ -1,0 +1,24 @@
+; lib: runtime-ABORT каскада — мёртвый медиатор на входе в RUNTIME
+; (статически легально: хронология живая; хост убивает рамку между вызовами).
+; Харнес: lib_abort_harness.c.
+proc setup:
+    cav  tmp, field
+    res  t, tmp, 8
+    ret
+
+med  t_m, t, tmp
+
+proc worker:
+    mov  %r1, 2
+    casc  w: t_m -> o[field]
+        mov  %r0, 1
+        print %r0          ; только при живом t_m
+    endc
+    print %r1              ; всегда
+    ret
+
+proc killer:
+    decay tmp
+    ret
+
+ret

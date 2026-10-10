@@ -1,0 +1,5 @@
+; DECAY: двойной decay одной рамки
+cav  main, field
+decay main
+decay main              ; VIOLATION [DECAY]: double leave
+ret

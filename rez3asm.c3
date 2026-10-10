@@ -113,6 +113,7 @@ int  cur_casc = -1;       // индекс каскада или -1
 int  top_ret = 0;
 int  casc_seq = 0;
 bool g_lib_mode = false;   // --emit-lib: C99 без main, proc → rza_NAME
+bool g_proc_closed = false; // ret закрыл proc: дальше на верхнем уровне — только декларации (AUDIT-5/review P3)
 String srcname;
 
 // --- утилиты -------------------------------------------------------------------
@@ -145,10 +146,37 @@ fn bool is_int(String s) {
     if (s.len == 0) return false;
     usz i = (s[0] == '-') ? 1 : 0;
     if (i == s.len) return false;
+    if (s.len > i + 2 && s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
+        for (usz j = i + 2; j < s.len; j++) {
+            char c = s[j];
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                  (c >= 'A' && c <= 'F'))) return false;
+        }
+        return true;
+    }
     for (; i < s.len; i++) {
         if (s[i] < '0' || s[i] > '9') return false;
     }
     return true;
+}
+
+// число: dec или 0x-hex (AUDIT-5: hex для asm-стиля); вызывающий обязан
+// проверить is_int заранее
+fn int parse_num(String s) {
+    bool neg = s[0] == '-';
+    usz i = (usz)(neg ? 1 : 0);
+    int v = 0;
+    if (s.len > i + 2 && s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
+        for (usz j = i + 2; j < s.len; j++) {
+            char c = s[j];
+            int d = (c <= '9') ? c - '0'
+                  : (c <= 'F' ? c - 'A' + 10 : c - 'a' + 10);
+            v = v * 16 + d;
+        }
+    } else {
+        for (; i < s.len; i++) { v = v * 10 + (s[i] - '0'); }
+    }
+    return neg ? -v : v;
 }
 
 fn bool check_name(String name, int line) {
@@ -169,17 +197,20 @@ fn int parse_reg(String tok, int line) {
     return -1;
 }
 
-// разбить операнды по запятым в buf; возвращает число токенов
+// разбить операнды по запятым в buf; возвращает ЧИСЛО токенов
+// (считаются все, даже за пределами buf — лишние ловит split_ops_exact)
 fn int split_ops(String rest, String[] buf) {
     int n = 0;
     String r = rest;
     while (true) {
         sz? ci = r.index_of_char(',');
         if (catch ci) {
-            if (n < (int)buf.len) buf[n++] = r.trim();
+            if (n < (int)buf.len) buf[n] = r.trim();
+            n++;
             break;
         }
-        if (n < (int)buf.len) buf[n++] = r[:ci].trim();
+        if (n < (int)buf.len) buf[n] = r[:ci].trim();
+        n++;
         r = r[ci + 1..];
     }
     return n;
@@ -379,7 +410,7 @@ fn void op_res(String rest, int line) {
     String fname = buf[1];
     String ssize = buf[2];
     if (!check_name(name, line)) return;
-    if (!is_int(ssize) || (ssize.to_int() ?? 0) <= 0) {
+    if (!is_int(ssize) || parse_num(ssize) <= 0) {
         viol(line, "STRUCT", cat({"bad size ", ssize, " (want positive int)"}));
         return;
     }
@@ -510,8 +541,8 @@ fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg) {
             String os = inner[pi + 1..].trim();
             if (!is_name(*mname)) {
                 bad = true;
-            } else if (is_int(os) && os[0] != '-') {
-                *off = os.to_int() ?? 0;
+            } else if (is_int(os)) {
+                *off = parse_num(os);
             } else if (os.len > 0 && os[0] == '%') {
                 int r = parse_reg(os, line);    // AUDIT-4: [med + %rN]
                 if (r < 0) { bad = true; } else { *off_reg = r; }
@@ -589,7 +620,8 @@ fn void op_mov(String rest, int line) {
             viol(line, "STRUCT", cat({"immediate out of i32 range: ", buf[1]}));
             return;
         }
-        add_instr({ .op = Op.MOV, .line = line, .a = dst, .b = v, .flag = true });
+        add_instr({ .op = Op.MOV, .line = line, .a = dst,
+                    .b = parse_num(buf[1]), .flag = true });
         return;
     }
     int src = parse_reg(buf[1], line);
@@ -655,6 +687,11 @@ fn void op_br(String rest, int line, bool is_brz) {
 fn void op_call(String rest, int line) {
     String name = rest.trim();
     if (!check_name(name, line)) return;
+    if (cur_proc > 0 && name == procs[(usz)(cur_proc - 1)].name) {
+        viol(line, "STRUCT", cat({"recursive call of ", name,
+             " (frame_reset frees the live arena)"}));
+        return;
+    }
     int pi = find_proc(name);
     if (pi < 0) {
         viol(line, "STRUCT", cat({"call of unknown procedure ", name}));
@@ -668,6 +705,10 @@ fn void op_call(String rest, int line) {
 fn void open_proc(String name, int line) {
     if (find_proc(name) >= 0) {
         viol(line, "DUP", cat({"duplicate procedure ", name}));
+        return;
+    }
+    if (find_frame(name, 0) >= 0 || cur_proc > 0 && find_frame(name, cur_proc) >= 0) {
+        viol(line, "DUP", cat({"procedure shadows frame ", name}));
         return;
     }
     blocks.push({ .kind = 1, .aux = (int)procs.len() });
@@ -685,6 +726,7 @@ fn void do_ret(int line) {
     if (cur_proc > 0) {
         add_instr({ .op = Op.RET, .line = line });
         cur_proc = 0;
+        g_proc_closed = true;
         return;
     }
     add_instr({ .op = Op.RET, .line = line });
@@ -738,6 +780,12 @@ fn void open_casc(String rest, int line, bool is_async) {
         if (mdi < 0) {
             viol(line, "I3", cat({"cascade uses unknown link ", name, " ", tok}));
             continue;
+        }
+        foreach (prev : med_names) {
+            if (prev == meds[mdi].name) {
+                viol(line, "DUP", cat({"cascade ", name,
+                     ": duplicate input link ", tok}));
+            }
         }
         med_idxs.push(mdi);
         med_names.push(meds[mdi].name);
@@ -808,7 +856,7 @@ fn void end_casc(int line) {
 // --- диспетчер инструкций -------------------------------------------------------------
 fn bool casc_body_ok(String op) {
     switch (op) {
-        case "mov": case "store": case "load": case "print":
+        case "mov": case "store": case "load": case "loadb": case "print":
         case "jmp": case "brz": case "brnz": case "inc": case "dec":
         case "add": case "sub": case "mul": case "div": case "mod":
         case "and": case "or": case "xor": case "shl": case "shr":

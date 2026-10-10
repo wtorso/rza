@@ -1,0 +1,12 @@
+; I3 sync: каскад по мёртвому на входе медиатору
+cav  main, field
+res  a, main, 8
+med  a_m, a, main
+cav  tmp, main
+res  t, tmp, 8
+med  t_m, t, tmp
+decay tmp               ; t_m мёртв
+casc  work: a_m,t_m -> out1[main]
+    load %r0, [a_m + 0]
+endc
+ret

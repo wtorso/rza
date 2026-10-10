@@ -115,7 +115,8 @@ run_lib() {
         bad "$t" "transpile --emit-lib failed"; cat "$BUILD/$t.trerr"
         return
     fi
-    if ! $CC $CFLAGS "$BUILD/$t.lib.c" "tests/lib_harness.c" \
+    if [ -f "tests/$t.harness.c" ]; then HARNESS="tests/$t.harness.c"; else HARNESS="tests/lib_harness.c"; fi
+    if ! $CC $CFLAGS "$BUILD/$t.lib.c" "$HARNESS" \
             -o "$BUILD/$t.exe" 2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -164,8 +165,19 @@ run_viol viol_i4        I4
 run_viol viol_jump      STRUCT
 run_viol viol_jump_casc STRUCT
 run_viol viol_scope     SCOPE
+run_viol viol_i1        I1
+run_viol viol_i3sync    I3
+run_viol viol_i3async   I3
+run_viol viol_decay     DECAY
+run_viol viol_decay_field DECAY
+run_viol viol_dup       DUP
+run_viol viol_extra_ops STRUCT
+run_viol viol_casc_dup  DUP
+run_viol viol_recursive STRUCT
+run_viol viol_shadow    DUP
 run_lib lib_hello
 run_lib_compile lib_scope
+run_lib lib_abort
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
