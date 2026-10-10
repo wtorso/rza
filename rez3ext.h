@@ -25,6 +25,16 @@
 /* Медиатор на ячейку: {указатель, рамка-владелец, поколение} (AUDIT-1/#4) */
 typedef struct { void *cell; RezCavity *owner; unsigned gen; } RezCellMed;
 
+/* AUDIT-6 (SPEC .rza §2): память ячеек ASM-слоя нуле-инициализирована.
+ * rez3.h не меняется (AGENTS.md) — обнуление на границе выдачи ячейки.
+ * Прецедент: malloc-мусор в незаписанной ячейке cnt давал
+ * недетерминированный smoke (bond, rides). */
+static void *rez_cell_z(RezCavity *c, size_t size) {
+    void *p = rez_cell(c, size);
+    if (p) memset(p, 0, size);
+    return p;
+}
+
 /* Выдача прохода: поколение фиксируется на момент выдачи */
 static RezCellMed rez_issue_cell(RezCavity *owner, void *cell) {
     RezCellMed m;

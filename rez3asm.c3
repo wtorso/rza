@@ -1127,7 +1127,7 @@ fn void emit_body(DString* out, int func) {
                             frames[ins.x].cap);
             case Op.RES:
                 pad(out, ind);
-                out.appendf("%s = rez_cell(%s, %d);\n",
+                out.appendf("%s = rez_cell_z(%s, %d);\n",
                             cells[ins.x].cname, fexpr(ins.y), ins.a);
                 pad(out, ind);
                 out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
@@ -1192,7 +1192,7 @@ fn void emit_body(DString* out, int func) {
                 }
                 if (ca.out_cell >= 0) {
                     pad(out, ind);
-                    out.appendf("%s = rez_cell(%s, 8);\n",
+                    out.appendf("%s = rez_cell_z(%s, 8);\n",
                                 cells[ca.out_cell].cname, fexpr(ca.out_frame));
                     pad(out, ind);
                     out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
