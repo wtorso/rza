@@ -512,9 +512,9 @@ fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg) {
                 bad = true;
             } else if (is_int(os) && os[0] != '-') {
                 *off = os.to_int() ?? 0;
-            } else if (os.len == 3 && os[0] == '%' && os[1] == 'r' &&
-                       os[2] >= '0' && os[2] <= '9') {
-                *off_reg = (int)(os[2] - '0');   // AUDIT-4: [med + %rN]
+            } else if (os.len > 0 && os[0] == '%') {
+                int r = parse_reg(os, line);    // AUDIT-4: [med + %rN]
+                if (r < 0) { bad = true; } else { *off_reg = r; }
             } else {
                 bad = true;
             }
@@ -602,10 +602,22 @@ fn void op_alu3(String opname, String coper, String rest, int line) {
     if (!split_ops_exact(rest, 3, line, opname, &buf)) return;
     int d = parse_reg(buf[0], line);
     int a = parse_reg(buf[1], line);
+    if (d < 0 || a < 0) return;
+    // AUDIT-5: третий операнд — imm (флаг) или регистр
+    if (is_int(buf[2])) {
+        int? v = buf[2].to_int();
+        if (catch v) {
+            viol(line, "STRUCT", cat({"immediate out of i32 range: ", buf[2]}));
+            return;
+        }
+        add_instr({ .op = Op.ALU3, .line = line, .a = d, .b = a, .c = v,
+                    .s2 = coper, .flag = true });
+        return;
+    }
     int b = parse_reg(buf[2], line);
-    if (d < 0 || a < 0 || b < 0) return;
+    if (b < 0) return;
     add_instr({ .op = Op.ALU3, .line = line, .a = d, .b = a, .c = b,
-                .s2 = coper });
+                .s2 = coper, .flag = false });
 }
 
 fn void op_alu1(String rest, int line, bool is_inc) {
@@ -1000,7 +1012,7 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
             case Op.ALU3:
                 *wr |= 1u << ins.a;
                 *rd |= 1u << ins.b;
-                *rd |= 1u << ins.c;
+                if (!ins.flag) *rd |= 1u << ins.c;
             case Op.ALU1:
                 *rd |= 1u << ins.a;
                 *wr |= 1u << ins.a;
@@ -1073,9 +1085,10 @@ fn void emit_body(DString* out, int func) {
                 out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
                             "arena overflow (cell %s)\\n\"); exit(1); }\n",
                             cells[ins.x].cname, ins.line, cells[ins.x].name);
-                // lib-режим: верхнеуровневые медиаторы на эту ячейку
-                // инициализируются сразу после её создания (AUDIT-4)
-                if (g_lib_mode) {
+                // верхнеуровневые медиаторы на эту ячейку инициализируются
+                // сразу после её создания (AUDIT-4): ячейка может создаваться
+                // внутри proc (lib), и тогда текстовая позиция med — мимо
+                if (true) {
                     for (sz j = 0; j < instrs.len(); j++) {
                         Instr* mj = &instrs[j];
                         if (mj.op != Op.MED || mj.func != 0) continue;
@@ -1087,9 +1100,9 @@ fn void emit_body(DString* out, int func) {
                     }
                 }
             case Op.MED:
-                // в lib-режиме верхнеуровневые медиаторы инициализируются
-                // лениво в геттерах (ячейка может не существовать при rza_boot)
-                if (g_lib_mode && ins.func == 0) break;
+                // верхнеуровневые медиаторы инициализируются при создании
+                // ячейки (см. Op.RES), а не по текстовой позиции (AUDIT-4)
+                if (ins.func == 0) break;
                 pad(out, ind);
                 out.appendf("%s = rez_issue_cell(%s, %s);\n",
                             meds[ins.x].cname,
@@ -1208,7 +1221,13 @@ fn void emit_body(DString* out, int func) {
                 }
             case Op.ALU3:
                 pad(out, ind);
-                out.appendf("r%d = r%d %s r%d;\n", ins.a, ins.b, ins.s2, ins.c);
+                if (ins.flag) {
+                    out.appendf("r%d = r%d %s %d;\n", ins.a, ins.b,
+                                ins.s2, ins.c);
+                } else {
+                    out.appendf("r%d = r%d %s r%d;\n", ins.a, ins.b,
+                                ins.s2, ins.c);
+                }
             case Op.ALU1:
                 pad(out, ind);
                 out.appendf("r%d%s;\n", ins.a, ins.flag ? "++" : "--");
