@@ -1,0 +1,5 @@
+; STRUCT: рекурсивный call (frame_reset освобождает арену живого кадра)
+proc p:
+    call p              ; VIOLATION [STRUCT]: recursive call
+    ret
+ret

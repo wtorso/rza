@@ -1,0 +1,4 @@
+; DECAY: decay корня запрещён
+res  a, field, 8
+decay field             ; VIOLATION [DECAY]: leave of root (field) forbidden
+ret

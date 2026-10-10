@@ -1,0 +1,4 @@
+; STRUCT: лишний операнд не должен молча проглатываться (review P2)
+cav  main, field
+mov  %r0, 1, 2          ; VIOLATION [STRUCT]: bad operands for mov
+ret

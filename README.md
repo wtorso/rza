@@ -93,7 +93,7 @@ endc
 rez3asm file.rza              # проверка: VIOLATION line N [RULE] в stderr
 rez3asm file.rza --emit-c     # C99 на stdout (читаемый, для людей)
 rez3asm file.rza --emit-lib   # C99-библиотека: procs → void rza_NAME(void)
-bash run_tests.sh             # 12/12 тестов + ноль warnings zig cc -std=c99
+bash run_tests.sh             # 24/24 тестов + ноль warnings zig cc -std=c99
 ```
 
 - `rez3asm.c3` — транспайлер (C3 0.8.4; Python-версия перешита).
@@ -130,6 +130,15 @@ done:
     decay main
     ret
 ```
+
+## Каскады в боевом коде (честно, review P8)
+
+В `bond/arch/bond.rza` ядра — `proc`, не `casc`: каскад — конструкт
+атомарности/батча (все медиаторы живы или пропуск целиком), а не
+перфреймового цикла; оборачивать enemies-цикл в casc было бы неверным по
+смыслу (abort ≠ «пропустить кадр»). Стирание на горячем пути
+демонстрируется в `tests/cascade.rza`; демо на боевой нагрузке —
+отдельный артефакт дорожной карты (листинги стирания, артефакт C).
 
 ## Границы (признаются, а не заметаются)
 

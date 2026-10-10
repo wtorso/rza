@@ -1,0 +1,7 @@
+; I3 async: связь не в field
+cav  main, field
+res  a, main, 8
+med  a_m, a, main
+acasc job: a_m -> ticket   ; VIOLATION [I3]: async cascade holds non-root link
+endc
+ret

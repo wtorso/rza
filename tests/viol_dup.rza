@@ -1,0 +1,4 @@
+; DUP: повторное имя рамки
+cav  main, field
+cav  main, field        ; VIOLATION [DUP]: duplicate frame
+ret

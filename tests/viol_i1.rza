@@ -1,0 +1,6 @@
+; I1: ячейка в мёртвой рамке
+cav  main, field
+cav  sub, main
+decay sub
+res  x, sub, 8          ; VIOLATION [I1]: cell in dead frame
+ret
