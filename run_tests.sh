@@ -38,7 +38,8 @@ bad() { FAIL=$((FAIL+1)); echo "FAIL $1 -- $2"; }
 # stdout совпадает с tests/$1.expected
 run_good() {
     local t=$1
-    if ! $TR "tests/$t.rza" --emit-c -o "$BUILD/$t.c" \
+    local dir=${DIR:-tests}
+    if ! $TR "$dir/$t.rza" --emit-c -o "$BUILD/$t.c" \
             2>"$BUILD/$t.trerr"; then
         bad "$t" "transpile failed (want exit 0)"; cat "$BUILD/$t.trerr"
         return
@@ -54,9 +55,9 @@ run_good() {
     fi
     "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"
     tr -d '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
-    if ! diff -u "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+    if ! diff -u "$dir/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
-        diff -u "tests/$t.expected" "$BUILD/$t.out.lf"
+        diff -u "$dir/$t.expected" "$BUILD/$t.out.lf"
         return
     fi
     ok "$t"
@@ -158,6 +159,11 @@ run_lib_compile() {
 echo "== REZ3-ASM test run (compiler: $CC) =="
 for t in fib counter back_button cascade indexed; do
     run_good "$t"
+done
+
+# примеры учебника GUIDE.md — регрессия документации (аудит #3)
+for t in hello counter2 idioms settle; do
+    DIR=docs/examples run_good "$t"
 done
 run_dead
 run_viol viol_i2        I2
