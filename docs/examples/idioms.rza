@@ -1,0 +1,111 @@
+; idioms.rza — идиомы сравнений GUIDE.md §7: каждая проверена прогоном.
+; Печать 0/1 по одной на строку; ожидаемый вывод — в комментариях.
+res  tmp, field, 8
+med  tmp_m, tmp, field
+
+mov  %r0, 5                  ; a = 5
+mov  %r1, 7                  ; b = 7
+
+; --- a == b: 5 == 7 → нет
+sub  %r2, %r0, %r1
+brz  %r2, t1_yes
+mov  %r3, 0
+jmp  t1_done
+t1_yes:
+mov  %r3, 1
+t1_done:
+print %r3                    ; 0
+
+; --- a != b: 5 != 7 → да
+sub  %r2, %r0, %r1
+brnz %r2, t2_yes
+mov  %r3, 0
+jmp  t2_done
+t2_yes:
+mov  %r3, 1
+t2_done:
+print %r3                    ; 1
+
+; --- a < b: 5 < 7 → да (знак a−b)
+sub  %r2, %r0, %r1
+shr  %r2, %r2, 63
+brnz %r2, t3_yes
+mov  %r3, 0
+jmp  t3_done
+t3_yes:
+mov  %r3, 1
+t3_done:
+print %r3                    ; 1
+
+; --- a >= b: 5 >= 7 → нет
+sub  %r2, %r0, %r1
+shr  %r2, %r2, 63
+brz  %r2, t4_yes
+mov  %r3, 0
+jmp  t4_done
+t4_yes:
+mov  %r3, 1
+t4_done:
+print %r3                    ; 0
+
+; --- a <= b: 5 <= 7 → да (b−a >= 0)
+sub  %r2, %r1, %r0
+shr  %r2, %r2, 63
+brz  %r2, t5_yes
+mov  %r3, 0
+jmp  t5_done
+t5_yes:
+mov  %r3, 1
+t5_done:
+print %r3                    ; 1
+
+; --- a > b: 5 > 7 → нет (b−a < 0)
+sub  %r2, %r1, %r0
+shr  %r2, %r2, 63
+brnz %r2, t6_yes
+mov  %r3, 0
+jmp  t6_done
+t6_yes:
+mov  %r3, 1
+t6_done:
+print %r3                    ; 0
+
+; --- |x| < K: x=-3, K=4 → да
+mov  %r0, -3
+mov  %r1, 4
+mov  %r2, 4
+add  %r2, %r0, %r2           ; x + K = 1
+brz  %r2, t7_no
+shr  %r2, %r2, 63
+brnz %r2, t7_no
+mov  %r2, 4
+sub  %r2, %r2, %r0           ; K - x = 7 (порядок: K в приёмник!)
+brz  %r2, t7_no
+shr  %r2, %r2, 63
+brnz %r2, t7_no
+mov  %r3, 1
+jmp  t7_done
+t7_no:
+mov  %r3, 0
+t7_done:
+print %r3                    ; 1
+
+; --- |x| < K на границе: x=4, K=4 → нет (строго)
+mov  %r0, 4
+mov  %r2, 4
+add  %r2, %r0, %r2           ; 8
+brz  %r2, t8_no
+shr  %r2, %r2, 63
+brnz %r2, t8_no
+mov  %r2, 4
+sub  %r2, %r2, %r0           ; K - x = 0
+brz  %r2, t8_no              ; граница — исключаем
+shr  %r2, %r2, 63
+brnz %r2, t8_no
+mov  %r3, 1
+jmp  t8_done
+t8_no:
+mov  %r3, 0
+t8_done:
+print %r3                    ; 0
+ret

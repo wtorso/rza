@@ -1,0 +1,16 @@
+; counter2.rza — пример GUIDE.md §9: proc, вызванный дважды; ячейка
+; бессмертна (field), медиатор выдан field; proc видит field-медиаторы.
+res  counter, field, 8
+med  counter_m, counter, field
+
+proc tick:
+    load  %r0, [counter_m + 0]
+    inc   %r0
+    store [counter_m + 0], %r0  ; tick: counter += 1
+    ret
+
+call tick
+call tick
+load %r0, [counter_m + 0]
+print %r0                  ; 2: два вызова tick по field-ячейке
+ret

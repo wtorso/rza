@@ -1,0 +1,23 @@
+; settle.rza — каскад GUIDE.md §10: атомарный батч над двумя ячейками.
+cav  session, field
+res  hp, session, 16
+res  pos, session, 8
+med  hp_m, hp, session
+med  pos_m, pos, session
+
+mov  %r0, 40
+store [hp_m + 0], %r0        ; hp = 40
+mov  %r1, 2
+store [pos_m + 0], %r1       ; pos = 2
+
+casc settle: hp_m, pos_m -> out[session]
+    load  %r0, [hp_m + 0]
+    load  %r1, [pos_m + 0]
+    add   %r2, %r0, %r1
+    store [hp_m + 8], %r2      ; hp' = hp + pos
+endc
+
+load %r3, [hp_m + 8]
+print %r3                    ; 42 = 40 + 2 (hp + pos, sync-каскад settle)
+decay session
+ret
