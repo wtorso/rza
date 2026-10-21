@@ -1,0 +1,5 @@
+; STRUCT: call неизвестной процедуры; неизвестная инструкция; endc без casc
+call nosuch       ; VIOLATION [STRUCT]: call of unknown procedure
+frob %r0          ; VIOLATION [STRUCT]: unknown op
+endc              ; VIOLATION [STRUCT]: endc without casc
+ret

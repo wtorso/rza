@@ -1,6 +1,9 @@
-; I4: raise в соседнюю ветку (не к строгому предку).
+; I4: raise в соседнюю ветку (не к строгому предку), неизвестная ячейка,
+; неизвестная целевая рамка
 cav  a, field
 cav  b, field
 res  x, a, 16
-raise x, b              ; b — не предок a
+raise x, b              ; VIOLATION [I4]: b — не предок a
+raise nosuch, field     ; VIOLATION [I4]: raise of unknown cell
+raise x, nosuch         ; VIOLATION [I4]: raise to unknown frame
 ret

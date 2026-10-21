@@ -1,0 +1,9 @@
+; STRUCT: адресация — только [med + off]; load/store по неизвестному
+; медиатору — тоже ошибка разбора
+cav  main, field
+res  x, main, 8
+med  x_m, x, main
+load %r0, [x_m]            ; VIOLATION [STRUCT]: bad memory operand
+load %r1, [nosuch_m + 0]   ; VIOLATION [STRUCT]: load via unknown mediator
+store [nosuch_m + 0], %r1  ; VIOLATION [STRUCT]: store via unknown mediator
+ret

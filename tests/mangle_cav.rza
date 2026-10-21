@@ -1,0 +1,17 @@
+; манглинг рамок, созданных в proc (review #3): k_a наверху и a внутри
+; proc k — РАЗНЫЕ рамки. Раньше обе схлопывались в f_k_a: две рамки молча
+; сливались в одну C-переменную.
+cav  k_a, field
+res  x, k_a, 8
+med  x_m, x, k_a
+proc k:
+    cav  a, field
+    res  y, a, 8
+    ret
+med  y_m, y, field
+call k
+decay k_a
+probe y_m          ; ALIVE: a (создана в proc k) — не k_a; decay k_a её
+                   ; не трогает
+probe x_m          ; DEAD: k_a убита decay-ом
+ret

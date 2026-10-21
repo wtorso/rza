@@ -1,0 +1,6 @@
+; STRUCT: заголовок каскада — «name: meds -> out[frame]»
+casc  c a_m               ; VIOLATION [STRUCT]: нет «:»
+casc  c2: a_m o[x]        ; VIOLATION [STRUCT]: нет «->»
+casc  c3: a_m -> o[x      ; VIOLATION [STRUCT]: нет «]»
+casc  c4: a_m -> o[]      ; VIOLATION [STRUCT]: пустая рамка OUT
+ret

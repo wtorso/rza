@@ -63,9 +63,10 @@ run_good() {
     ok "$t"
 }
 
-# dead_link: транслируется и компилируется, при запуске exit!=0 и FAULT в stderr
+# runtime-fault ($1, по умолчанию dead_link): транслируется и
+# компилируется, при запуске exit!=0 и FAULT в stderr
 run_dead() {
-    local t=dead_link
+    local t=${1:-dead_link}
     if ! $TR "tests/$t.rza" --emit-c -o "$BUILD/$t.c" \
             2>"$BUILD/$t.trerr"; then
         bad "$t" "transpile failed (want exit 0: runtime-fault is legal)"
@@ -157,7 +158,8 @@ run_lib_compile() {
 }
 
 echo "== REZ3-ASM test run (compiler: $CC) =="
-for t in fib counter back_button cascade indexed; do
+for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
+         mangle_label mangle_proc mangle_cav; do
     run_good "$t"
 done
 
@@ -166,6 +168,7 @@ for t in hello counter2 idioms settle; do
     DIR=docs/examples run_good "$t"
 done
 run_dead
+run_dead ret_dead
 run_viol viol_i2        I2
 run_viol viol_i4        I4
 run_viol viol_jump      STRUCT
@@ -181,6 +184,36 @@ run_viol viol_extra_ops STRUCT
 run_viol viol_casc_dup  DUP
 run_viol viol_recursive STRUCT
 run_viol viol_shadow    DUP
+# review #6/#7 + покрытие веток чекера (review #12)
+run_viol viol_res_overflow STRUCT
+run_viol viol_ret_casc I3
+run_viol viol_bad_name  STRUCT
+run_viol viol_bad_reg   STRUCT
+run_viol viol_bad_size  STRUCT
+run_viol viol_cav_parent I1
+run_viol viol_raise_dead I4
+run_viol viol_decay_proc DECAY
+run_viol viol_casc_out_dead I1
+run_viol viol_med_suffix STRUCT
+run_viol viol_med_cell  I2
+run_viol viol_med_issuer I2
+run_viol viol_probe     STRUCT
+run_viol viol_mem       STRUCT
+run_viol viol_after_ret STRUCT
+run_viol viol_struct_misc STRUCT
+run_viol viol_unterm_proc STRUCT
+run_viol viol_unterm_casc STRUCT
+run_viol viol_nested_proc STRUCT
+run_viol viol_casc_noinput STRUCT
+run_viol viol_casc_op   STRUCT
+run_viol viol_jump_unknown STRUCT
+run_viol viol_dup_label DUP
+run_viol viol_imm       STRUCT
+run_viol viol_casc_med  STRUCT
+run_viol viol_dup_proc  DUP
+run_viol viol_casc_header STRUCT
+run_viol viol_acasc_out STRUCT
+run_viol viol_proc_header STRUCT
 run_lib lib_hello
 run_lib_compile lib_scope
 run_lib lib_abort

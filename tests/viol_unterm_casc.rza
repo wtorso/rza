@@ -1,0 +1,6 @@
+; STRUCT: каскад без endc
+cav  main, field
+res  a, main, 8
+med  a_m, a, main
+casc c: a_m -> o[main]
+    load %r0, [a_m + 0]

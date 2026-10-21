@@ -1,0 +1,5 @@
+; STRUCT: размер res вне диапазона i32 — violation, а не молчаливый 0
+; (норма «нет молчаливой неправильности», как у mov imm, AUDIT-4; review #6).
+; Раньше to_int() ?? 0 давал ячейку нулевого размера и store за пределы.
+res  z, field, 99999999999    ; VIOLATION [STRUCT]: bad size
+ret

@@ -1,0 +1,3 @@
+; I2: медиатор на неизвестную ячейку
+med  x_m, nosuch, field    ; VIOLATION [I2]: link to unknown cell
+ret

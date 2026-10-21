@@ -1,0 +1,3 @@
+; STRUCT: имя — [a-z_][a-z0-9_]* (дисциплина имён, SPEC §0)
+cav  1bad, field    ; VIOLATION [STRUCT]: bad name (начинается с цифры)
+ret

@@ -1,0 +1,3 @@
+; STRUCT: proc без парного ret
+proc p:
+    mov %r0, 1

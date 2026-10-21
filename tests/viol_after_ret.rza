@@ -1,0 +1,4 @@
+; STRUCT: исполняемый код после верхнеуровневого ret
+mov  %r0, 1
+ret
+print %r0    ; VIOLATION [STRUCT]: code after top-level ret
