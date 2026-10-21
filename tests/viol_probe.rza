@@ -1,0 +1,3 @@
+; STRUCT: probe по неизвестному медиатору
+probe nosuch_m    ; VIOLATION [STRUCT]: probe of unknown mediator
+ret

@@ -1,0 +1,3 @@
+; STRUCT: заголовок proc — «proc name:» (имя по дисциплине имён)
+proc 1x:             ; VIOLATION [STRUCT]: malformed proc header
+ret

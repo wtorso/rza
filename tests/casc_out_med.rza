@@ -1,0 +1,21 @@
+; медиатор на OUT-ячейку каскада: подъём (hoist) верхнеуровневых
+; медиаторов обязан срабатывать и для ячеек, создаваемых каскадом,
+; а не только для res (AUDIT-4 распространяется на OUT, review #2).
+; Раньше такой медиатор оставался нулевым: runtime FAULT dead mediator.
+cav  main, field
+res  a, main, 8
+med  a_m, a, main
+mov  %r0, 41
+store [a_m + 0], %r0
+casc bump: a_m -> o[main]
+    load  %r1, [a_m + 0]
+    inc   %r1
+    store [a_m + 0], %r1
+endc
+med  o_m, o, main
+load %r2, [o_m + 0]
+print %r2          ; 0: OUT-ячейка нуле-инициализирована (rez_cell_z),
+                   ; каскад в неё не пишет (тело адресует только входы)
+load %r3, [a_m + 0]
+print %r3          ; 42 = 41 + 1 (каскад bump инкрементировал a)
+ret

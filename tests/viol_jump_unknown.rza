@@ -1,0 +1,3 @@
+; STRUCT: переход на неизвестную метку
+jmp  nosuch    ; VIOLATION [STRUCT]: jump to unknown label
+ret

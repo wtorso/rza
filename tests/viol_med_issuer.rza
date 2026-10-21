@@ -1,0 +1,5 @@
+; I2: issuer медиатора неизвестен
+cav  main, field
+res  x, main, 8
+med  x_m, x, nosuch    ; VIOLATION [I2]: unknown issuer frame
+ret

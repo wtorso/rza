@@ -1,0 +1,4 @@
+; DUP: повторная метка в одном лексическом блоке
+x:
+x:           ; VIOLATION [DUP]: duplicate label
+ret

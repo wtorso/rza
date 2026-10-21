@@ -1,5 +1,6 @@
-; DECAY: двойной decay одной рамки
+; DECAY: двойной decay одной рамки; decay неизвестной рамки
 cav  main, field
 decay main
 decay main              ; VIOLATION [DECAY]: double leave
+decay nosuch            ; VIOLATION [DECAY]: leave of unknown frame
 ret

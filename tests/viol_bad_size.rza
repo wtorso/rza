@@ -1,0 +1,5 @@
+; STRUCT: размер res — положительное целое
+res  a, field, -5     ; VIOLATION [STRUCT]: bad size (отрицательный)
+res  b, field, 0      ; VIOLATION [STRUCT]: bad size (ноль)
+res  c, field, xx     ; VIOLATION [STRUCT]: bad size (не число)
+ret

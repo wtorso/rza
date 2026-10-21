@@ -1,4 +1,5 @@
-; I3 sync: каскад по мёртвому на входе медиатору
+; I3 sync: каскад по мёртвому на входе медиатору; неизвестный медиатор
+; во входном списке; OUT-ячейка в неизвестной рамке
 cav  main, field
 res  a, main, 8
 med  a_m, a, main
@@ -6,7 +7,13 @@ cav  tmp, main
 res  t, tmp, 8
 med  t_m, t, tmp
 decay tmp               ; t_m мёртв
-casc  work: a_m,t_m -> out1[main]
+casc  work: a_m,t_m -> out1[main]   ; VIOLATION [I3]: dead link on entry
+    load %r0, [a_m + 0]
+endc
+casc  u: nosuch_m -> o2[main]       ; VIOLATION [I3]: unknown link
+    load %r0, [a_m + 0]
+endc
+casc  v: a_m -> o3[nosuch]          ; VIOLATION [I3]: out in unknown frame
     load %r0, [a_m + 0]
 endc
 ret

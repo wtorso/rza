@@ -1,0 +1,3 @@
+; I1: родительская рамка неизвестна
+cav  a, nosuch    ; VIOLATION [I1]: unknown parent frame
+ret

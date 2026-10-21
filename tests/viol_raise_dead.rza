@@ -1,0 +1,7 @@
+; I4: raise в мёртвую рамку (цель — строгий предок, но убита decay-ом)
+cav  a, field
+cav  b, a
+res  x, b, 8
+decay a            ; a и всё поддерево (b, x) мертвы
+raise x, a         ; VIOLATION [I4]: raise into dead frame
+ret

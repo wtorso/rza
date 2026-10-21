@@ -1,0 +1,13 @@
+; I3: медиатор на ячейку рамки процедуры мёртв для каскада на верхнем
+; уровне (review #7): ret разрушает рамку proc (runtime: rez_decay в
+; emit_proc), чекер обязан это видеть (AUDIT-7). Раньше рамка proc
+; оставалась статически живой — каскад проходил чекер и абортился
+; в runtime.
+proc p:
+    res  x, p, 8
+    ret
+med  x_m, x, field
+casc c: x_m -> o[field]    ; VIOLATION [I3]: dead link on entry
+    load %r0, [x_m + 0]
+endc
+ret

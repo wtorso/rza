@@ -1,0 +1,5 @@
+; STRUCT: вложенный proc запрещён (SPEC §6)
+proc p:
+proc q:           ; VIOLATION [STRUCT]: nested proc
+    ret
+ret

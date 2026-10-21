@@ -1,0 +1,4 @@
+; STRUCT: каскад без входных медиаторов
+casc c: -> o[field]    ; VIOLATION [STRUCT]: cascade without input mediators
+endc
+ret

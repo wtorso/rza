@@ -1,0 +1,4 @@
+; STRUCT: регистры — только %r0..%r15
+mov  %r16, 1        ; VIOLATION [STRUCT]: bad register (вне диапазона)
+mov  %rx, 2         ; VIOLATION [STRUCT]: bad register (не число)
+ret

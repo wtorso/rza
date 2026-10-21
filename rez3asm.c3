@@ -35,7 +35,7 @@ struct Frame {
     int    outs;          // out-ячейки каскадов в этой рамке
     int    cap;
     bool   is_field;
-    bool   is_procframe;  // рамка процедуры (by value, &f_proc_x)
+    bool   is_procframe;  // рамка процедуры (by value, &f_P_x)
 }
 
 struct Cell {
@@ -232,7 +232,8 @@ fn bool split_ops_exact(String rest, int want, int line, String opname, String[]
 }
 
 // --- скоупы ----------------------------------------------------------------------
-// возврат: >=0 индекс, -1 unknown, -2 SCOPE (глобальное имя, из proc не видно)
+// возврат: >=0 индекс, -1 unknown. Рамки и ячейки — общая хроника (AUDIT-3),
+// SCOPE для них нет (только медиаторы, find_med)
 fn int find_frame(String name, int scope) {
     if (scope > 0) {
         for (sz i = 0; i < frames.len(); i++) {
@@ -378,8 +379,13 @@ fn void add_label(String name, int line) {
 }
 
 // --- операции владения -------------------------------------------------------------
+// C-имя сущности. Склейка scope'а — заглавными разделителями («P_» + proc +
+// «X» + имя): имена языка только строчные, поэтому коллизия склеенного имени
+// с верхнеуровневым невозможна (review #3: «cav proc_k» vs «proc k»,
+// «cav k_a» vs «cav a» внутри «proc k» — раньше молча сливались).
 fn String cname_for(String prefix, String name) {
-    return cur_proc > 0 ? cat({prefix, procs[(sz)(cur_proc - 1)].name, "_", name})
+    return cur_proc > 0 ? cat({prefix, "P_", procs[(sz)(cur_proc - 1)].name,
+                               "X", name})
                         : cat({prefix, name});
 }
 
@@ -390,7 +396,6 @@ fn void op_cav(String rest, int line) {
     String parent = buf[1];
     if (!check_name(name, line)) return;
     int pf = find_frame(parent, cur_proc);
-    if (pf == -2) { scope_viol(line, "frame", parent); return; }
     if (pf < 0) { viol(line, "I1", cat({"unknown parent frame ", parent})); return; }
     if (!frames[pf].alive) {
         viol(line, "I1", cat({"enter under dead frame ", parent})); return;
@@ -410,13 +415,23 @@ fn void op_res(String rest, int line) {
     String fname = buf[1];
     String ssize = buf[2];
     if (!check_name(name, line)) return;
-    if (!is_int(ssize) || parse_num(ssize) <= 0) {
+    // размер — как imm у mov (AUDIT-4): не i32 или не число — violation,
+    // а не молчаливый 0 (review #6: «нет молчаливой неправильности»)
+    int size = -1;
+    if (is_int(ssize)) {
+        int? sv = ssize.to_int();
+        if (catch sv) {
+            viol(line, "STRUCT", cat({"bad size ", ssize,
+                                      " (want positive int)"}));
+            return;
+        }
+        size = sv;
+    }
+    if (size <= 0) {
         viol(line, "STRUCT", cat({"bad size ", ssize, " (want positive int)"}));
         return;
     }
-    int size = ssize.to_int() ?? 0;
     int f = find_frame(fname, cur_proc);
-    if (f == -2) { scope_viol(line, "frame", fname); return; }
     if (f < 0) {
         viol(line, "I1", cat({"cell in unknown frame ", name, " ", fname})); return;
     }
@@ -445,12 +460,10 @@ fn void op_med(String rest, int line) {
         return;
     }
     int ci = find_cell(cn, cur_proc);
-    if (ci == -2) { scope_viol(line, "cell", cn); return; }
     if (ci < 0) {
         viol(line, "I2", cat({"link to unknown cell ", name, " ", cn})); return;
     }
     int is = find_frame(issuer, cur_proc);
-    if (is == -2) { scope_viol(line, "frame", issuer); return; }
     if (is < 0) { viol(line, "I2", cat({"unknown issuer frame ", issuer})); return; }
     if (!is_ancestor(cells[ci].owner, is, false)) {
         viol(line, "I2", cat({"link issued by non-owner non-ancestor ",
@@ -470,10 +483,8 @@ fn void op_raise(String rest, int line) {
     String cn = buf[0];
     String fname = buf[1];
     int ci = find_cell(cn, cur_proc);
-    if (ci == -2) { scope_viol(line, "cell", cn); return; }
     if (ci < 0) { viol(line, "I4", cat({"raise of unknown cell ", cn})); return; }
     int f = find_frame(fname, cur_proc);
-    if (f == -2) { scope_viol(line, "frame", fname); return; }
     if (f < 0) { viol(line, "I4", cat({"raise to unknown frame ", fname})); return; }
     if (!is_ancestor(cells[ci].owner, f, true)) {
         viol(line, "I4", cat({"raise to non-ancestor (sideways/down forbidden) ",
@@ -497,7 +508,6 @@ fn void op_decay(String rest, int line) {
     if (!split_ops_exact(rest, 1, line, "decay", &buf)) return;
     String fname = buf[0];
     int f = find_frame(fname, cur_proc);
-    if (f == -2) { scope_viol(line, "frame", fname); return; }
     if (f < 0) { viol(line, "DECAY", cat({"leave of unknown frame ", fname})); return; }
     if (frames[f].is_field) {
         viol(line, "DECAY", cat({"leave of root (field) forbidden ", fname})); return;
@@ -713,7 +723,7 @@ fn void open_proc(String name, int line) {
     }
     blocks.push({ .kind = 1, .aux = (int)procs.len() });
     Frame f = { .name = name, .parent = 0, .alive = true, .gen = nextgen(),
-                .cname = cat({"f_proc_", name}), .scope = (int)procs.len() + 1,
+                .cname = cat({"f_P_", name}), .scope = (int)procs.len() + 1,
                 .cap = 64, .is_procframe = true };
     frames.push(f);
     Proc p = { .name = name, .line = line, .frame = (int)frames.len() - 1,
@@ -725,6 +735,11 @@ fn void open_proc(String name, int line) {
 fn void do_ret(int line) {
     if (cur_proc > 0) {
         add_instr({ .op = Op.RET, .line = line });
+        // ret разрушает рамку процедуры (runtime: rez_decay в emit_proc) —
+        // чекер обязан видеть её и всё поддерево мёртвыми, иначе медиаторы
+        // на её ячейки проходят I3 и абортируют каскады в runtime
+        // (AUDIT-7, review #7)
+        kill(procs[(sz)(cur_proc - 1)].frame);
         cur_proc = 0;
         g_proc_closed = true;
         return;
@@ -810,8 +825,7 @@ fn void open_casc(String rest, int line, bool is_async) {
             out_frame = 0;
         } else {
             int of = find_frame(outfname, cur_proc);
-            if (of == -2) { scope_viol(line, "frame", outfname); }
-            else if (of < 0) {
+            if (of < 0) {
                 viol(line, "I3", cat({"out cell in unknown frame ",
                                       outname, " ", outfname}));
             }
@@ -1028,10 +1042,10 @@ fn String label_cname(int block, String name) {
     Block b = blocks[block];
     switch (b.kind) {
         case 0: return cat({"L_", name});
-        case 1: return cat({"L_", procs[b.aux].name, "_", name});
+        case 1: return cat({"L_P_", procs[b.aux].name, "X", name});
         default: {
             DString d = dstring::new_with_capacity(mem, 32);
-            d.appendf("L_c%d_%s", b.aux, name);
+            d.appendf("L_C%d_%s", b.aux, name);
             return d.copy_str(mem);
         }
     }
@@ -1100,6 +1114,37 @@ fn void emit_writeonly_silence(DString* out, int ind, uint rd, uint wr) {
     }
 }
 
+// верхнеуровневые медиаторы на ячейку cell инициализируются сразу после
+// её создания (AUDIT-4): ячейка может создаваться внутри proc (lib), и
+// тогда текстовая позиция med — мимо. Общий случай — res и OUT-ячейка
+// каскада (review #2: для OUT подъёма не было — медиатор оставался
+// нулевым, runtime FAULT)
+fn void emit_hoisted_meds(DString* out, int ind, int cell, int owner) {
+    for (sz j = 0; j < instrs.len(); j++) {
+        Instr* mj = &instrs[j];
+        if (mj.op != Op.MED || mj.func != 0) continue;
+        if (meds[mj.x].cell != cell) continue;
+        pad(out, ind);
+        out.appendf("%s = rez_issue_cell(%s, %s);\n",
+                    meds[mj.x].cname, fexpr(owner), cells[cell].cname);
+    }
+}
+
+// decay убивает поддерево рекурсивно (модель §0) — как чекер kill();
+// раньше runtime гасил только саму рамку (review #1). rez_decay
+// идемпотентен (после первого вызова arena.base = 0, free(0) безвреден);
+// guard — потомок мог не создаться в этом проходе (proc не вызывался,
+// переход через cav)
+fn void emit_decay_subtree(DString* out, int ind, int f) {
+    for (sz i = 0; i < frames.len(); i++) {
+        if (frames[i].is_field || frames[i].is_procframe) continue;
+        if (!is_ancestor((int)i, f, true)) continue;
+        pad(out, ind);
+        out.appendf("if (%s) rez_decay(%s);\n",
+                    frames[i].cname, frames[i].cname);
+    }
+}
+
 fn void emit_body(DString* out, int func) {
     int ind = 1;
     int cur_ca = -1;
@@ -1133,20 +1178,7 @@ fn void emit_body(DString* out, int func) {
                 out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
                             "arena overflow (cell %s)\\n\"); exit(1); }\n",
                             cells[ins.x].cname, ins.line, cells[ins.x].name);
-                // верхнеуровневые медиаторы на эту ячейку инициализируются
-                // сразу после её создания (AUDIT-4): ячейка может создаваться
-                // внутри proc (lib), и тогда текстовая позиция med — мимо
-                if (true) {
-                    for (sz j = 0; j < instrs.len(); j++) {
-                        Instr* mj = &instrs[j];
-                        if (mj.op != Op.MED || mj.func != 0) continue;
-                        if (meds[mj.x].cell != (int)ins.x) continue;
-                        pad(out, ind);
-                        out.appendf("%s = rez_issue_cell(%s, %s);\n",
-                                    meds[mj.x].cname, fexpr(ins.y),
-                                    cells[ins.x].cname);
-                    }
-                }
+                emit_hoisted_meds(out, ind, ins.x, ins.y);
             case Op.MED:
                 // верхнеуровневые медиаторы инициализируются при создании
                 // ячейки (см. Op.RES), а не по текстовой позиции (AUDIT-4)
@@ -1162,6 +1194,7 @@ fn void emit_body(DString* out, int func) {
                             "no code (SPEC 9) */\n",
                             cells[ins.x].name, frames[ins.y].name, ins.line);
             case Op.DECAY:
+                emit_decay_subtree(out, ind, ins.x);
                 pad(out, ind);
                 out.appendf("rez_decay(%s);\n", fexpr(ins.x));
             case Op.PROBE:
@@ -1199,6 +1232,7 @@ fn void emit_body(DString* out, int func) {
                                 "arena overflow (out %s)\\n\"); exit(1); }\n",
                                 cells[ca.out_cell].cname, ca.line,
                                 cells[ca.out_cell].name);
+                    emit_hoisted_meds(out, ind, ca.out_cell, ca.out_frame);
                 }
             }
             case Op.ENDC: {
@@ -1327,6 +1361,9 @@ fn void emit_proc(DString* out, int pi) {
                 frames[p.frame].cname, frames[p.frame].cap);
     emit_body(out, pi + 1);
     emit_writeonly_silence(out, 1, rd, wr);
+    // ret разрушает рамку процедуры и всё поддерево (как kill в чекере,
+    // AUDIT-7): рамки, созданные под ней в этом proc, гасим тоже
+    emit_decay_subtree(out, 1, p.frame);
     out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
     out.append_string("}\n");
 }

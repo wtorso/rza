@@ -1,4 +1,8 @@
-; DUP: повторное имя рамки
+; DUP: повторное имя рамки, ячейки и медиатора в одном скоупе
 cav  main, field
-cav  main, field        ; VIOLATION [DUP]: duplicate frame
+cav  main, field        ; VIOLATION [DUP]: duplicate name (рамка)
+res  y, main, 8
+res  y, main, 8         ; VIOLATION [DUP]: duplicate name (ячейка)
+med  y_m, y, main
+med  y_m, y, main       ; VIOLATION [DUP]: duplicate name (медиатор)
 ret

@@ -1,6 +1,8 @@
-; I1: ячейка в мёртвой рамке
+; I1: ячейка/рамка в неизвестной или мёртвой рамке
 cav  main, field
 cav  sub, main
 decay sub
 res  x, sub, 8          ; VIOLATION [I1]: cell in dead frame
+cav  t, sub             ; VIOLATION [I1]: enter under dead frame
+res  z, nosuch, 8       ; VIOLATION [I1]: cell in unknown frame
 ret
