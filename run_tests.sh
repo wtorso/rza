@@ -24,7 +24,7 @@ mkdir -p "$BUILD"
 
 # шаг 0: сборка транспайлера
 echo "== build rez3asm.exe (c3c) =="
-if ! $C3C compile rez3asm.c3 -o rez3asm; then
+if ! $C3C compile rez3asm.c3 lsp_server.c3 -o rez3asm; then
     echo "FATAL: transpiler build failed" >&2
     exit 2
 fi
@@ -106,6 +106,24 @@ run_viol() {
         return
     fi
     ok "$t"
+}
+
+# LSP smoke: сессия initialize/didOpen/didOpen/shutdown с `rez3asm --lsp`
+# по stdio (tests/lsp_smoke.py). python3 на Windows может быть битым стабом
+# WindowsApps — проверяем, что интерпретатор реально запускается.
+run_lsp_smoke() {
+    local py=""
+    local c
+    for c in python3 python; do
+        if command -v "$c" >/dev/null 2>&1 && "$c" -c "pass" >/dev/null 2>&1; then
+            py="$c"; break
+        fi
+    done
+    if [ -z "$py" ]; then
+        bad "lsp_smoke" "no working python3/python"; return
+    fi
+    if "$py" tests/lsp_smoke.py ./rez3asm.exe; then ok lsp_smoke
+    else bad lsp_smoke "script failed"; fi
 }
 
 # lib-режим: $1.rza --emit-lib + компиляция с tests/lib_harness.c, запуск,
@@ -224,6 +242,7 @@ run_viol viol_med_gdup    DUP
 run_lib lib_hello
 run_lib_compile lib_scope
 run_lib lib_abort
+run_lsp_smoke
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

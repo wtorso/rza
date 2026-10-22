@@ -8,6 +8,7 @@
 //   rez3asm file.rza --emit-lib         C99-библиотека без main: proc →
 //                                       rza_NAME, верхний уровень → rza_boot
 //   rez3asm file.rza --emit-c -o f.c    C99 в файл
+//   rez3asm --lsp                       LSP-сервер на stdio (lsp_server.c3)
 //
 // Один проход: разбор + I1..I4, DECAY, DUP, STRUCT, SCOPE. Все нарушения — в
 // stderr: "VIOLATION line N [RULE]: msg"; exit 1, если есть хотя бы одно
@@ -106,6 +107,16 @@ List{Block}   blocks;
 List{LabelDef} labels;
 List{Instr}   instrs;
 
+// диагностика для LSP-режима (--lsp, lsp_server.c3): те же нарушения, что
+// viol() печатает в CLI, но собранные в список вместо stderr
+struct Diag {
+    int    line;          // 1-based, как в CLI
+    String rule;
+    String msg;
+}
+List{Diag} lsp_diags;
+bool g_lsp_mode = false;   // --lsp: viol() не печатает, процесс не умирает
+
 uint gencnt = 1;
 int  violations = 0;
 int  cur_proc = 0;        // 0 = верхний уровень
@@ -114,6 +125,46 @@ int  top_ret = 0;
 int  casc_seq = 0;
 bool g_lib_mode = false;   // --emit-lib: C99 без main, proc → rza_NAME
 String srcname;
+
+bool g_state_inited = false;
+
+// полный сброс состояния чекера: CLI зовёт один раз, LSP — на каждую
+// валидацию (документ проверяется целиком, Full sync)
+fn void reset_state() {
+    if (!g_state_inited) {
+        frames.init(mem);
+        cells.init(mem);
+        meds.init(mem);
+        procs.init(mem);
+        cascades.init(mem);
+        blocks.init(mem);
+        labels.init(mem);
+        instrs.init(mem);
+        lsp_diags.init(mem);
+        g_state_inited = true;
+    }
+    frames.clear();
+    cells.clear();
+    meds.clear();
+    procs.clear();
+    cascades.clear();
+    blocks.clear();
+    labels.clear();
+    instrs.clear();
+    lsp_diags.clear();
+    gencnt = 1;
+    violations = 0;
+    cur_proc = 0;
+    cur_casc = -1;
+    top_ret = 0;
+    casc_seq = 0;
+    g_lib_mode = false;
+    blocks.push({ .kind = 0, .aux = 0 });   // block 0 = top
+    // field — frames[0], бессмертен
+    frames.push({ .name = "field", .parent = -1, .alive = true,
+                  .gen = nextgen(), .cname = "f_field", .scope = 0,
+                  .cap = 64, .is_field = true });
+}
 
 // --- утилиты -------------------------------------------------------------------
 fn uint nextgen() { uint g = gencnt; gencnt++; return g; }
@@ -126,6 +177,10 @@ fn String cat(String[] parts) {
 
 fn void viol(int line, String rule, String msg) {
     violations++;
+    if (g_lsp_mode) {
+        lsp_diags.push({ .line = line, .rule = rule, .msg = msg });
+        return;
+    }
     io::eprintfn("VIOLATION line %d [%s]: %s", line, rule, msg);
 }
 
@@ -1558,19 +1613,7 @@ fn String emit() {
 
 // --- CLI ----------------------------------------------------------------------------
 fn int main(String[] args) {
-    frames.init(mem);
-    cells.init(mem);
-    meds.init(mem);
-    procs.init(mem);
-    cascades.init(mem);
-    blocks.init(mem);
-    labels.init(mem);
-    instrs.init(mem);
-    blocks.push({ .kind = 0, .aux = 0 });   // block 0 = top
-    // field — frames[0], бессмертен
-    frames.push({ .name = "field", .parent = -1, .alive = true,
-                  .gen = nextgen(), .cname = "f_field", .scope = 0,
-                  .cap = 64, .is_field = true });
+    reset_state();
 
     bool emit_c = false;
     String outpath = "";
@@ -1582,6 +1625,8 @@ fn int main(String[] args) {
         } else if (a == "--emit-lib") {
             emit_c = true;
             g_lib_mode = true;
+        } else if (a == "--lsp") {
+            return lsp_main();   // LSP-цикл; возврат = код выхода сервера
         } else if (a == "-o") {
             i++;
             if (i >= args.len) {

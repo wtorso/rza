@@ -97,16 +97,19 @@ rez3asm file.rza              # проверка: VIOLATION line N [RULE] в std
 rez3asm file.rza --emit-c     # C99 на stdout (читаемый, для людей)
 rez3asm file.rza --emit-lib   # C99-библиотека: procs → void rza_NAME(void)
 rez3asm file.rza -o out.c     # -o без флагов тоже включает эмиссию C
-bash run_tests.sh             # 69/69 тестов + ноль warnings -std=c99 -Wall -Wextra
+rez3asm --lsp                 # LSP-сервер на stdio (диагностика в редакторе)
+bash run_tests.sh             # 70/70 тестов + ноль warnings -std=c99 -Wall -Wextra
 ```
 
-- `rez3asm.c3` — транспайлер (C3 0.8.5; Python-версии нет).
+- `rez3asm.c3` — транспайлер (C3 0.8.5; Python-версии нет);
+  `lsp_server.c3` — LSP-сервер внутри той же программы (флаг `--lsp`,
+  чекер зовётся из памяти, без временных файлов).
 - `rez3ext.h` + `refs/rez3.h` — рантайм: арена, рамка с поколениями,
   `RezCellMed` (заморожен, расширяется только новыми файлами).
 - `tests/` — легальные и `viol_*` программы; норма AUDIT-3: ожидаемые
   значения — с выводом, не магические константы.
-- `lsp/` — LSP-сервер (Node, stdio) → диагностика I1–I4 в редакторе;
-  `editors/vscode/` — расширение `rez3.rza` (подсветка + клиент).
+- `editors/vscode/` — расширение `rez3.rza` (подсветка + LSP-клиент,
+  запускает `rez3asm --lsp`).
 
 ## Пример целиком (tests/fib.rza)
 

@@ -11,9 +11,10 @@ T="${1:-../tests/fib.rza}"
 BASE=$(basename "$T" .rza)
 OUT="${2:-out/$BASE.gba}"
 
-if [ ! -x ../rez3asm.exe ] || [ ../rez3asm.c3 -nt ../rez3asm.exe ]; then
+if [ ! -x ../rez3asm.exe ] || [ ../rez3asm.c3 -nt ../rez3asm.exe ] \
+        || [ ../lsp_server.c3 -nt ../rez3asm.exe ]; then
     C3C="$HOME/AppData/Local/c3/c3c.exe"
-    "$C3C" compile ../rez3asm.c3 -o ../rez3asm
+    "$C3C" compile ../rez3asm.c3 ../lsp_server.c3 -o ../rez3asm
 fi
 
 ../rez3asm.exe "$T" --emit-c -o "out/$BASE.c"

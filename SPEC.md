@@ -410,6 +410,16 @@ field-ячейки, а экспорт медиаторов хосту идёт �
 проверке поколения в `rza_deref_cell`. Тесты: `tests/lib_hello.rza`
 (+ `lib_harness.c`), `tests/lib_scope.rza`, `tests/viol_scope.rza`.
 
+## 12. LSP-режим (--lsp)
+
+Не норматив языка — транспорт диагностики. `rez3asm --lsp` — LSP-сервер
+(LSP 3.17, JSON-RPC поверх stdio, Content-Length framing): initialize,
+didOpen/didChange (Full sync)/didClose, shutdown/exit; диагностика —
+те же нарушения чекера, что печатаются в CLI (`VIOLATION line N [RULE]`,
+code = RULE, строка 1-based → 0-based), но текст документа проверяется
+из памяти, без временных файлов. Реализация — `lsp_server.c3`, smoke —
+`tests/lsp_smoke.py`.
+
 ---
 
 Ссылки на эталоны: `refs/rez3.h` (рантайм), `refs/rez3check.c` (чекер
