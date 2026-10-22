@@ -113,7 +113,6 @@ int  cur_casc = -1;       // индекс каскада или -1
 int  top_ret = 0;
 int  casc_seq = 0;
 bool g_lib_mode = false;   // --emit-lib: C99 без main, proc → rza_NAME
-bool g_proc_closed = false; // ret закрыл proc: дальше на верхнем уровне — только декларации (AUDIT-5/review P3)
 String srcname;
 
 // --- утилиты -------------------------------------------------------------------
@@ -303,6 +302,20 @@ fn int find_proc(String name) {
     return -1;
 }
 
+// review-audit: host API lib-режима (SPEC 11) эмитит rza_<proc>, rza_boot,
+// rza_arena_alloc, rza_deref_cell и геттеры rza_frame_<рамка> /
+// rza_med_<медиатор> для КАЖДОЙ сущности. Проверки — всегда, не только
+// при --emit-lib: ошибка должна ловиться чекером, а не компилятором C.
+fn bool host_name_bad(String name, int line) {
+    if (name == "boot" || name == "arena_alloc" || name == "deref_cell" ||
+        name.starts_with("frame_") || name.starts_with("med_")) {
+        viol(line, "STRUCT", cat({"procedure name ", name,
+             " collides with lib host API (SPEC 11)"}));
+        return true;
+    }
+    return false;
+}
+
 fn void scope_viol(int line, String kind, String name) {
     viol(line, "SCOPE", cat({kind, " ", name,
         " is not visible from procedure body ",
@@ -401,6 +414,12 @@ fn void op_cav(String rest, int line) {
         viol(line, "I1", cat({"enter under dead frame ", parent})); return;
     }
     if (!check_dup(name, line, 0)) return;
+    // review-audit: proc уже создал рамку со своим именем (scope > 0,
+    // check_dup её не видит) — два rza_frame_<name> в lib-режиме
+    if (find_proc(name) >= 0) {
+        viol(line, "DUP", cat({"frame shadows procedure ", name}));
+        return;
+    }
     // AUDIT-3: рамки — общая хроника (scope 0), даже когда созданы в proc
     Frame f = { .name = name, .parent = pf, .alive = true, .gen = nextgen(),
                 .cname = cname_for("f_", name), .scope = 0, .cap = 64 };
@@ -471,6 +490,15 @@ fn void op_med(String rest, int line) {
         return;
     }
     if (!check_dup(name, line, cur_proc)) return;
+    // review-audit: lib-режим экспортирует геттер rza_med_<name> для
+    // КАЖДОГО медиатора — имя уникально глобально, не только в scope
+    for (sz i = 0; i < meds.len(); i++) {
+        if (meds[i].name == name) {
+            viol(line, "DUP", cat({"duplicate mediator ", name,
+                 " (host API exports every mediator, SPEC 11)"}));
+            return;
+        }
+    }
     Med m = { .name = name, .cell = ci, .gen = frames[cells[ci].owner].gen,
               .cname = cname_for("m_", name), .scope = cur_proc };
     meds.push(m);
@@ -552,7 +580,15 @@ fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg) {
             if (!is_name(*mname)) {
                 bad = true;
             } else if (is_int(os)) {
-                *off = parse_num(os);
+                // review-audit: та же норма, что у imm у mov — вне i32
+                // violation, а не молчаливый wrap
+                int? v = os.to_int();
+                if (catch v) {
+                    viol(line, "STRUCT",
+                         cat({"mem offset out of i32 range: ", os}));
+                    return false;
+                }
+                *off = v;
             } else if (os.len > 0 && os[0] == '%') {
                 int r = parse_reg(os, line);    // AUDIT-4: [med + %rN]
                 if (r < 0) { bad = true; } else { *off_reg = r; }
@@ -717,6 +753,7 @@ fn void open_proc(String name, int line) {
         viol(line, "DUP", cat({"duplicate procedure ", name}));
         return;
     }
+    if (host_name_bad(name, line)) return;
     if (find_frame(name, 0) >= 0 || cur_proc > 0 && find_frame(name, cur_proc) >= 0) {
         viol(line, "DUP", cat({"procedure shadows frame ", name}));
         return;
@@ -741,7 +778,6 @@ fn void do_ret(int line) {
         // (AUDIT-7, review #7)
         kill(procs[(sz)(cur_proc - 1)].frame);
         cur_proc = 0;
-        g_proc_closed = true;
         return;
     }
     add_instr({ .op = Op.RET, .line = line });
@@ -1147,7 +1183,6 @@ fn void emit_decay_subtree(DString* out, int ind, int f) {
 
 fn void emit_body(DString* out, int func) {
     int ind = 1;
-    int cur_ca = -1;
     for (sz i = 0; i < instrs.len(); i++) {
         Instr* ins = &instrs[i];
         if (ins.func != func) continue;
@@ -1203,7 +1238,6 @@ fn void emit_body(DString* out, int func) {
                             "\"ALIVE\" : \"DEAD\");\n", meds[ins.x].cname);
             case Op.CASC: {
                 Cascade* ca = &cascades[ins.a];
-                cur_ca = ins.a;
                 pad(out, ind);
                 out.appendf("/* %s %s (line %d) */\n",
                             ca.is_async ? "acasc" : "casc", ca.name, ca.line);
@@ -1244,7 +1278,6 @@ fn void emit_body(DString* out, int func) {
                 out.append_string("(void)0;\n");
                 pad(out, ind);
                 out.append_string("}\n");
-                cur_ca = -1;
             }
             case Op.LOAD:
                 DString oex = dstring::new(mem);
@@ -1386,7 +1419,7 @@ fn void emit_silencers(DString* out) {
     out.append_string("    /* unused runtime entries: адрес взят, warning-а нет */\n");
     out.append_string("    (void)&rez_issue;\n");
     out.append_string("    (void)&rez_deref;\n");
-    if (!used_cell)  out.append_string("    (void)&rez_cell;\n");
+    if (!used_cell)  out.append_string("    (void)&rez_cell_z;\n");
     if (!used_issue) out.append_string("    (void)&rez_issue_cell;\n");
     if (!used_deref) out.append_string("    (void)&rez_deref_cell;\n");
     if (!used_decay) out.append_string("    (void)&rez_leave;\n");
@@ -1565,6 +1598,7 @@ fn int main(String[] args) {
     }
     if (src.len == 0) {
         io::eprintfn("usage: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]");
+        io::eprintfn("  -o без --emit-c/--emit-lib тоже включает эмиссию C");
         return 2;
     }
     srcname = src;

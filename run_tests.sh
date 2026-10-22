@@ -7,8 +7,8 @@ cd "$(dirname "$0")"
 
 # компилятор C3 для транспайлера
 if   command -v c3c >/dev/null 2>&1; then C3C="c3c"
-elif [ -x "/c/Users/myski/AppData/Local/c3/c3c.exe" ]; then
-    C3C="/c/Users/myski/AppData/Local/c3/c3c.exe"
+elif [ -n "${LOCALAPPDATA:-}" ] && [ -x "$LOCALAPPDATA/c3/c3c.exe" ]; then
+    C3C="$LOCALAPPDATA/c3/c3c.exe"
 else echo "FATAL: no c3c" >&2; exit 2; fi
 
 # компилятор C99 для сгенерированного кода
@@ -159,7 +159,7 @@ run_lib_compile() {
 
 echo "== REZ3-ASM test run (compiler: $CC) =="
 for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
-         mangle_label mangle_proc mangle_cav; do
+         mangle_label mangle_proc mangle_cav no_cells; do
     run_good "$t"
 done
 
@@ -214,6 +214,13 @@ run_viol viol_dup_proc  DUP
 run_viol viol_casc_header STRUCT
 run_viol viol_acasc_out STRUCT
 run_viol viol_proc_header STRUCT
+# review-audit: переполнение смещения [med + off] (#3) + коллизии имён
+# с host API lib-режима (#4)
+run_viol viol_mem_overflow STRUCT
+run_viol viol_host_boot   STRUCT
+run_viol viol_host_prefix STRUCT
+run_viol viol_cav_proc    DUP
+run_viol viol_med_gdup    DUP
 run_lib lib_hello
 run_lib_compile lib_scope
 run_lib lib_abort

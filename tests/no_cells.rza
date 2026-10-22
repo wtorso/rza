@@ -1,0 +1,7 @@
+; review-audit: программа без ячеек (ни res, ни casc) компилируется
+; с -Wall -Wextra без warnings — silencer обязан глушить rez_cell_z,
+; а не rez_cell (rez_cell вызывается из тела rez_cell_z, rez3ext.h:33).
+mov %r0, 41
+inc %r0
+print %r0          ; 42 = 41 + 1 (mov 41, затем inc)
+ret

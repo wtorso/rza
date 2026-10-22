@@ -1,0 +1,13 @@
+; DUP: одинаковое имя медиатора в двух proc. Scope разный, чекер раньше
+; разрешал, но --emit-lib экспортирует КАЖДЫЙ медиатор геттером
+; rza_med_<name> — два rza_med_m_m, C не компилируется (review-audit).
+cav  a, field
+res  x, a, 8
+res  y, a, 8
+proc p:
+    med  m_m, x, a
+    ret
+proc q:
+    med  m_m, y, a         ; VIOLATION [DUP]: duplicate mediator (host API)
+    ret
+ret
