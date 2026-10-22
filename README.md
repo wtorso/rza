@@ -96,10 +96,11 @@ endc
 rez3asm file.rza              # проверка: VIOLATION line N [RULE] в stderr
 rez3asm file.rza --emit-c     # C99 на stdout (читаемый, для людей)
 rez3asm file.rza --emit-lib   # C99-библиотека: procs → void rza_NAME(void)
-bash run_tests.sh             # 24/24 тестов + ноль warnings zig cc -std=c99
+rez3asm file.rza -o out.c     # -o без флагов тоже включает эмиссию C
+bash run_tests.sh             # 69/69 тестов + ноль warnings -std=c99 -Wall -Wextra
 ```
 
-- `rez3asm.c3` — транспайлер (C3 0.8.4; Python-версия перешита).
+- `rez3asm.c3` — транспайлер (C3 0.8.4; Python-версии нет).
 - `rez3ext.h` + `refs/rez3.h` — рантайм: арена, рамка с поколениями,
   `RezCellMed` (заморожен, расширяется только новыми файлами).
 - `tests/` — легальные и `viol_*` программы; норма AUDIT-3: ожидаемые

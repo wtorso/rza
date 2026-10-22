@@ -25,14 +25,14 @@ proc snap_stats:
 ## Стирается в (реальный вывод `rez3asm --emit-lib`, bond build/bond_arch.c)
 
 ```c
-/* casc snap (line 65) */
+/* casc snap (line 63) */
 {
     void *p_cnt_m = rez_deref_cell(m_cnt_m);
     void *p_phys_m = rez_deref_cell(m_phys_m);
-    if (!p_cnt_m) { fprintf(stderr, "ABORT line 65: cascade snap: dead mediator cnt_m\n"); goto casc_end_1; }
-    if (!p_phys_m) { fprintf(stderr, "ABORT line 65: cascade snap: dead mediator phys_m\n"); goto casc_end_1; }
-    c_snap_stats_snapout = rez_cell_z(f_mission_begin_mission, 8);
-    if (!c_snap_stats_snapout) { fprintf(stderr, "FAULT line 65: arena overflow (out snapout)\n"); exit(1); }
+    if (!p_cnt_m) { fprintf(stderr, "ABORT line 63: cascade snap: dead mediator cnt_m\n"); goto casc_end_1; }
+    if (!p_phys_m) { fprintf(stderr, "ABORT line 63: cascade snap: dead mediator phys_m\n"); goto casc_end_1; }
+    c_P_snap_statsXsnapout = rez_cell_z(f_P_mission_beginXmission, 8);
+    if (!c_P_snap_statsXsnapout) { fprintf(stderr, "FAULT line 63: arena overflow (out snapout)\n"); exit(1); }
     r0 = *(int64_t*)((char*)p_phys_m + 0);
     r1 = *(int64_t*)((char*)p_phys_m + 8);
     *(int64_t*)((char*)p_cnt_m + 96) = r0;
@@ -55,6 +55,10 @@ casc_end_1:
   Это и есть стирание: цена безопасности не зависит от длины тела.
 - **OUT** (`snapout`) — новая ячейка в рамке `mission` (AUDIT-1/#6);
   нуле-инициализирована (`rez_cell_z`, AUDIT-6).
+- **C-имена склеены манглингом** (SPEC §9, «C-имена однозначны»): рамка
+  proc — `f_P_snap_stats`, сущность внутри proc —
+  `c_P_snap_statsXsnapout` / `f_P_mission_beginXmission`. Коллизия
+  склеенного имени с верхнеуровневым невозможна (имена языка строчные).
 - Сравнение с внекaskадным кодом: обычный `load` вне casc несёт свой
   `rez_deref_cell` на КАЖДОЕ обращение (см. любой `phys_step` рядом в
   том же файле) — каскад окупается с третьего обращения.
