@@ -24,9 +24,17 @@ mkdir -p "$BUILD"
 
 # шаг 0: сборка транспайлера
 echo "== build rez3asm.exe (c3c) =="
-if ! $C3C compile rez3asm.c3 lsp_server.c3 -o rez3asm; then
+if ! $C3C compile rez3asm.c3 lsp_server.c3 -o rez3asm.new; then
     echo "FATAL: transpiler build failed" >&2
     exit 2
+fi
+# VS Code держит rez3asm.exe занятым (LSP-сервер): перезаписать нельзя,
+# но работающий exe можно переименовать — меняем через rename
+if ! mv -f rez3asm.new.exe rez3asm.exe 2>/dev/null; then
+    rm -f rez3asm.old.exe 2>/dev/null
+    mv -f rez3asm.exe rez3asm.old.exe \
+        && mv -f rez3asm.new.exe rez3asm.exe \
+        || { echo "FATAL: cannot replace rez3asm.exe" >&2; exit 2; }
 fi
 TR="./rez3asm.exe"
 
