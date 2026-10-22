@@ -1538,7 +1538,7 @@ fn void emit_host_api(DString* out) {
                     fexpr(cells[meds[i].cell].owner), cells[meds[i].cell].cname,
                     meds[i].cname);
     }
-    out.append_string("const unsigned rza_rez3ext_abi = REZ3EXT_ABI;\n");
+    out.append_string("unsigned rza_rez3ext_abi(void) { return REZ3EXT_ABI; }\n");
     out.append_string("void *rza_arena_alloc(RezCavity *c, size_t size) "
                       "{ void *p = rez_arena_alloc(&c->arena, size); "
                       "if (p) memset(p, 0, size); return p; }\n");
