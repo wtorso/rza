@@ -170,9 +170,9 @@ fn void reset_state() {
 fn uint nextgen() { uint g = gencnt; gencnt++; return g; }
 
 fn String cat(String[] parts) {
-    DString d = dstring::new_with_capacity(mem, 64);
+    DString d = dstring::new_with_capacity(tmem, 64);
     foreach (p : parts) d.append_string(p);
-    return d.copy_str(mem);
+    return d.copy_str(tmem);
 }
 
 fn void viol(int line, String rule, String msg) {
@@ -1015,7 +1015,7 @@ fn void parse_instr(String line, int n, bool in_casc) {
 
 // --- главный цикл разбора -----------------------------------------------------------------
 fn void run(String text) {
-    String[] lines = text.split(mem, "\n");
+    String[] lines = text.split(tmem, "\n");
     for (sz i = 0; i < lines.len; i++) {
         int n = (int)i + 1;
         String raw = lines[i];

@@ -128,12 +128,17 @@ fn void publish_diagnostics(String uri, bool empty) {
     lsp_send_body(d.str_view());
 }
 
-// чекер из памяти: полный сброс + один проход; нарушения — в lsp_diags
+// чекер из памяти: полный сброс + один проход; нарушения — в lsp_diags.
+// Временные аллокации прохода (split/cat) — из tmem, @pool возвращает их
+// после публикации диагностики: иначе каждая валидация добавляла бы ~размер
+// документа к RSS долгоживущего процесса.
 fn void validate(String uri, String text) {
     reset_state();
     srcname = uri;
-    run(text);
-    publish_diagnostics(uri, false);
+    @pool() {
+        run(text);
+        publish_diagnostics(uri, false);
+    };
 }
 
 // --- обработчики textDocument/* ----------------------------------------------------
@@ -148,7 +153,12 @@ fn void on_did_open(Object* params) {
     String? uri_o = td.get_string("uri");
     if (catch uri_o) return;
     String text = td.get_string("text") ?? "";
-    lsp_docs.set(uri_o.copy(mem), text.copy(mem));
+    if (try cur = lsp_docs.get_ref(uri_o)) {
+        cur.free(mem);              // старая копия текста — в мусор
+        *cur = text.copy(mem);
+    } else {
+        lsp_docs.set(uri_o.copy(mem), text.copy(mem));
+    }
     validate(uri_o, text);
 }
 
@@ -168,7 +178,8 @@ fn void on_did_change(Object* params) {
         Object* ch = changes.get_at(i);
         if (try t = ch.get_string("text")) text = t;
     }
-    lsp_docs.set(uri.copy(mem), text.copy(mem));
+    cur.free(mem);                  // старая копия текста — в мусор
+    *cur = text.copy(mem);          // ключ уже в map — обновляем на месте
     validate(uri, text);
 }
 
