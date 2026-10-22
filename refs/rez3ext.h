@@ -19,6 +19,11 @@
 
 #include "rez3.h"
 
+/* ABI-стамп границы lib-режима: RezCellMed уходит в хост-TU по значению.
+ * Меняешь раскладку RezCellMed или сигнатуры rza_* — инкрементируй;
+ * хост сверяет rza_rez3ext_abi (SPEC .rza §9, review-audit D1). */
+#define REZ3EXT_ABI 1
+
 /* ASM: decay; IR: leave; C: rez_leave — одно событие (AUDIT-2/п.1) */
 #define rez_decay rez_leave
 

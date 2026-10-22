@@ -14,7 +14,14 @@ OUT="${2:-out/$BASE.gba}"
 if [ ! -x ../rez3asm.exe ] || [ ../rez3asm.c3 -nt ../rez3asm.exe ] \
         || [ ../lsp_server.c3 -nt ../rez3asm.exe ]; then
     C3C="$HOME/AppData/Local/c3/c3c.exe"
-    "$C3C" compile ../rez3asm.c3 ../lsp_server.c3 -o ../rez3asm
+    # сборка в .new + замена через rename: VS Code держит rez3asm.exe (LSP)
+    "$C3C" compile ../rez3asm.c3 ../lsp_server.c3 -o ../rez3asm.new || exit 2
+    if ! mv -f ../rez3asm.new.exe ../rez3asm.exe 2>/dev/null; then
+        rm -f ../rez3asm.old.exe 2>/dev/null
+        mv -f ../rez3asm.exe ../rez3asm.old.exe \
+            && mv -f ../rez3asm.new.exe ../rez3asm.exe || exit 2
+    fi
+    mv -f ../rez3asm.new.pdb ../rez3asm.pdb 2>/dev/null
 fi
 
 ../rez3asm.exe "$T" --emit-c -o "out/$BASE.c"

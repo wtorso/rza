@@ -193,7 +193,7 @@ AUDIT-1/#4): «две проверки на границе (указатель �
 | Инструкция | Генерируемый C99 | Цена (машинных инструкций, типично) |
 |---|---|---|
 | `cav x, p` | `f_x = rez_enter(f_p, CAP);` — CAP статический: сумма SIZE всех res рамки с выравниванием 16 + 16 на каждую out-ячейку, минимум 64 | malloc ×2 + инициализация |
-| `res x, f, S` | `c_x = rez_cell(f_f, S);` + проверка NULL → FAULT | bump: 2–3 + ветка |
+| `res x, f, S` | `c_x = rez_cell_z(f_f, S);` + проверка NULL → FAULT | bump: 2–3 + ветка + memset |
 | `med x_m, c, i` | `m_x_m = rez_issue_cell(f_owner, c_c);` | 3 store |
 | `load` вне каскада | распечатка с проверкой: `rez_deref_cell` + `if (!p) FAULT/exit` | ~6–8 (две проверки) |
 | `store` вне каскада | аналогично load | ~6–8 |
@@ -221,7 +221,7 @@ AUDIT-1/#4): «две проверки на границе (указатель �
 |---|---|---|---|
 | enter | `frame` | `cav` | `rez_enter` |
 | leave | `leave` | `decay` | `rez_leave` (= `rez_decay`) |
-| resonator | `cell` | `res` | `rez_cell` |
+| resonator | `cell` | `res` | `rez_cell_z` |
 | mediator | `link` | `med` | `RezCellMed` / `rez_issue_cell` |
 | read | `read` | `load` | `rez_deref_cell` |
 | cascade | `casc` / `acasc` | `casc`…`endc` / `acasc`…`endc` | блок + `goto` abort |
@@ -298,6 +298,15 @@ AUDIT-4 (по опыту ядра физики bond):
   (fault vs abort) надо принимать отдельно; сейчас не специфицировано.
 - **acasc исполняется синхронно**: транспорта нет, генерация идентична
   sync-каскаду; production-долг — транспорт вне модели (честная оговорка).
+  До его появления норма: все события владения сериализованы — `rez_g_gen`
+  (refs/rez3.h) инкрементируется без атомарности, гонка дала бы повторное
+  поколение и мёртвый медиатор выглядел бы живым (review-audit D4).
+- **ABI границы lib-режима стампован** (review-audit D1): `RezCellMed`
+  экспортируется в хост-TU по значению, раскладку хост дублирует у себя —
+  её смена ломала бы хост молча. `refs/rez3ext.h` несёт `REZ3EXT_ABI`,
+  транспайлер эмитит `rza_rez3ext_abi`; меняя структуру или сигнатуры
+  `rza_*`, инкрементируй стамп (планируемый bounds в RezCellMed — первый
+  кандидат).
 - **OUT каскада фиксирован 8 байтами** (один i64): синтаксис `OUT[CAV]`
   размера не несёт. Расширение — отдельным решением.
 - **raise — static-only**: физическая память ячейки остаётся в арене
@@ -388,11 +397,11 @@ AUDIT-4 (по опыту ядра физики bond):
 
 | .rza | C99 (lib-режим) |
 |---|---|
-| верхнеуровневый код | `void rza_boot(void)` — включая создание `field`; верхнеуровневый `ret` = конец `rza_boot`, не exit |
+| верхнеуровневый код | `void rza_boot(void)` — включая создание `field`; верхнеуровневый `ret` = конец `rza_boot`, не exit. **Однократно за процесс**: повторный вызов пересоздаёт field без decay (утечка + осиротевшие указатели хоста); рестарт = новый процесс (review-audit D3) |
 | `proc NAME:` | `void rza_NAME(void)` — экспортируемая (не static) точка входа хоста |
 | рамка NAME | `RezCavity *rza_frame_NAME(void)` — геттер (для proc-рамок — `&f_P_NAME`) |
 | медиатор NAME | `RezCellMed rza_med_NAME(void)` — геттер (всех медиаторов, включая созданные в proc) |
-| — | `void *rza_arena_alloc(RezCavity *c, size_t size)` — bump-аллокация хоста в арене рамки (обёртка над static `rez_arena_alloc` из rez3.h) |
+| — | `void *rza_arena_alloc(RezCavity *c, size_t size)` — bump-аллокация хоста в арене рамки (обёртка над static `rez_arena_alloc` из rez3.h); память нуле-инициализирована, как ячейки (AUDIT-6) |
 | — | `void *rza_deref_cell(RezCellMed m)` — распечатка медиатора (NULL на мёртвом) |
 
 `print` в lib-режиме — по-прежнему printf (отладка). Остальная генерация

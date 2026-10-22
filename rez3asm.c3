@@ -1538,8 +1538,10 @@ fn void emit_host_api(DString* out) {
                     fexpr(cells[meds[i].cell].owner), cells[meds[i].cell].cname,
                     meds[i].cname);
     }
+    out.append_string("const unsigned rza_rez3ext_abi = REZ3EXT_ABI;\n");
     out.append_string("void *rza_arena_alloc(RezCavity *c, size_t size) "
-                      "{ return rez_arena_alloc(&c->arena, size); }\n");
+                      "{ void *p = rez_arena_alloc(&c->arena, size); "
+                      "if (p) memset(p, 0, size); return p; }\n");
     out.append_string("void *rza_deref_cell(RezCellMed m) "
                       "{ return rez_deref_cell(m); }\n");
 }
@@ -1642,7 +1644,7 @@ fn int main(String[] args) {
         }
     }
     if (src.len == 0) {
-        io::eprintfn("usage: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]");
+        io::eprintfn("usage: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c] | rez3asm --lsp");
         io::eprintfn("  -o без --emit-c/--emit-lib тоже включает эмиссию C");
         return 2;
     }

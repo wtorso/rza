@@ -36,6 +36,7 @@ if ! mv -f rez3asm.new.exe rez3asm.exe 2>/dev/null; then
         && mv -f rez3asm.new.exe rez3asm.exe \
         || { echo "FATAL: cannot replace rez3asm.exe" >&2; exit 2; }
 fi
+mv -f rez3asm.new.pdb rez3asm.pdb 2>/dev/null
 TR="./rez3asm.exe"
 
 PASS=0; FAIL=0
