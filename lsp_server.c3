@@ -157,7 +157,8 @@ fn void on_did_open(Object* params) {
         cur.free(mem);              // старая копия текста — в мусор
         *cur = text.copy(mem);
     } else {
-        lsp_docs.set(uri_o.copy(mem), text.copy(mem));
+        // HashMap копирует и освобождает String-ключ сам (COPY_KEYS).
+        lsp_docs.set(uri_o, text.copy(mem));
     }
     validate(uri_o, text);
 }
@@ -188,6 +189,7 @@ fn void on_did_close(Object* params) {
     if (td == null) return;
     String? uri = td.get_string("uri");
     if (catch uri) return;
+    if (try cur = lsp_docs.get_ref(uri)) { cur.free(mem); }
     (void)lsp_docs.remove(uri);
     publish_diagnostics(uri, true);
 }

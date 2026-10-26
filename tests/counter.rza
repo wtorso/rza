@@ -1,5 +1,5 @@
-; counter: proc, вызываемый 3 раза; ячейка-счётчик бессмертна (field),
-; медиатор выдан field; proc видит только field-медиаторы (SCOPE).
+; counter: proc вызывается 3 раза; field-ячейка и её медиатор
+; доступны из proc (SCOPE).
 res  counter, field, 8
 med  counter_m, counter, field
 

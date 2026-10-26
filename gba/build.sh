@@ -25,8 +25,7 @@ if [ ! -x ../rez3asm.exe ] || [ ../rez3asm.c3 -nt ../rez3asm.exe ] \
 fi
 
 ../rez3asm.exe "$T" --emit-c -o "out/$BASE.c"
-# хост-обёртка: main() вызывает rza_boot() — сгенерированный main нам не нужен:
-# --emit-c даёт main; для ROM используем его как есть (main запускает программу).
+# --emit-c даёт main; ROM использует его как есть.
 zig cc -target arm-freestanding-eabi -mcpu=arm7tdmi -std=c99 -O2 \
     -fno-stack-protector -fno-sanitize=all -fno-unwind-tables -fno-asynchronous-unwind-tables \
     -I include -I ../refs -I .. \

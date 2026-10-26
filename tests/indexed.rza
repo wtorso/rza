@@ -8,7 +8,7 @@ med  tab_m, tab, main
 mov  %r0, 0                  ; i
 mov  %r1, 10                 ; value
 mov  %r6, 4                  ; countdown
-mov  %r7, 8                  ; шаг смещения (ALU — только регистры)
+mov  %r7, 8                  ; 8 байт на элемент i64
 mov  %r8, 10                 ; шаг значения
 fill:
     mov  %r2, %r0

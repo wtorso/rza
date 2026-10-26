@@ -6,13 +6,14 @@
 #   initialize            -> capabilities.textDocumentSync == 1 (Full),
 #                            serverInfo = rez3-lsp/0.4.0
 #   didOpen bad.rza       -> ровно одна диагностика, code STRUCT, строка 0
-#     Текст "cav a": у cav два операнда (SPEC §5: cav NAME, PARENT) —
+#     Текст "cav a": у cav два операнда (SPEC §2: cav NAME, PARENT) —
 #     чекер пишет "VIOLATION line 1 [STRUCT]: bad operands for cav"
 #     (тот же случай, что tests/viol_extra_ops.rza); LSP переводит
 #     1-based строку 1 в 0-based 0.
 #   didOpen good.rza      -> diagnostics пустой
 #     Текст "cav m, field / decay m / ret" — минимальная легальная
 #     программа (как hello из docs/GUIDE.md, но без вывода).
+#   didChange/didClose/didOpen -> STRUCT, очистка, снова пустая диагностика.
 #   shutdown + exit       -> сервер завершается с кодом 0.
 #
 # Запуск: python3 tests/lsp_smoke.py [путь к rez3asm.exe]   (из rez3-asm/)
@@ -44,7 +45,6 @@ messages = queue.Queue()
 
 
 def reader():
-    """Читает фреймы из stdout сервера в очередь; None = EOF."""
     try:
         while True:
             headers = {}
@@ -93,7 +93,6 @@ def recv(timeout=15):
 
 
 def main():
-    # initialize
     send({
         "jsonrpc": "2.0",
         "id": 1,
@@ -116,7 +115,6 @@ def main():
     )
     send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
 
-    # didOpen с ошибкой -> одна диагностика STRUCT на строке 0
     send({
         "jsonrpc": "2.0",
         "method": "textDocument/didOpen",
@@ -149,7 +147,6 @@ def main():
         json.dumps(d),
     )
 
-    # didOpen корректного файла -> диагностика пустая
     send({
         "jsonrpc": "2.0",
         "method": "textDocument/didOpen",
@@ -169,7 +166,65 @@ def main():
         json.dumps(params),
     )
 
-    # shutdown + exit -> код 0
+    for i in range(256):
+        send({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": f"file:///churn-{i:04d}.rza",
+                    "languageId": "rza",
+                    "version": 1,
+                    "text": GOOD_TEXT,
+                }
+            },
+        })
+        recv()
+
+    send({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {"uri": GOOD_URI, "version": 2},
+            "contentChanges": [{"text": BAD_TEXT}],
+        },
+    })
+    params = recv().get("params") or {}
+    check(
+        "good.rza: didChange после memory churn публикует STRUCT",
+        params.get("uri") == GOOD_URI and len(params.get("diagnostics") or []) == 1,
+        json.dumps(params),
+    )
+    send({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didClose",
+        "params": {"textDocument": {"uri": GOOD_URI}},
+    })
+    params = recv().get("params") or {}
+    check(
+        "good.rza: didClose очищает диагностику",
+        params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
+        json.dumps(params),
+    )
+    send({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": GOOD_URI,
+                "languageId": "rza",
+                "version": 3,
+                "text": GOOD_TEXT,
+            }
+        },
+    })
+    params = recv().get("params") or {}
+    check(
+        "good.rza: повторный didOpen работает",
+        params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
+        json.dumps(params),
+    )
+
     send({"jsonrpc": "2.0", "id": 2, "method": "shutdown"})
     resp = recv()
     check(

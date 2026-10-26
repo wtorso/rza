@@ -1,6 +1,6 @@
 // ============================================================================
 // rez3asm.c3 — транспайлер REZ3-ASM (.rza) -> C99 (rez3.h + rez3ext.h).
-// Порт rez3asm.py (Python 3) на C3 0.8.4, функциональный паритет 1:1.
+// Порт rez3asm.py (Python 3) на C3 0.8.5, функциональный паритет 1:1.
 //
 // CLI:
 //   rez3asm file.rza                    только статическая проверка
@@ -23,6 +23,7 @@ import std::io;
 import std::io::file;
 import std::core::dstring;
 import std::collections::list;
+import std::collections::map;
 
 // --- модель ------------------------------------------------------------------
 struct Frame {
@@ -45,6 +46,7 @@ struct Cell {
     String cname;
     int    scope;
     bool   is_out;
+    List{int} med_idxs;
 }
 
 struct Med {
@@ -106,6 +108,12 @@ List{Cascade} cascades;
 List{Block}   blocks;
 List{LabelDef} labels;
 List{Instr}   instrs;
+HashMap{String, int} frame_map;
+HashMap{String, int} cell_map;
+HashMap{String, int} med_map;
+HashMap{String, int} proc_map;
+HashMap{String, int} label_map;
+HashMap{String, bool} label_names;
 
 // диагностика для LSP-режима (--lsp, lsp_server.c3): те же нарушения, что
 // viol() печатает в CLI, но собранные в список вместо stderr
@@ -141,6 +149,12 @@ fn void reset_state() {
         labels.init(mem);
         instrs.init(mem);
         lsp_diags.init(mem);
+        frame_map.init(mem);
+        cell_map.init(mem);
+        med_map.init(mem);
+        proc_map.init(mem);
+        label_map.init(mem);
+        label_names.init(mem);
         g_state_inited = true;
     }
     frames.clear();
@@ -152,6 +166,12 @@ fn void reset_state() {
     labels.clear();
     instrs.clear();
     lsp_diags.clear();
+    frame_map.clear();
+    cell_map.clear();
+    med_map.clear();
+    proc_map.clear();
+    label_map.clear();
+    label_names.clear();
     gencnt = 1;
     violations = 0;
     cur_proc = 0;
@@ -164,6 +184,7 @@ fn void reset_state() {
     frames.push({ .name = "field", .parent = -1, .alive = true,
                   .gen = nextgen(), .cname = "f_field", .scope = 0,
                   .cap = 64, .is_field = true });
+    frame_map.set("field", 0);
 }
 
 // --- утилиты -------------------------------------------------------------------
@@ -289,72 +310,30 @@ fn bool split_ops_exact(String rest, int want, int line, String opname, String[]
 // возврат: >=0 индекс, -1 unknown. Рамки и ячейки — общая хроника (AUDIT-3),
 // SCOPE для них нет (только медиаторы, find_med)
 fn int find_frame(String name, int scope) {
-    if (scope > 0) {
-        for (sz i = 0; i < frames.len(); i++) {
-            if (frames[i].scope == scope && frames[i].name == name) return (int)i;
-        }
-        if (name == "field") return 0;   // field — frames[0]
-        // AUDIT-3: рамки — общая хроника; proc видит и использует глобальные
-        for (sz i = 0; i < frames.len(); i++) {
-            if (frames[i].scope == 0 && frames[i].name == name) return (int)i;
-        }
-        return -1;
-    }
-    for (sz i = 0; i < frames.len(); i++) {
-        if (frames[i].scope == 0 && frames[i].name == name) return (int)i;
-    }
-    return -1;
+    int? fi = frame_map.get(name);
+    if (catch fi) return -1;
+    return frames[fi].scope == 0 || frames[fi].scope == scope ? fi : -1;
 }
 
 fn int find_cell(String name, int scope) {
-    if (scope > 0) {
-        for (sz i = 0; i < cells.len(); i++) {
-            if (cells[i].scope == scope && cells[i].name == name) return (int)i;
-        }
-        // AUDIT-3: ячейки — общая хроника (как рамки); изоляция — по медиаторам
-        for (sz i = 0; i < cells.len(); i++) {
-            if (cells[i].scope == 0 && cells[i].name == name) return (int)i;
-        }
-        return -1;
-    }
-    for (sz i = 0; i < cells.len(); i++) {
-        if (cells[i].scope == 0 && cells[i].name == name) return (int)i;
-    }
-    return -1;
+    int? ci = cell_map.get(name);
+    if (catch ci) return -1;
+    return cells[ci].scope == 0 || cells[ci].scope == scope ? ci : -1;
 }
 
 fn int find_med(String name, int scope) {
-    if (scope > 0) {
-        for (sz i = 0; i < meds.len(); i++) {
-            if (meds[i].scope == scope && meds[i].name == name) return (int)i;
-        }
-        for (sz i = 0; i < meds.len(); i++) {
-            if (meds[i].scope == 0 && meds[i].name == name) {
-                int fr = cells[meds[i].cell].owner;
-                if (frames[fr].is_field) return (int)i;
-                // AUDIT-4: глобальная рамка (не чужая proc-рамка) — медиатор
-                // безопасен: рамка переживает любой вызов; смерть после
-                // определения proc ловится runtime-проверкой поколения.
-                return frames[fr].is_procframe ? -2 : (int)i;
-            }
-        }
-        // имя есть, но в скоупе ДРУГОГО proc → [SCOPE] (AUDIT-4)
-        for (sz i = 0; i < meds.len(); i++) {
-            if (meds[i].name == name) return -2;
-        }
-        return -1;
-    }
-    for (sz i = 0; i < meds.len(); i++) {
-        if (meds[i].scope == 0 && meds[i].name == name) return (int)i;
-    }
-    return -1;
+    int? mi = med_map.get(name);
+    if (catch mi) return -1;
+    if (scope == 0) return meds[mi].scope == 0 ? mi : -1;
+    if (meds[mi].scope == scope) return mi;
+    if (meds[mi].scope != 0) return -2;
+    int fr = cells[meds[mi].cell].owner;
+    if (frames[fr].is_field) return mi;
+    return frames[fr].is_procframe ? -2 : mi;
 }
 
 fn int find_proc(String name) {
-    for (sz i = 0; i < procs.len(); i++) {
-        if (procs[i].name == name) return (int)i;
-    }
-    return -1;
+    return proc_map.get(name) ?? -1;
 }
 
 // review-audit: host API lib-режима (SPEC 11) эмитит rza_<proc>, rza_boot,
@@ -378,18 +357,18 @@ fn void scope_viol(int line, String kind, String name) {
 }
 
 fn bool check_dup(String name, int line, int scope) {
-    for (sz i = 0; i < frames.len(); i++) {
-        if (frames[i].scope == scope && frames[i].name == name) {
+    if (try fi = frame_map.get(name)) {
+        if (frames[fi].scope == scope) {
             viol(line, "DUP", cat({"duplicate name ", name})); return false;
         }
     }
-    for (sz i = 0; i < cells.len(); i++) {
-        if (cells[i].scope == scope && cells[i].name == name) {
+    if (try ci = cell_map.get(name)) {
+        if (cells[ci].scope == scope) {
             viol(line, "DUP", cat({"duplicate name ", name})); return false;
         }
     }
-    for (sz i = 0; i < meds.len(); i++) {
-        if (meds[i].scope == scope && meds[i].name == name) {
+    if (try mi = med_map.get(name)) {
+        if (meds[mi].scope == scope) {
             viol(line, "DUP", cat({"duplicate name ", name})); return false;
         }
     }
@@ -433,15 +412,21 @@ fn void add_instr(Instr ins) {
     instrs.push(ins);
 }
 
+fn String label_key(int block, String name) {
+    DString key = dstring::new_with_capacity(tmem, name.len + 16);
+    key.appendf("%d:%s", block, name);
+    return key.str_view();
+}
+
 fn void add_label(String name, int line) {
     int bid = cur_block();
-    for (sz i = 0; i < labels.len(); i++) {
-        if (labels[i].block == bid && labels[i].name == name) {
-            viol(line, "DUP", cat({"duplicate label ", name}));
-            return;
-        }
+    if (label_map.has_key(label_key(bid, name))) {
+        viol(line, "DUP", cat({"duplicate label ", name}));
+        return;
     }
     labels.push({ .name = name, .line = line, .block = bid, .referenced = false });
+    label_map.set(label_key(bid, name), (int)labels.len() - 1);
+    label_names.set(name, true);
     Instr ins = { .op = Op.LABEL, .line = line, .s1 = name };
     add_instr(ins);
 }
@@ -479,6 +464,7 @@ fn void op_cav(String rest, int line) {
     Frame f = { .name = name, .parent = pf, .alive = true, .gen = nextgen(),
                 .cname = cname_for("f_", name), .scope = 0, .cap = 64 };
     frames.push(f);
+    frame_map.set(name, (int)frames.len() - 1);
     add_instr({ .op = Op.CAV, .line = line, .x = (int)frames.len() - 1, .y = pf });
 }
 
@@ -516,7 +502,9 @@ fn void op_res(String rest, int line) {
     // AUDIT-3: ячейки — общая хроника (scope 0)
     Cell cc = { .name = name, .owner = f, .cname = cname_for("c_", name),
                 .scope = 0 };
+    cc.med_idxs.init(tmem);
     cells.push(cc);
+    cell_map.set(name, (int)cells.len() - 1);
     frames[f].res_bytes += (size + 15) & ~15;
     add_instr({ .op = Op.RES, .line = line, .x = (int)cells.len() - 1,
                 .y = f, .a = size });
@@ -547,17 +535,18 @@ fn void op_med(String rest, int line) {
     if (!check_dup(name, line, cur_proc)) return;
     // review-audit: lib-режим экспортирует геттер rza_med_<name> для
     // КАЖДОГО медиатора — имя уникально глобально, не только в scope
-    for (sz i = 0; i < meds.len(); i++) {
-        if (meds[i].name == name) {
-            viol(line, "DUP", cat({"duplicate mediator ", name,
-                 " (host API exports every mediator, SPEC 11)"}));
-            return;
-        }
+    if (med_map.has_key(name)) {
+        viol(line, "DUP", cat({"duplicate mediator ", name,
+             " (host API exports every mediator, SPEC 11)"}));
+        return;
     }
     Med m = { .name = name, .cell = ci, .gen = frames[cells[ci].owner].gen,
               .cname = cname_for("m_", name), .scope = cur_proc };
     meds.push(m);
-    add_instr({ .op = Op.MED, .line = line, .x = (int)meds.len() - 1 });
+    int mi = (int)meds.len() - 1;
+    med_map.set(name, mi);
+    cells[ci].med_idxs.push(mi);
+    add_instr({ .op = Op.MED, .line = line, .x = mi });
 }
 
 fn void op_raise(String rest, int line) {
@@ -818,9 +807,11 @@ fn void open_proc(String name, int line) {
                 .cname = cat({"f_P_", name}), .scope = (int)procs.len() + 1,
                 .cap = 64, .is_procframe = true };
     frames.push(f);
+    frame_map.set(name, (int)frames.len() - 1);
     Proc p = { .name = name, .line = line, .frame = (int)frames.len() - 1,
                .block = (int)blocks.len() - 1, .cname = cat({"p_", name}) };
     procs.push(p);
+    proc_map.set(name, (int)procs.len() - 1);
     cur_proc = (int)procs.len();   // 1-based
 }
 
@@ -858,7 +849,7 @@ fn void open_casc(String rest, int line, bool is_async) {
         if (catch ei) {
             viol(line, "STRUCT", "malformed cascade header"); return;
         }
-        if (ei <= bi + 1) {
+        if (ei <= bi + 1 || ei != outstr.len - 1) {
             viol(line, "STRUCT", "malformed cascade header"); return;
         }
         outname = outstr[:bi].trim();
@@ -930,7 +921,9 @@ fn void open_casc(String rest, int line, bool is_async) {
             Cell oc = { .name = outname, .owner = out_frame,
                         .cname = cname_for("c_", outname),
                         .scope = 0, .is_out = true };
+            oc.med_idxs.init(tmem);
             cells.push(oc);
+            cell_map.set(outname, (int)cells.len() - 1);
             out_cell = (int)cells.len() - 1;
             frames[out_frame].outs += 1;
         }
@@ -1090,20 +1083,11 @@ fn void check_jumps() {
     for (sz i = 0; i < instrs.len(); i++) {
         Instr* ins = &instrs[i];
         if (ins.op != Op.JMP && ins.op != Op.BRZ && ins.op != Op.BRNZ) continue;
-        bool found = false;
-        for (sz j = 0; j < labels.len(); j++) {
-            if (labels[j].block == ins.block && labels[j].name == ins.s1) {
-                labels[j].referenced = true;
-                found = true;
-                break;
-            }
+        if (try li = label_map.get(label_key(ins.block, ins.s1))) {
+            labels[li].referenced = true;
+            continue;
         }
-        if (found) continue;
-        bool elsewhere = false;
-        for (sz j = 0; j < labels.len(); j++) {
-            if (labels[j].name == ins.s1) { elsewhere = true; break; }
-        }
-        if (elsewhere) {
+        if (label_names.has_key(ins.s1)) {
             viol(ins.line, "STRUCT",
                  cat({"jump to label ", ins.s1, " of another lexical block ",
                       "(cross-block jumps are forbidden)"}));
@@ -1211,13 +1195,11 @@ fn void emit_writeonly_silence(DString* out, int ind, uint rd, uint wr) {
 // каскада (review #2: для OUT подъёма не было — медиатор оставался
 // нулевым, runtime FAULT)
 fn void emit_hoisted_meds(DString* out, int ind, int cell, int owner) {
-    for (sz j = 0; j < instrs.len(); j++) {
-        Instr* mj = &instrs[j];
-        if (mj.op != Op.MED || mj.func != 0) continue;
-        if (meds[mj.x].cell != cell) continue;
+    foreach (mi : cells[cell].med_idxs) {
+        if (meds[mi].scope != 0) continue;
         pad(out, ind);
         out.appendf("%s = rez_issue_cell(%s, %s);\n",
-                    meds[mj.x].cname, fexpr(owner), cells[cell].cname);
+                    meds[mi].cname, fexpr(owner), cells[cell].cname);
     }
 }
 
@@ -1341,11 +1323,13 @@ fn void emit_body(DString* out, int func) {
                 else { oex.appendf("%d", ins.b); }
                 if (in_casc) {
                     pad(out, ind);
-                    out.appendf("r%d = %s((char*)p_%s + %s);\n",
-                                ins.a,
-                                ins.flag ? "(int64_t)*(unsigned char*)"
-                                         : "*(int64_t*)",
-                                meds[ins.x].name, oex.str_view());
+                    if (ins.flag) {
+                        out.appendf("r%d = (int64_t)*(unsigned char*)((char*)p_%s + %s);\n",
+                                    ins.a, meds[ins.x].name, oex.str_view());
+                    } else {
+                        out.appendf("memcpy(&r%d, (char*)p_%s + %s, 8);\n",
+                                    ins.a, meds[ins.x].name, oex.str_view());
+                    }
                 } else {
                     pad(out, ind);
                     out.appendf("{ void *p = rez_deref_cell(%s);\n",
@@ -1355,11 +1339,13 @@ fn void emit_body(DString* out, int func) {
                                 "dead mediator %s\\n\"); exit(1); }\n",
                                 ins.line, meds[ins.x].name);
                     pad(out, ind);
-                    out.appendf("  r%d = %s((char*)p + %s); }\n",
-                                ins.a,
-                                ins.flag ? "(int64_t)*(unsigned char*)"
-                                         : "*(int64_t*)",
-                                oex.str_view());
+                    if (ins.flag) {
+                        out.appendf("  r%d = (int64_t)*(unsigned char*)((char*)p + %s); }\n",
+                                    ins.a, oex.str_view());
+                    } else {
+                        out.appendf("  memcpy(&r%d, (char*)p + %s, 8); }\n",
+                                    ins.a, oex.str_view());
+                    }
                 }
             case Op.STORE:
                 DString sex = dstring::new(mem);
@@ -1368,7 +1354,7 @@ fn void emit_body(DString* out, int func) {
                 else { sex.appendf("%d", ins.b); }
                 if (in_casc) {
                     pad(out, ind);
-                    out.appendf("*(int64_t*)((char*)p_%s + %s) = r%d;\n",
+                    out.appendf("memcpy((char*)p_%s + %s, &r%d, 8);\n",
                                 meds[ins.x].name, sex.str_view(), ins.a);
                 } else {
                     pad(out, ind);
@@ -1379,7 +1365,7 @@ fn void emit_body(DString* out, int func) {
                                 "dead mediator %s\\n\"); exit(1); }\n",
                                 ins.line, meds[ins.x].name);
                     pad(out, ind);
-                    out.appendf("  *(int64_t*)((char*)p + %s) = r%d; }\n",
+                    out.appendf("  memcpy((char*)p + %s, &r%d, 8); }\n",
                                 sex.str_view(), ins.a);
                 }
             case Op.MOV:

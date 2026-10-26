@@ -4,18 +4,24 @@
  * Читаем лог из sly (Memory viewer, EWRAM) — так проверяем тесты. */
 #include <stdint.h>
 #include <stdarg.h>
-/* bare metal: libc нет — свои типы и memset */
+/* bare metal: libc нет — свои типы и memset/memcpy */
 typedef __SIZE_TYPE__ size_t;
 void *memset(void *d, int c, size_t n) {
     unsigned char *p = (unsigned char *)d;
     while (n--) { *p++ = (unsigned char)c; }
     return d;
 }
+void *memcpy(void *d, const void *s, size_t n) {
+    unsigned char *dst = (unsigned char *)d;
+    const unsigned char *src = (const unsigned char *)s;
+    while (n--) { *dst++ = *src++; }
+    return d;
+}
 
 #define EWRAM_BASE 0x02000000u
 #define EWRAM_END  0x02040000u
 
-/* лог результатов: [magic 'RZA1'][count][v0][v1]...  (i64 каждый) */
+/* [0] = magic после exit; [1..] = значения i64. count не сохраняется. */
 volatile int64_t *const rza_log = (volatile int64_t *)EWRAM_BASE;
 static uint32_t log_n;
 static char *heap = (char *)(EWRAM_BASE + 0x10000);   /* лог — первые 4K */

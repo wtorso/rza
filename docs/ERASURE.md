@@ -33,14 +33,14 @@ proc snap_stats:
     if (!p_phys_m) { fprintf(stderr, "ABORT line 63: cascade snap: dead mediator phys_m\n"); goto casc_end_1; }
     c_P_snap_statsXsnapout = rez_cell_z(f_P_mission_beginXmission, 8);
     if (!c_P_snap_statsXsnapout) { fprintf(stderr, "FAULT line 63: arena overflow (out snapout)\n"); exit(1); }
-    r0 = *(int64_t*)((char*)p_phys_m + 0);
-    r1 = *(int64_t*)((char*)p_phys_m + 8);
-    *(int64_t*)((char*)p_cnt_m + 96) = r0;
-    *(int64_t*)((char*)p_cnt_m + 104) = r1;
-    r0 = *(int64_t*)((char*)p_cnt_m + 0);
-    r1 = *(int64_t*)((char*)p_cnt_m + 8);
-    *(int64_t*)((char*)p_cnt_m + 112) = r0;
-    *(int64_t*)((char*)p_cnt_m + 120) = r1;
+    memcpy(&r0, (char*)p_phys_m + 0, 8);
+    memcpy(&r1, (char*)p_phys_m + 8, 8);
+    memcpy((char*)p_cnt_m + 96, &r0, 8);
+    memcpy((char*)p_cnt_m + 104, &r1, 8);
+    memcpy(&r0, (char*)p_cnt_m + 0, 8);
+    memcpy(&r1, (char*)p_cnt_m + 8, 8);
+    memcpy((char*)p_cnt_m + 112, &r0, 8);
+    memcpy((char*)p_cnt_m + 120, &r1, 8);
 casc_end_1:
     (void)0;
 }
@@ -50,9 +50,9 @@ casc_end_1:
 
 - **Проверка поколений — один раз на входе** [I3]: два `rez_deref_cell`
   и два `goto casc_end_1` (атомарный abort: тело пропускается целиком).
-- **Тело стёрто до голой арифметики указателей**: восемь обращений —
-  восемь `*(int64_t*)((char*)p + off)` без повторных проверок живости.
-  Это и есть стирание: цена безопасности не зависит от длины тела.
+- **Тело стёрто до адресации без повторных проверок**: восемь обращений —
+  восемь `memcpy(..., 8)` без повторных проверок живости и без UB при
+  невыровненном смещении. Цена безопасности не зависит от длины тела.
 - **OUT** (`snapout`) — новая ячейка в рамке `mission` (AUDIT-1/#6);
   нуле-инициализирована (`rez_cell_z`, AUDIT-6).
 - **C-имена склеены манглингом** (SPEC §9, «C-имена однозначны»): рамка

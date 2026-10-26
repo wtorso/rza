@@ -1,0 +1,9 @@
+cav main, field
+res x, main, 16
+med x_m, x, main
+mov %r0, 42
+store [x_m + 1], %r0
+load %r1, [x_m + 1]
+print %r1          ; 42: i64 сохранён и прочитан по невыровненному смещению 1 через memcpy
+decay main
+ret

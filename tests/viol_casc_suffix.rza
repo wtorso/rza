@@ -1,0 +1,6 @@
+res x, field, 8
+med x_m, x, field
+casc c: x_m -> out[field]junk
+    load %r0, [x_m + 0]
+endc
+ret
