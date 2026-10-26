@@ -235,25 +235,6 @@ fn bool is_int(String s) {
     return true;
 }
 
-// число: dec или 0x-hex (AUDIT-5: hex для asm-стиля); вызывающий обязан
-// проверить is_int заранее
-fn int parse_num(String s) {
-    bool neg = s[0] == '-';
-    usz i = (usz)(neg ? 1 : 0);
-    int v = 0;
-    if (s.len > i + 2 && s[i] == '0' && (s[i + 1] == 'x' || s[i + 1] == 'X')) {
-        for (usz j = i + 2; j < s.len; j++) {
-            char c = s[j];
-            int d = (c <= '9') ? c - '0'
-                  : (c <= 'F' ? c - 'A' + 10 : c - 'a' + 10);
-            v = v * 16 + d;
-        }
-    } else {
-        for (; i < s.len; i++) { v = v * 10 + (s[i] - '0'); }
-    }
-    return neg ? -v : v;
-}
-
 fn bool check_name(String name, int line) {
     if (!is_name(name)) {
         viol(line, "STRUCT", cat({"bad name ", name}));
@@ -711,7 +692,7 @@ fn void op_mov(String rest, int line) {
             return;
         }
         add_instr({ .op = Op.MOV, .line = line, .a = dst,
-                    .b = parse_num(buf[1]), .flag = true });
+                    .b = v, .flag = true });
         return;
     }
     int src = parse_reg(buf[1], line);
@@ -1626,6 +1607,10 @@ fn int main(String[] args) {
             io::eprintfn("rez3asm: unknown flag %s", a);
             return 2;
         } else {
+            if (src.len > 0) {
+                io::eprintfn("rez3asm: expected one input file");
+                return 2;
+            }
             src = a;
         }
     }

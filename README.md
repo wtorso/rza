@@ -98,7 +98,7 @@ rez3asm file.rza --emit-c     # C99 на stdout (читаемый, для люд
 rez3asm file.rza --emit-lib   # C99-библиотека: procs → void rza_NAME(void)
 rez3asm file.rza -o out.c     # -o без флагов тоже включает эмиссию C
 rez3asm --lsp                 # LSP-сервер на stdio (диагностика в редакторе)
-bash run_tests.sh             # 73/73 + ноль warnings, UBSan и fuzz-smoke
+bash run_tests.sh             # 75/75 + ноль warnings, UBSan и fuzz-smoke
 ```
 
 - `rez3asm.c3` — транспайлер (C3 0.8.5; Python-версии нет);
