@@ -197,6 +197,7 @@ for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
          mangle_label mangle_proc mangle_cav no_cells unaligned; do
     run_good "$t"
 done
+run_good imm_bounds
 
 # примеры учебника GUIDE.md — регрессия документации (аудит #3)
 for t in hello counter2 idioms settle; do
@@ -260,6 +261,12 @@ run_viol viol_med_gdup    DUP
 run_lib lib_hello
 run_lib_compile lib_scope
 run_lib lib_abort
+$TR tests/fib.rza tests/counter.rza >"$BUILD/cli_two.out" 2>"$BUILD/cli_two.err"
+if [ "$?" -ne 2 ]; then
+    bad cli_two_inputs "want exit 2 for two input files"
+else
+    ok cli_two_inputs
+fi
 run_lsp_smoke
 run_fuzz
 echo "----------------------------------------"
