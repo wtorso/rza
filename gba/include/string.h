@@ -1,4 +1,4 @@
-/* string.h — bare-metal: memset реализован в harness.c */
+/* string.h — bare-metal: memset/memcpy реализованы в harness.c */
 #ifndef RZN_GBA_STRING_H
 #define RZN_GBA_STRING_H
 #include <stdint.h>
@@ -9,4 +9,5 @@ typedef __SIZE_TYPE__ size_t;
 #define NULL ((void*)0)
 #endif
 void *memset(void *d, int c, size_t n);
+void *memcpy(void *d, const void *s, size_t n);
 #endif

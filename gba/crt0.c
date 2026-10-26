@@ -34,10 +34,22 @@ static const u8 gba_hdr[0xC0 - 0xA0] = {
     0x00,0x00,0x00,0x00, 0x00, 0x77, 0x00,0x00,
 };
 
+extern u32 __data_rom, __data_start, __data_end, __bss_start, __bss_end;
+
+__attribute__((used))
+static void __crt_init(void) {
+    u32 *src = &__data_rom;
+    u32 *dst = &__data_start;
+    while (dst < &__data_end) { *dst++ = *src++; }
+    dst = &__bss_start;
+    while (dst < &__bss_end) { *dst++ = 0; }
+}
+
 void _start(void);
 __attribute__((section(".text.boot"), naked)) void _start(void) {
     __asm volatile(
         "mov sp, %0\n"
+        "bl __crt_init\n"
         "bl main\n"
         "1: b 1b\n"
         :

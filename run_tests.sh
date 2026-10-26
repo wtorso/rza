@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_tests.sh — полный прогон REZ3-ASM: сборка транспайлера (C3), трансляция,
-# компиляция C99 (-pedantic -Wall -Wextra, ноль warnings), запуск, сверка,
-# негативные тесты. exit 0 только если всё зелёное.
+# компиляция C99 (-pedantic -Wall -Wextra, ноль warnings), UBSan, запуск и
+# сверка exit/stdout, негативные тесты, LSP и fuzz. exit 0 только если всё зелёное.
 set -u
 cd "$(dirname "$0")"
 
@@ -17,7 +17,7 @@ elif command -v zig   >/dev/null 2>&1; then CC="zig cc"
 elif command -v clang >/dev/null 2>&1; then CC="clang"
 else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
 
-CFLAGS="-std=c99 -pedantic -Wall -Wextra -I refs -I ."
+CFLAGS="-std=c99 -pedantic -Wall -Wextra -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I ."
 BUILD=build
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
@@ -62,7 +62,10 @@ run_good() {
         bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
         return
     fi
-    "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"
+    if ! "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
+        bad "$t" "runtime failed (want exit 0)"; cat "$BUILD/$t.runerr"
+        return
+    fi
     tr -d '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
     if ! diff -u "$dir/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
@@ -117,10 +120,9 @@ run_viol() {
     ok "$t"
 }
 
-# LSP smoke: сессия initialize/didOpen/didOpen/shutdown с `rez3asm --lsp`
-# по stdio (tests/lsp_smoke.py). python3 на Windows может быть битым стабом
-# WindowsApps — проверяем, что интерпретатор реально запускается.
-run_lsp_smoke() {
+# python3 на Windows может быть битым стабом WindowsApps — проверяем запуск.
+run_py() {
+    local name=$1 script=$2
     local py=""
     local c
     for c in python3 python; do
@@ -129,11 +131,14 @@ run_lsp_smoke() {
         fi
     done
     if [ -z "$py" ]; then
-        bad "lsp_smoke" "no working python3/python"; return
+        bad "$name" "no working python3/python"; return
     fi
-    if "$py" tests/lsp_smoke.py ./rez3asm.exe; then ok lsp_smoke
-    else bad lsp_smoke "script failed"; fi
+    if "$py" "$script" ./rez3asm.exe; then ok "$name"
+    else bad "$name" "script failed"; fi
 }
+
+run_lsp_smoke() { run_py lsp_smoke tests/lsp_smoke.py; }
+run_fuzz() { run_py fuzz tests/fuzz_smoke.py; }
 
 # lib-режим: $1.rza --emit-lib + компиляция с tests/lib_harness.c, запуск,
 # сверка с tests/$1.expected
@@ -154,7 +159,10 @@ run_lib() {
         bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
         return
     fi
-    "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"
+    if ! "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
+        bad "$t" "runtime failed (want exit 0)"; cat "$BUILD/$t.runerr"
+        return
+    fi
     tr -d '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
     if ! diff -u "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
@@ -186,7 +194,7 @@ run_lib_compile() {
 
 echo "== REZ3-ASM test run (compiler: $CC) =="
 for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
-         mangle_label mangle_proc mangle_cav no_cells; do
+         mangle_label mangle_proc mangle_cav no_cells unaligned; do
     run_good "$t"
 done
 
@@ -239,6 +247,7 @@ run_viol viol_imm       STRUCT
 run_viol viol_casc_med  STRUCT
 run_viol viol_dup_proc  DUP
 run_viol viol_casc_header STRUCT
+run_viol viol_casc_suffix STRUCT
 run_viol viol_acasc_out STRUCT
 run_viol viol_proc_header STRUCT
 # review-audit: переполнение смещения [med + off] (#3) + коллизии имён
@@ -252,6 +261,7 @@ run_lib lib_hello
 run_lib_compile lib_scope
 run_lib lib_abort
 run_lsp_smoke
+run_fuzz
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
