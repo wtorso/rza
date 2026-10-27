@@ -270,6 +270,8 @@ run_viol viol_bounds_negative STRUCT
 run_viol viol_aligned_size STRUCT
 run_viol viol_res_sum_overflow STRUCT
 run_viol viol_cap_out_overflow STRUCT
+run_viol viol_frame_static_budget STRUCT
+run_viol viol_total_static_budget STRUCT
 run_runtime_safety
 run_reference
 
