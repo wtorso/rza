@@ -96,15 +96,17 @@ rez3asm file.rza --emit-c     # C99 на stdout (читаемый, для люд
 rez3asm file.rza --emit-lib   # C99-библиотека: procs → void rza_NAME(void)
 rez3asm file.rza -o out.c     # -o без флагов тоже включает эмиссию C
 rez3asm --lsp                 # LSP-сервер на stdio (диагностика в редакторе)
-bash run_tests.sh             # 97/97 + ноль warnings, UBSan и fuzz-smoke
+bash run_tests.sh             # 99/99 + ноль warnings, UBSan и fuzz-smoke
 ```
 
 - `rez3asm.c3` — транспайлер на C3 0.8.5;
   `lsp_server.c3` — LSP-сервер внутри той же программы (флаг `--lsp`,
   чекер зовётся из памяти, без временных файлов).
-- `refs/rez3.h` (заморожен) + `refs/rez3ext.h` (расширение: `RezCellMed`,
-  нуле-инициализация ячеек; правило AGENTS.md — rez3.h не менять,
-  расширять только новыми сущностями в ext).
+- `build_compiler.sh` — сборка с уникальными временными именами для
+  безопасных параллельных запусков.
+- `refs/rez3ext.h` — независимый static runtime ASM: `RezCellMed`,
+  нуле-инициализация ячеек, никаких heap API. `refs/rez3.h` остаётся
+  замороженным C89-эталоном и не включается в generated C.
 - `tests/` — легальные и `viol_*` программы; норма AUDIT-3: ожидаемые
   значения — с выводом, не магические константы.
 - `editors/vscode/` — расширение `rez3.rza` (подсветка + LSP-клиент,

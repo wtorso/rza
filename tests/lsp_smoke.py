@@ -156,6 +156,24 @@ def main():
         info.get("name") == "rez3-lsp" and info.get("version") == "0.4.0",
         json.dumps(info),
     )
+    send({
+        "jsonrpc": "2.0", "id": "x" * 300,
+        "method": "initialize", "params": {},
+    })
+    resp = recv()
+    check(
+        "initialize: oversized id gets -32600, not a truncated id",
+        resp.get("id") is None
+        and (resp.get("error") or {}).get("code") == -32600,
+        json.dumps(resp),
+    )
+    send({"jsonrpc": "2.0", "id": 1.5, "method": "initialize", "params": {}})
+    resp = recv()
+    check(
+        "initialize: fractional id is echoed exactly",
+        resp.get("id") == 1.5,
+        json.dumps(resp),
+    )
     send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
 
     send({

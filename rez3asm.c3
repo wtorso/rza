@@ -59,6 +59,7 @@ struct Cell {
 struct Med {
     String name;
     int    cell;          // индекс Cell
+    int    owner;         // владелец на момент объявления медиатора
     uint   gen;
     String cname;
     int    scope;
@@ -634,7 +635,8 @@ fn void op_med(String rest, int line) {
         viol(line, "STRUCT", "too many mediators for one cell");
         return;
     }
-    Med m = { .name = name, .cell = ci, .gen = frames[cells[ci].owner].gen,
+    Med m = { .name = name, .cell = ci, .owner = cells[ci].owner,
+              .gen = frames[cells[ci].owner].gen,
               .cname = cname_for("m_", name), .scope = cur_proc };
     meds.push(m);
     int mi = (int)meds.len() - 1;
@@ -1324,14 +1326,14 @@ fn void emit_writeonly_silence(DString* out, int ind, uint rd, uint wr) {
 }
 
 // Глобальный медиатор инициализируется при создании res или OUT (AUDIT-4).
-fn void emit_hoisted_meds(DString* out, int ind, int cell, int owner) {
+fn void emit_hoisted_meds(DString* out, int ind, int cell) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
         if (meds[mi].scope != 0) continue;
         pad(out, ind);
         out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
-                    meds[mi].cname, fexpr(owner), fexpr(cells[cell].home),
-                    cells[cell].cname, cells[cell].size);
+                    meds[mi].cname, fexpr(meds[mi].owner),
+                    fexpr(cells[cell].home), cells[cell].cname, cells[cell].size);
     }
 }
 
@@ -1470,13 +1472,13 @@ fn void emit_own(DString* out, int ind, Instr* ins) {
             out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
                         "arena overflow (cell %s)\\n\"); exit(1); }\n",
                         cells[ins.x].cname, ins.line, cells[ins.x].name);
-            emit_hoisted_meds(out, ind, ins.x, ins.y);
+            emit_hoisted_meds(out, ind, ins.x);
         case Op.MED:
             if (ins.func == 0) break;
             pad(out, ind);
             int ci = meds[ins.x].cell;
             out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
-                        meds[ins.x].cname, fexpr(cells[ci].owner),
+                        meds[ins.x].cname, fexpr(meds[ins.x].owner),
                         fexpr(cells[ci].home), cells[ci].cname, cells[ci].size);
         case Op.RAISE:
             pad(out, ind);
@@ -1525,7 +1527,7 @@ fn void emit_casc_start(DString* out, int ind, Instr* ins) {
     out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
                 "arena overflow (out %s)\\n\"); exit(1); }\n",
                 cells[ca.out_cell].cname, ca.line, cells[ca.out_cell].name);
-    emit_hoisted_meds(out, ind, ca.out_cell, ca.out_frame);
+    emit_hoisted_meds(out, ind, ca.out_cell);
 }
 
 fn void emit_casc_end(DString* out, int ind, Instr* ins) {
@@ -1634,14 +1636,10 @@ fn void emit_proc(DString* out, int pi) {
 // глушилка неиспользованных static-входов рантайма (адрес взят — warning-а нет)
 fn void emit_silencers(DString* out) {
     out.append_string("    /* unused runtime entries: адрес взят, warning-а нет */\n");
-    out.append_string("    (void)&rez_arena_init; (void)&rez_arena_alloc;\n");
-    out.append_string("    (void)&rez_enter; (void)&rez_cell;\n");
     out.append_string("    (void)&rez_arena_alloc_z; (void)&rez_decay;\n");
     out.append_string("    (void)&rez_cell_z; (void)&rez_issue_cell;\n");
     out.append_string("    (void)&rez_deref_cell; (void)&rez_cell_bounds;\n");
     out.append_string("    (void)&rez_frame_reset; (void)&rez_cav_enter;\n");
-    out.append_string("    (void)&rez_leave;\n");
-    out.append_string("    (void)&rez_issue; (void)&rez_deref;\n");
     out.append_string("    (void)&rez_i64_add; (void)&rez_i64_sub;\n");
     out.append_string("    (void)&rez_i64_mul; (void)&rez_i64_div;\n");
     out.append_string("    (void)&rez_i64_mod; (void)&rez_i64_shl;\n");
@@ -1777,7 +1775,6 @@ fn String emit() {
     out.append_string("#include <stdio.h>\n");
     out.append_string("#include <stdint.h>\n");
     out.append_string("#include <stdlib.h>\n");
-    out.append_string("#include \"rez3.h\"\n");
     out.append_string("#include \"rez3ext.h\"\n\n");
     emit_static_storage(&out);
     for (sz i = 0; i < procs.len(); i++) {

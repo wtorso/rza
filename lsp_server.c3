@@ -20,6 +20,7 @@ const int LSP_URI_MAX = 1024;
 const int LSP_DIAG_TEXT_MAX = 256;
 const int LSP_RESPONSE_MAX = 4194304;
 const int LSP_JSON_COMMA_MAX = 65536;
+const int LSP_ID_MAX = 256;
 
 // Бинарный stdio сохраняет Content-Length на Windows.
 extern fn CInt _setmode(CInt fd, CInt mode) @feat(WIN32);
@@ -92,10 +93,8 @@ fn void json_str(DString* d, String s) {
 // id эхом: число или строка из запроса
 fn void append_id(DString* d, Object* id) {
     if (id == null || id.is_null()) { d.append_string("null"); return; }
-    if (id.is_string()) {
-        json_str(d, clip_utf8(id.s, LSP_DIAG_TEXT_MAX));
-        return;
-    }
+    if (id.is_string()) { json_str(d, id.s); return; }
+    if (id.is_float()) { d.appendf("%g", id.f); return; }
     d.appendf("%d", id.i);
 }
 
@@ -249,6 +248,10 @@ fn void handle_message(Object* msg) {
     if (msg == null || !msg.is_keyable()) return;
     Object* id = null;
     if (try i = msg.get("id")) id = i;
+    if (id != null && id.is_string() && id.s.len > LSP_ID_MAX) {
+        lsp_respond_error(null, -32600, "id too large");
+        return;
+    }
     String method = msg.get_string("method") ?? "";
     if (method.len == 0) return;   // ответ клиента: мы не шлём server->client запросов
     Object* params = null;

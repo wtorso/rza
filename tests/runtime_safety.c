@@ -32,13 +32,12 @@ int main(void) {
     unsigned saved;
     void *cell;
 
-    (void)&rez_arena_init; (void)&rez_arena_alloc; (void)&rez_enter;
-    (void)&rez_cell; (void)&rez_arena_alloc_z; (void)&rez_issue;
-    (void)&rez_deref; (void)&rez_cell_z; (void)&rez_issue_cell;
+    (void)&rez_arena_alloc_z; (void)&rez_cell_z; (void)&rez_issue_cell;
     (void)&rez_deref_cell; (void)&rez_cell_bounds; (void)&rez_frame_reset;
-    (void)&rez_cav_enter; (void)&rez_leave; (void)&rez_i64_add;
-    (void)&rez_i64_sub; (void)&rez_i64_mul; (void)&rez_i64_div;
-    (void)&rez_i64_mod; (void)&rez_i64_shl; (void)&rez_i64_shr;
+    (void)&rez_cav_enter; (void)&rez_i64_add; (void)&rez_i64_sub;
+    (void)&rez_i64_mul; (void)&rez_i64_div; (void)&rez_i64_mod;
+    (void)&rez_i64_shl; (void)&rez_i64_shr;
+    (void)&test_malloc; (void)&test_free;
 
     CHECK(rez_frame_reset(&field, NULL, field_arena, 64));
     CHECK(rez_frame_reset(&proc, &field, proc_arena, 64));

@@ -1,5 +1,5 @@
 build/
 *.exe
 *.pdb
-gba/out/
+.test-build-*/
 editors/vscode/node_modules/
