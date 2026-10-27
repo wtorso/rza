@@ -1,66 +1,155 @@
 /* ============================================================================
- * REZ3EXT.H — расширение рантайма RESONANCE-3 для ассемблерного слоя (.rza).
- * rez3.h не меняется (AUDIT-1/#4): здесь только НОВЫЕ сущности.
- *
- *   - RezCellMed: медиатор на ЯЧЕЙКУ {cell, owner, gen}. Медиатор rez3.h
- *     адресует рамку целиком; ассемблеру нужна адресация ячейки.
- *   - rez_issue_cell / rez_deref_cell: выдача и распечатка. Мёртвый проход —
- *     NULL (fault на стороне потребителя, не UB).
- *   - rez_decay: синоним rez_leave (таблица отображения слоёв, AUDIT-2/п.1).
- *   - rez_frame_reset: re-enter для статических рамок процедур: та же
- *     структура RezCavity, новое поколение (анти-ABA), свежая арена.
- *
- * Стиль — как rez3.h: C89-совместимый, всё static, один TU на программу
- * (rez_g_gen — static в rez3.h, поэтому оба заголовка включаются в один .c).
+ * REZ3EXT.H — безопасное расширение рантайма RESONANCE-3 для REZ3-ASM.
+ * rez3.h заморожен: новые проверки и типы находятся только здесь.
+ * ASM-слой использует C99; всё static, один TU на программу.
  * ============================================================================
  */
 #ifndef REZ3EXT_H
 #define REZ3EXT_H
 
+#include <stdint.h>
 #include "rez3.h"
 
-/* ABI-стамп границы lib-режима: RezCellMed уходит в хост-TU по значению.
- * Меняешь раскладку RezCellMed или сигнатуры rza_* — инкрементируй;
- * хост сверяет rza_rez3ext_abi (SPEC .rza §9, review-audit D1). */
-#define REZ3EXT_ABI 1
-
-/* ASM: decay; IR: leave; C: rez_leave — одно событие (AUDIT-2/п.1) */
+/* RezCellMed передаётся хосту по значению: все TU пересобираются вместе. */
+#define REZ3EXT_ABI 2
 #define rez_decay rez_leave
 
-/* Медиатор на ячейку: {указатель, рамка-владелец, поколение} (AUDIT-1/#4) */
-typedef struct { void *cell; RezCavity *owner; unsigned gen; } RezCellMed;
+/* Текущий владелец задаёт права; домашний владелец задаёт жизнь памяти. */
+typedef struct {
+    void *cell;
+    RezCavity *owner;
+    RezCavity *home;
+    unsigned gen;
+    unsigned home_gen;
+    size_t size;
+} RezCellMed;
 
-/* AUDIT-6 (SPEC .rza §2): память ячеек ASM-слоя нуле-инициализирована.
- * rez3.h не меняется (AGENTS.md) — обнуление на границе выдачи ячейки.
- * Прецедент: malloc-мусор в незаписанной ячейке cnt давал
- * недетерминированный smoke (bond, rides). */
+static void *rez_arena_alloc_z(RezArena *a, size_t size) {
+    size_t start;
+    if (!a->base) return 0;
+    if (a->used > (size_t)-1 - 15) return 0;
+    start = (a->used + 15) & ~(size_t)15;
+    if (start > a->cap || size > a->cap - start) return 0;
+    a->used = start + size;
+    return a->base + start;
+}
+
+static RezCavity *rez_enter_checked(RezCavity *parent, size_t cap) {
+    RezCavity *c;
+    if (rez_g_gen == 0) return 0;
+    c = (RezCavity*)malloc(sizeof(RezCavity));
+    if (!c) return 0;
+    c->arena.base = (char*)malloc(cap);
+    if (!c->arena.base) { free(c); return 0; }
+    c->parent = parent;
+    c->generation = rez_g_gen++;
+    c->alive = 1;
+    c->arena.used = 0;
+    c->arena.cap = cap;
+    return c;
+}
+
 static void *rez_cell_z(RezCavity *c, size_t size) {
-    void *p = rez_cell(c, size);
+    void *p;
+    if (!c || !c->alive) return 0;
+    p = rez_arena_alloc_z(&c->arena, size);
     if (p) memset(p, 0, size);
     return p;
 }
 
-/* Выдача прохода: поколение фиксируется на момент выдачи */
-static RezCellMed rez_issue_cell(RezCavity *owner, void *cell) {
+static RezCellMed rez_issue_cell(RezCavity *owner, RezCavity *home,
+                                 void *cell, size_t size) {
     RezCellMed m;
-    m.cell = cell; m.owner = owner; m.gen = owner->generation;
+    m.cell = cell;
+    m.owner = owner;
+    m.home = home;
+    m.gen = owner ? owner->generation : 0;
+    m.home_gen = home ? home->generation : 0;
+    m.size = size;
     return m;
 }
 
-/* Распечатка: ячейка, если владелец жив и поколение совпало; иначе 0 */
 static void *rez_deref_cell(RezCellMed m) {
-    return (m.cell && m.owner && m.owner->alive
-            && m.gen == m.owner->generation) ? m.cell : 0;
+    if (!m.cell || !m.owner || !m.home) return 0;
+    if (!m.owner->alive || !m.home->alive) return 0;
+    if (m.gen != m.owner->generation) return 0;
+    if (m.home_gen != m.home->generation) return 0;
+    return m.cell;
 }
 
-/* Re-enter рамки процедуры: старая арена освобождается, поколение новое.   */
-/* Статическая RezCavity нуле-инициализирована: первый вызов безопасен.     */
-static void rez_frame_reset(RezCavity *c, RezCavity *parent, size_t cap) {
+static int rez_cell_bounds(RezCellMed m, size_t offset, size_t width) {
+    return offset <= m.size && width <= m.size - offset;
+}
+
+/* Отказ сохраняет прежнюю арену и поколение. */
+static int rez_frame_reset(RezCavity *c, RezCavity *parent, size_t cap) {
+    char *base;
+    if (rez_g_gen == 0) return 0;
+    base = (char*)malloc(cap);
+    if (!base) return 0;
     if (c->arena.base) free(c->arena.base);
     c->parent = parent;
     c->generation = rez_g_gen++;
     c->alive = 1;
-    rez_arena_init(&c->arena, cap);
+    c->arena.base = base;
+    c->arena.used = 0;
+    c->arena.cap = cap;
+    return 1;
+}
+
+/* Мёртвая рамка используется повторно; живая не теряется при повторном enter. */
+static RezCavity *rez_cav_enter(RezCavity **slot, RezCavity *parent, size_t cap) {
+    RezCavity *c;
+    if (!slot) return 0;
+    c = *slot;
+    if (!c) {
+        c = rez_enter_checked(parent, cap);
+        if (c) *slot = c;
+        return c;
+    }
+    if (c->alive) return 0;
+    if (!rez_frame_reset(c, parent, cap)) return 0;
+    return c;
+}
+
+static uint64_t rez_i64_bits(int64_t value) {
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+static int64_t rez_i64_value(uint64_t bits) {
+    int64_t value;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+static int64_t rez_i64_add(int64_t a, int64_t b) {
+    return rez_i64_value(rez_i64_bits(a) + rez_i64_bits(b));
+}
+
+static int64_t rez_i64_sub(int64_t a, int64_t b) {
+    return rez_i64_value(rez_i64_bits(a) - rez_i64_bits(b));
+}
+
+static int64_t rez_i64_mul(int64_t a, int64_t b) {
+    return rez_i64_value(rez_i64_bits(a) * rez_i64_bits(b));
+}
+
+static int64_t rez_i64_div(int64_t a, int64_t b) { return a / b; }
+static int64_t rez_i64_mod(int64_t a, int64_t b) { return a % b; }
+
+/* Диапазон проверяет вызывающий код: 0 <= shift < 64. */
+static int64_t rez_i64_shl(int64_t value, int64_t shift) {
+    return rez_i64_value(rez_i64_bits(value) << (unsigned)shift);
+}
+
+static int64_t rez_i64_shr(int64_t value, int64_t shift) {
+    uint64_t bits = rez_i64_bits(value);
+    if (shift == 0) return value;
+    bits >>= (unsigned)shift;
+    if (value < 0) bits |= ~(uint64_t)0 << (64 - (unsigned)shift);
+    return rez_i64_value(bits);
 }
 
 #endif /* REZ3EXT_H */

@@ -1,0 +1,11 @@
+mov %r1, 3
+loop:
+cav f, field
+res x, f, 8
+med x_m, x, f
+load %r0, [x_m + 0]
+print %r0                  ; 0: каждый enter после decay даёт свежую нулевую арену
+decay f
+dec %r1
+brnz %r1, loop
+ret

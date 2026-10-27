@@ -1,0 +1,8 @@
+cav main, field
+res huge, main, 2147483632
+res x, field, 8
+med x_m, x, field
+casc c: x_m -> out[main]
+    load %r0, [x_m + 0]
+endc
+ret

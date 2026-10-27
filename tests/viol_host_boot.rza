@@ -1,6 +1,4 @@
-; STRUCT: имя proc коллидирует с host API lib-режима — rza_boot (SPEC 11).
-; Проверка всегда, не только при --emit-lib (review-audit: чекер принимал,
-; C не компилировался). То же правило у arena_alloc и deref_cell.
+; STRUCT: boot, arena_alloc, deref_cell зарезервированы host API (SPEC §11).
 proc boot:                 ; VIOLATION [STRUCT]: collides with host API
     ret
 ret

@@ -1,6 +1,4 @@
-; DUP: рамка с именем существующего proc — proc k уже создал рамку k,
-; --emit-lib эмитил бы два rza_frame_k (review-audit). Обратный порядок
-; (cav, потом proc) ловился и раньше (tests/viol_shadow.rza).
+; DUP: рамка и proc с одним именем дали бы один host-геттер.
 proc k:
     ret
 cav  k, field              ; VIOLATION [DUP]: frame shadows procedure

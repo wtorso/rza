@@ -1,0 +1,6 @@
+cav main, field
+res x, main, 8
+med x_m, x, main
+mov %r0, 42
+store [x_m + 1], %r0
+ret

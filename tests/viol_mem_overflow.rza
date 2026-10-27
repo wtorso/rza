@@ -1,7 +1,4 @@
-; STRUCT: смещение в [med + off] вне i32 — violation (та же норма, что у
-; imm у mov и SIZE у res, SPEC 9 «нет молчаливой неправильности»), а не
-; молчаливый wrap (review-audit: 99999999999 заворачивалось в 1215752191
-; и молча попадало в сгенерированный C).
+; STRUCT: смещение вне i32 отклоняется, не заворачивается (SPEC §9).
 res  acc, field, 16
 med  acc_m, acc, field
 load  %r0, [acc_m + 99999999999]   ; VIOLATION [STRUCT]: offset out of i32

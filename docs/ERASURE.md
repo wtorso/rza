@@ -1,69 +1,60 @@
-# Листинг стирания: боевой casc в bond (review P8)
+# Листинг стирания каскада
 
-Каскад `snap` — из боевого пути игры: `proc snap_stats` в
-`bond/rza/bond.rza` вызывается хостом в конце партии (smoke: строка
-`SNAP OK`) и атомарно снимает итоги из ячеек `cnt` и `phys`. Семантика
-каскада: оба медиатора живы — или не написано ни байта.
+Пример полностью находится в этом репозитории: `tests/cascade.rza`.
+Воспроизвести C99:
 
-## Исходник (.rza)
-
-```
-proc snap_stats:
-    casc snap: cnt_m, phys_m -> snapout[mission]
-        load  %r0, [phys_m + 0]      ; x
-        load  %r1, [phys_m + 8]      ; y
-        store [cnt_m + 96], %r0      ; cnt[12] = x
-        store [cnt_m + 104], %r1     ; cnt[13] = y
-        load  %r0, [cnt_m + 0]       ; energy
-        load  %r1, [cnt_m + 8]       ; kills
-        store [cnt_m + 112], %r0     ; cnt[14] = energy
-        store [cnt_m + 120], %r1     ; cnt[15] = kills
-    endc
-    ret
+```sh
+rez3asm tests/cascade.rza --emit-c -o build/cascade.c
 ```
 
-## Стирается в (реальный вывод `rez3asm --emit-lib`, bond build/bond_arch.c)
+## Исходник
+
+```asm
+casc addup: a_m,b_m -> total[main]
+    load  %r2, [a_m + 0]
+    load  %r3, [b_m + 0]
+    add   %r4, %r2, %r3
+    store [a_m + 8], %r4
+endc
+```
+
+Обе ячейки имеют размер 16 байт: обращения `+0` и `+8` шириной 8 байт
+проверяются компилятором и не требуют runtime bounds-check.
+
+## Актуальный вывод компилятора
 
 ```c
-/* casc snap (line 63) */
+/* casc addup (line 14) */
 {
-    void *p_cnt_m = rez_deref_cell(m_cnt_m);
-    void *p_phys_m = rez_deref_cell(m_phys_m);
-    if (!p_cnt_m) { fprintf(stderr, "ABORT line 63: cascade snap: dead mediator cnt_m\n"); goto casc_end_1; }
-    if (!p_phys_m) { fprintf(stderr, "ABORT line 63: cascade snap: dead mediator phys_m\n"); goto casc_end_1; }
-    c_P_snap_statsXsnapout = rez_cell_z(f_P_mission_beginXmission, 8);
-    if (!c_P_snap_statsXsnapout) { fprintf(stderr, "FAULT line 63: arena overflow (out snapout)\n"); exit(1); }
-    memcpy(&r0, (char*)p_phys_m + 0, 8);
-    memcpy(&r1, (char*)p_phys_m + 8, 8);
-    memcpy((char*)p_cnt_m + 96, &r0, 8);
-    memcpy((char*)p_cnt_m + 104, &r1, 8);
-    memcpy(&r0, (char*)p_cnt_m + 0, 8);
-    memcpy(&r1, (char*)p_cnt_m + 8, 8);
-    memcpy((char*)p_cnt_m + 112, &r0, 8);
-    memcpy((char*)p_cnt_m + 120, &r1, 8);
+    void *p_a_m = rez_deref_cell(m_a_m);
+    void *p_b_m = rez_deref_cell(m_b_m);
+    if (!p_a_m) { fprintf(stderr, "ABORT line 14: cascade addup: dead mediator a_m\n"); goto casc_end_1; }
+    if (!p_b_m) { fprintf(stderr, "ABORT line 14: cascade addup: dead mediator b_m\n"); goto casc_end_1; }
+    c_total = rez_cell_z(f_main, 8);
+    if (!c_total) { fprintf(stderr, "FAULT line 14: arena overflow (out total)\n"); exit(1); }
+    memcpy(&r2, (char*)p_a_m + 0, 8);
+    memcpy(&r3, (char*)p_b_m + 0, 8);
+    r4 = rez_i64_add(r2, r3);
+    memcpy((char*)p_a_m + 8, &r4, 8);
 casc_end_1:
     (void)0;
 }
 ```
 
-## Что видно
+Длинные строки диагностики оставлены как в реальном выводе. Сам компилятор
+ограничен 100 колонками; сгенерированный C остаётся читаемым листингом, а не
+исходником, который нужно поддерживать вручную.
 
-- **Проверка поколений — один раз на входе** [I3]: два `rez_deref_cell`
-  и два `goto casc_end_1` (атомарный abort: тело пропускается целиком).
-- **Тело стёрто до адресации без повторных проверок**: восемь обращений —
-  восемь `memcpy(..., 8)` без повторных проверок живости и без UB при
-  невыровненном смещении. Цена безопасности не зависит от длины тела.
-- **OUT** (`snapout`) — новая ячейка в рамке `mission` (AUDIT-1/#6);
-  нуле-инициализирована (`rez_cell_z`, AUDIT-6).
-- **C-имена склеены манглингом** (SPEC §9, «C-имена однозначны»): рамка
-  proc — `f_P_snap_stats`, сущность внутри proc —
-  `c_P_snap_statsXsnapout` / `f_P_mission_beginXmission`. Коллизия
-  склеенного имени с верхнеуровневым невозможна (имена языка строчные).
-- Сравнение с внекaskадным кодом: обычный `load` вне casc несёт свой
-  `rez_deref_cell` на КАЖДОЕ обращение (см. любой `phys_step` рядом в
-  том же файле) — каскад окупается с третьего обращения.
+## Что стирается
 
-Почему каскад только здесь, а не в горячем цикле врагов: casc — конструкт
-атомарности батча, а не перфреймового цикла; «abort ≠ пропустить кадр»
-(README.md, «Каскады в боевом коде»). Снимок итогов — батч по
-смыслу: частичный снимок недопустим.
+- Владельцы и поколения проверяются один раз через `rez_deref_cell` на входе.
+- Первый мёртвый медиатор ведёт на общий `casc_end_1`: тело не выполняется.
+- Постоянные смещения известны чекеру. Внутри остаются только `memcpy`.
+- `add` вызывает `rez_i64_add`: wrapping i64 определён и не зависит от
+  signed overflow в C.
+- OUT создаётся после успешной проверки входов, поэтому abort не оставляет
+  новую ячейку или частичный результат.
+
+Вычисляемое смещение нельзя проверить один раз на входе: перед таким доступом
+компилятор оставляет `rez_cell_bounds`. Стирание применяется только тогда,
+когда безопасность доказана статически.

@@ -1,7 +1,6 @@
 /* harness.c — GBA bare-metal стенд для сгенерированного .rza-кода.
- * Заглушки вместо libc: printf/fprintf пишут i64-аргументы в лог EWRAM,
- * exit — магический маркер конца + стоп; malloc — bump по EWRAM.
- * Читаем лог из sly (Memory viewer, EWRAM) — так проверяем тесты. */
+ * printf/fprintf пишут значения в лог EWRAM, exit оставляет маркер конца.
+ * malloc — bump по EWRAM; лог читается через просмотр памяти эмулятора. */
 #include <stdint.h>
 #include <stdarg.h>
 /* bare metal: libc нет — свои типы и memset/memcpy */
@@ -32,8 +31,14 @@ static void log_i64(int64_t v) {
 
 int printf(const char *fmt, ...) {
     va_list ap;
+    int64_t v;
     va_start(ap, fmt);
-    int64_t v = va_arg(ap, int64_t);   /* наши форматы: %lld / %s(ALIVE/DEAD) */
+    if (fmt[0] == '%' && fmt[1] == 's') {
+        const char *s = va_arg(ap, const char *);
+        v = s && s[0] == 'A' ? 1 : 0;   /* ALIVE = 1, DEAD = 0 */
+    } else {
+        v = va_arg(ap, int64_t);        /* %lld */
+    }
     va_end(ap);
     log_i64(v);
     return 0;
@@ -41,10 +46,12 @@ int printf(const char *fmt, ...) {
 
 int fprintf(void *stream, const char *fmt, ...) {
     va_list ap;
+    int line;
+    (void)stream;
     va_start(ap, fmt);
-    int64_t v = va_arg(ap, int64_t);
+    line = va_arg(ap, int);             /* FAULT/ABORT: первый аргумент = line */
     va_end(ap);
-    log_i64(v);
+    log_i64(line);
     return 0;
 }
 

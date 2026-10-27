@@ -34,14 +34,15 @@ run_lib NAME`). Механика:
 3. Негативный (`run_viol`, viol_*): файл должен отвергаться с exit 1 и
    именем правила в stderr; .expected не нужен.
 4. Runtime-fault (`run_dead`, как dead_link/ret_dead): транслируется, при
-   запуске exit≠0, stderr содержит `FAULT`.
+   запуске exit≠0, stderr содержит `FAULT`; второй аргумент задаёт точную
+   диагностику с номером строки и причиной.
 5. Lib-режим (`run_lib`): `tests/lib_NAME.rza` --emit-lib + линковка с
    `tests/lib_NAME.harness.c` (если нет — общий `tests/lib_harness.c`),
    запуск, сверка с .expected; `run_lib_compile` — только трансляция и
    компиляция, без запуска.
 6. Каждая ветка чекера обязана иметь тест. Новое правило = новый
    viol_-тест.
-7. Прогон: `cd rza && bash run_tests.sh` → 75/75 PASS, exit 0
+7. Прогон: `cd rza && bash run_tests.sh` → 95/95 PASS, exit 0
    (пересобирает rez3asm.exe, компилирует легальные с -std=c99 -pedantic
    -Wall -Wextra ноль warnings, сверяет stdout, отвергает незаконные).
 

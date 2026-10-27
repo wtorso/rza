@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 160 детерминированных случаев: допустимы только exit 0/1, без crash/timeout.
+# 161 детерминированный случай: допустимы только exit 0/1, без crash/timeout.
 import random
 import subprocess
 import sys
@@ -27,10 +27,13 @@ TOKENS = [
 ]
 
 
-def check(exe, path, failures):
+def check(exe, path, failures, emit=False):
+    command = [exe, str(path)]
+    if emit:
+        command += ["--emit-c", "-o", str(path.with_suffix(".c"))]
     try:
         result = subprocess.run(
-            [exe, str(path)], stdout=subprocess.DEVNULL,
+            command, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, timeout=3,
         )
     except subprocess.TimeoutExpired:
@@ -58,10 +61,15 @@ def main():
         for _ in range(80):
             path.write_text("\n".join(rng.choice(TOKENS) for _ in range(rng.randrange(1, 40))))
             check(EXE, path, failures)
+        deep = ["cav f0, field"]
+        deep.extend(f"cav f{i}, f{i - 1}" for i in range(1, 4000))
+        deep.extend(["decay f0", "ret"])
+        path.write_text("\n".join(deep) + "\n")
+        check(EXE, path, failures, emit=True)
     if failures:
         print("\n".join(failures[:5]), file=sys.stderr)
         return 1
-    print("FUZZ OK (160 cases)")
+    print("FUZZ OK (161 cases)")
     return 0
 
 

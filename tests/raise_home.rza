@@ -1,0 +1,13 @@
+proc work:
+    cav child, work
+    res x, child, 8
+    raise x, field
+    med x_m, x, field
+    mov %r0, 42
+    store [x_m + 0], %r0
+    decay child
+    load %r1, [x_m + 0]
+    print %r1
+    ret
+call work
+ret

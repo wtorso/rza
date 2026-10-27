@@ -1,0 +1,41 @@
+mov %r0, 1
+shl %r0, %r0, 63            ; INT64_MIN
+mov %r1, 1
+shr %r2, %r0, 63
+shr %r3, %r1, 63
+sub %r3, %r2, %r3
+brnz %r3, min_diff
+sub %r2, %r0, %r1
+shr %r2, %r2, 63
+jmp min_cmp
+min_diff:
+min_cmp:
+brnz %r2, min_yes
+mov %r4, 0
+jmp min_done
+min_yes:
+mov %r4, 1
+min_done:
+print %r4                    ; 1: INT64_MIN < 1, знаки различаются
+
+mov %r0, -1
+mov %r1, 1
+shl %r1, %r1, 63
+dec %r1                      ; INT64_MAX
+shr %r2, %r0, 63
+shr %r3, %r1, 63
+sub %r3, %r2, %r3
+brnz %r3, max_diff
+sub %r2, %r0, %r1
+shr %r2, %r2, 63
+jmp max_cmp
+max_diff:
+max_cmp:
+brnz %r2, max_yes
+mov %r4, 0
+jmp max_done
+max_yes:
+mov %r4, 1
+max_done:
+print %r4                    ; 1: -1 < INT64_MAX, значит INT64_MAX > -1
+ret

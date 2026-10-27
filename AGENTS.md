@@ -2,7 +2,7 @@
 
 ## Проверка
 
-`bash run_tests.sh` → 75/75 PASS, exit 0. Включает LSP smoke и fuzz.
+`bash run_tests.sh` → 95/95 PASS, exit 0. Включает C89 reference, LSP smoke и fuzz.
 
 ## Стек
 
@@ -29,5 +29,7 @@
 
 ## Границы модели
 
-raise — static-only. Load по статически мёртвому медиатору — runtime-fault.
-acasc синхронен. OUT каскада = 8 байт. div/mod на нуле — UB. См. `SPEC.md` §9.
+raise — static-only; домашняя рамка ограничивает жизнь памяти.
+Load по статически мёртвому медиатору — runtime-fault. Доступ вне ячейки —
+static violation для константы и runtime-fault для регистра. acasc синхронен.
+OUT каскада = 8 байт. Опасные div/mod и сдвиги — runtime-fault. См. `SPEC.md` §9.

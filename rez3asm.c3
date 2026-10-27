@@ -1,22 +1,8 @@
-// ============================================================================
-// rez3asm.c3 — транспайлер REZ3-ASM (.rza) -> C99 (rez3.h + rez3ext.h).
-// Порт rez3asm.py (Python 3) на C3 0.8.5, функциональный паритет 1:1.
-//
-// CLI:
-//   rez3asm file.rza                    только статическая проверка
-//   rez3asm file.rza --emit-c           C99 (программа с main) на stdout
-//   rez3asm file.rza --emit-lib         C99-библиотека без main: proc →
-//                                       rza_NAME, верхний уровень → rza_boot
-//   rez3asm file.rza --emit-c -o f.c    C99 в файл
-//   rez3asm --lsp                       LSP-сервер на stdio (lsp_server.c3)
-//
-// Один проход: разбор + I1..I4, DECAY, DUP, STRUCT, SCOPE. Все нарушения — в
-// stderr: "VIOLATION line N [RULE]: msg"; exit 1, если есть хотя бы одно
-// (код тогда не генерируется). Метки/переходы добираются вторым проходом
-// по уже разобранным инструкциям (проверка инвариантов однопроходная).
-// Нормативно (AUDIT-1/#3): load/store по статически мёртвому медиатору —
-// не violation, а runtime-fault в сгенерированном коде.
-// ============================================================================
+// REZ3-ASM (.rza) -> C99. C3 0.8.5, refs/rez3.h + refs/rez3ext.h.
+// CLI: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]
+//      rez3asm --lsp
+// Инварианты проверяются за один проход; метки разрешаются вторым.
+// Мёртвый медиатор при load/store — runtime FAULT (SPEC §3).
 module rez3asm;
 
 import std::io;
@@ -29,6 +15,9 @@ import std::collections::map;
 struct Frame {
     String name;
     int    parent;        // индекс в frames, -1 = нет
+    int    first_child;
+    int    next_sibling;
+    int    line;
     bool   alive;
     uint   gen;
     String cname;
@@ -42,10 +31,11 @@ struct Frame {
 
 struct Cell {
     String name;
-    int    owner;         // индекс Frame
+    int    owner;         // текущий владелец после raise
+    int    home;          // рамка, которой принадлежит физическая память
+    int    size;
     String cname;
     int    scope;
-    bool   is_out;
     List{int} med_idxs;
 }
 
@@ -181,7 +171,8 @@ fn void reset_state() {
     g_lib_mode = false;
     blocks.push({ .kind = 0, .aux = 0 });   // block 0 = top
     // field — frames[0], бессмертен
-    frames.push({ .name = "field", .parent = -1, .alive = true,
+    frames.push({ .name = "field", .parent = -1, .first_child = -1,
+                  .next_sibling = -1, .alive = true,
                   .gen = nextgen(), .cname = "f_field", .scope = 0,
                   .cap = 64, .is_field = true });
     frame_map.set("field", 0);
@@ -196,10 +187,14 @@ fn String cat(String[] parts) {
     return d.copy_str(tmem);
 }
 
+const int LSP_DIAG_MAX = 1000;
+
 fn void viol(int line, String rule, String msg) {
     violations++;
     if (g_lsp_mode) {
-        lsp_diags.push({ .line = line, .rule = rule, .msg = msg });
+        if (lsp_diags.len() < LSP_DIAG_MAX) {
+            lsp_diags.push({ .line = line, .rule = rule, .msg = msg });
+        }
         return;
     }
     io::eprintfn("VIOLATION line %d [%s]: %s", line, rule, msg);
@@ -317,10 +312,7 @@ fn int find_proc(String name) {
     return proc_map.get(name) ?? -1;
 }
 
-// review-audit: host API lib-режима (SPEC 11) эмитит rza_<proc>, rza_boot,
-// rza_arena_alloc, rza_deref_cell и геттеры rza_frame_<рамка> /
-// rza_med_<медиатор> для КАЖДОЙ сущности. Проверки — всегда, не только
-// при --emit-lib: ошибка должна ловиться чекером, а не компилятором C.
+// Имена host API уникальны и проверяются до генерации C (SPEC §11).
 fn bool host_name_bad(String name, int line) {
     if (name == "boot" || name == "arena_alloc" || name == "deref_cell" ||
         name.starts_with("frame_") || name.starts_with("med_")) {
@@ -370,11 +362,23 @@ fn bool med_alive(int mi) {
     return frames[fr].alive && meds[mi].gen == frames[fr].gen;
 }
 
+fn int subtree_next(int root, int cur) {
+    assert(root >= 0 && root < (int)frames.len());
+    assert(cur >= root && cur < (int)frames.len());
+    if (frames[cur].first_child >= 0) return frames[cur].first_child;
+    while (cur != root && frames[cur].next_sibling < 0) {
+        cur = frames[cur].parent;
+    }
+    if (cur == root) return -1;
+    return frames[cur].next_sibling;
+}
+
 fn void kill(int f) {
-    frames[f].alive = false;
-    frames[f].gen = nextgen();
-    for (sz i = 0; i < frames.len(); i++) {
-        if (frames[i].alive && frames[i].parent == f) kill((int)i);
+    int cur = f;
+    while (cur >= 0) {
+        frames[cur].alive = false;
+        frames[cur].gen = nextgen();
+        cur = subtree_next(f, cur);
     }
 }
 
@@ -413,14 +417,19 @@ fn void add_label(String name, int line) {
 }
 
 // --- операции владения -------------------------------------------------------------
-// C-имя сущности. Склейка scope'а — заглавными разделителями («P_» + proc +
-// «X» + имя): имена языка только строчные, поэтому коллизия склеенного имени
-// с верхнеуровневым невозможна (review #3: «cav proc_k» vs «proc k»,
-// «cav k_a» vs «cav a» внутри «proc k» — раньше молча сливались).
+// Заглавные разделители не встречаются в именах языка и не дают коллизий.
 fn String cname_for(String prefix, String name) {
     return cur_proc > 0 ? cat({prefix, "P_", procs[(sz)(cur_proc - 1)].name,
                                "X", name})
                         : cat({prefix, name});
+}
+
+fn void link_frame(int frame, int parent) {
+    assert(frame > 0 && frame < (int)frames.len());
+    assert(parent >= 0 && parent < frame);
+    assert(frames[frame].parent == parent);
+    frames[frame].next_sibling = frames[parent].first_child;
+    frames[parent].first_child = frame;
 }
 
 fn void op_cav(String rest, int line) {
@@ -435,18 +444,21 @@ fn void op_cav(String rest, int line) {
         viol(line, "I1", cat({"enter under dead frame ", parent})); return;
     }
     if (!check_dup(name, line, 0)) return;
-    // review-audit: proc уже создал рамку со своим именем (scope > 0,
-    // check_dup её не видит) — два rza_frame_<name> в lib-режиме
+    // Рамка proc живёт в другом scope, но делит host API с новой рамкой.
     if (find_proc(name) >= 0) {
         viol(line, "DUP", cat({"frame shadows procedure ", name}));
         return;
     }
-    // AUDIT-3: рамки — общая хроника (scope 0), даже когда созданы в proc
-    Frame f = { .name = name, .parent = pf, .alive = true, .gen = nextgen(),
-                .cname = cname_for("f_", name), .scope = 0, .cap = 64 };
+    // Рамки глобальны, включая созданные в proc.
+    Frame f = { .name = name, .parent = pf, .first_child = -1,
+                .next_sibling = -1, .line = line, .alive = true,
+                .gen = nextgen(), .cname = cname_for("f_", name),
+                .scope = 0, .cap = 64 };
     frames.push(f);
-    frame_map.set(name, (int)frames.len() - 1);
-    add_instr({ .op = Op.CAV, .line = line, .x = (int)frames.len() - 1, .y = pf });
+    int fi = (int)frames.len() - 1;
+    link_frame(fi, pf);
+    frame_map.set(name, fi);
+    add_instr({ .op = Op.CAV, .line = line, .x = fi, .y = pf });
 }
 
 fn void op_res(String rest, int line) {
@@ -456,8 +468,7 @@ fn void op_res(String rest, int line) {
     String fname = buf[1];
     String ssize = buf[2];
     if (!check_name(name, line)) return;
-    // размер — как imm у mov (AUDIT-4): не i32 или не число — violation,
-    // а не молчаливый 0 (review #6: «нет молчаливой неправильности»)
+    // Неверный размер — violation, не молчаливый 0.
     int size = -1;
     if (is_int(ssize)) {
         int? sv = ssize.to_int();
@@ -479,14 +490,23 @@ fn void op_res(String rest, int line) {
     if (!frames[f].alive) {
         viol(line, "I1", cat({"cell in dead frame ", name, " ", fname})); return;
     }
+    if (size > 2147483632) {
+        viol(line, "STRUCT", "aligned cell size out of i32 range");
+        return;
+    }
+    int aligned = (size + 15) & ~15;
+    if (frames[f].res_bytes > 2147483647 - aligned) {
+        viol(line, "STRUCT", cat({"frame capacity out of i32 range: ", fname}));
+        return;
+    }
     if (!check_dup(name, line, 0)) return;
     // AUDIT-3: ячейки — общая хроника (scope 0)
-    Cell cc = { .name = name, .owner = f, .cname = cname_for("c_", name),
-                .scope = 0 };
+    Cell cc = { .name = name, .owner = f, .home = f, .size = size,
+                .cname = cname_for("c_", name), .scope = 0 };
     cc.med_idxs.init(tmem);
     cells.push(cc);
     cell_map.set(name, (int)cells.len() - 1);
-    frames[f].res_bytes += (size + 15) & ~15;
+    frames[f].res_bytes += aligned;
     add_instr({ .op = Op.RES, .line = line, .x = (int)cells.len() - 1,
                 .y = f, .a = size });
 }
@@ -514,8 +534,7 @@ fn void op_med(String rest, int line) {
         return;
     }
     if (!check_dup(name, line, cur_proc)) return;
-    // review-audit: lib-режим экспортирует геттер rza_med_<name> для
-    // КАЖДОГО медиатора — имя уникально глобально, не только в scope
+    // Host API экспортирует каждый медиатор: имя глобально уникально.
     if (med_map.has_key(name)) {
         viol(line, "DUP", cat({"duplicate mediator ", name,
              " (host API exports every mediator, SPEC 11)"}));
@@ -552,7 +571,7 @@ fn void op_raise(String rest, int line) {
                               frames[cells[ci].owner].name}));
         return;
     }
-    cells[ci].owner = f;   // опора переприбита; старые медиаторы мертвы (gen)
+    cells[ci].owner = f;   // Новые медиаторы используют нового владельца.
     add_instr({ .op = Op.RAISE, .line = line, .x = ci, .y = f });
 }
 
@@ -605,8 +624,7 @@ fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg) {
             if (!is_name(*mname)) {
                 bad = true;
             } else if (is_int(os)) {
-                // review-audit: та же норма, что у imm у mov — вне i32
-                // violation, а не молчаливый wrap
+                // Смещение вне i32 — violation, не молчаливый wrap.
                 int? v = os.to_int();
                 if (catch v) {
                     viol(line, "STRUCT",
@@ -638,6 +656,12 @@ fn int resolve_mem_med(String tok, int line, String opname, int* off, int* off_r
     if (mi == -2) { scope_viol(line, "mediator", mname); return -1; }
     if (mi < 0) {
         viol(line, "STRUCT", cat({opname, " via unknown mediator ", mname}));
+        return -1;
+    }
+    int width = opname == "loadb" ? 1 : 8;
+    int size = cells[meds[mi].cell].size;
+    if (*off_reg < 0 && (*off < 0 || *off > size || width > size - *off)) {
+        viol(line, "STRUCT", cat({opname, " out of bounds via ", mname}));
         return -1;
     }
     if (cur_casc >= 0) {
@@ -784,12 +808,15 @@ fn void open_proc(String name, int line) {
         return;
     }
     blocks.push({ .kind = 1, .aux = (int)procs.len() });
-    Frame f = { .name = name, .parent = 0, .alive = true, .gen = nextgen(),
-                .cname = cat({"f_P_", name}), .scope = (int)procs.len() + 1,
-                .cap = 64, .is_procframe = true };
+    Frame f = { .name = name, .parent = 0, .first_child = -1,
+                .next_sibling = -1, .line = line, .alive = true,
+                .gen = nextgen(), .cname = cat({"f_P_", name}),
+                .scope = (int)procs.len() + 1, .cap = 64, .is_procframe = true };
     frames.push(f);
-    frame_map.set(name, (int)frames.len() - 1);
-    Proc p = { .name = name, .line = line, .frame = (int)frames.len() - 1,
+    int fi = (int)frames.len() - 1;
+    link_frame(fi, 0);
+    frame_map.set(name, fi);
+    Proc p = { .name = name, .line = line, .frame = fi,
                .block = (int)blocks.len() - 1, .cname = cat({"p_", name}) };
     procs.push(p);
     proc_map.set(name, (int)procs.len() - 1);
@@ -799,10 +826,7 @@ fn void open_proc(String name, int line) {
 fn void do_ret(int line) {
     if (cur_proc > 0) {
         add_instr({ .op = Op.RET, .line = line });
-        // ret разрушает рамку процедуры (runtime: rez_decay в emit_proc) —
-        // чекер обязан видеть её и всё поддерево мёртвыми, иначе медиаторы
-        // на её ячейки проходят I3 и абортируют каскады в runtime
-        // (AUDIT-7, review #7)
+        // Чекер и runtime разрушают рамку proc и её поддерево (AUDIT-7).
         kill(procs[(sz)(cur_proc - 1)].frame);
         cur_proc = 0;
         return;
@@ -811,37 +835,94 @@ fn void do_ret(int line) {
     if (top_ret == 0) top_ret = line;
 }
 
-fn void open_casc(String rest, int line, bool is_async) {
-    // rest: "NAME: M1,M2 -> OUT[CAV]"  (acasc: без [CAV])
+fn bool parse_casc_header(String rest, int line, bool is_async,
+                          String* name, String* medstr,
+                          String* outname, String* outfname) {
     sz? ci = rest.index_of_char(':');
-    if (catch ci) { viol(line, "STRUCT", "malformed cascade header"); return; }
-    String name = rest[:ci].trim();
+    if (catch ci) { viol(line, "STRUCT", "malformed cascade header"); return false; }
+    *name = rest[:ci].trim();
     String r2 = rest[ci + 1..];
     sz? ai = r2.index_of("->");
-    if (catch ai) { viol(line, "STRUCT", "malformed cascade header"); return; }
-    String medstr = r2[:ai].trim();
+    if (catch ai) { viol(line, "STRUCT", "malformed cascade header"); return false; }
+    *medstr = r2[:ai].trim();
     String outstr = r2[ai + 2..].trim();
-    if (!check_name(name, line)) return;
-    String outname = outstr;
-    String outfname = "";
+    *outname = outstr;
+    *outfname = "";
     sz? bi = outstr.index_of_char('[');
     if (try bi) {
         sz? ei = outstr.index_of_char(']');
         if (catch ei) {
-            viol(line, "STRUCT", "malformed cascade header"); return;
+            viol(line, "STRUCT", "malformed cascade header");
+            return false;
         }
         if (ei <= bi + 1 || ei != outstr.len - 1) {
-            viol(line, "STRUCT", "malformed cascade header"); return;
+            viol(line, "STRUCT", "malformed cascade header");
+            return false;
         }
-        outname = outstr[:bi].trim();
-        outfname = outstr[bi + 1..ei - 1].trim();
+        *outname = outstr[:bi].trim();
+        *outfname = outstr[bi + 1..ei - 1].trim();
     }
     if (is_async && outfname.len > 0) {
         viol(line, "STRUCT", "acasc out frame is implicit (always field)");
+        return false;
     }
-    // входные медиаторы
-    List{int} med_idxs; med_idxs.init(mem);
-    List{String} med_names; med_names.init(mem);
+    return true;
+}
+
+fn void add_casc_input(String tok, int line, String name, bool is_async,
+                       List{int}* med_idxs, List{String}* med_names) {
+    if (tok.len == 0 || !check_name(tok, line)) return;
+    int mdi = find_med(tok, cur_proc);
+    if (mdi == -2) { scope_viol(line, "mediator", tok); return; }
+    if (mdi < 0) {
+        viol(line, "I3", cat({"cascade uses unknown link ", name, " ", tok}));
+        return;
+    }
+    foreach (prev : *med_names) {
+        if (prev == meds[mdi].name) {
+            viol(line, "DUP", cat({"cascade ", name, ": duplicate input link ", tok}));
+        }
+    }
+    med_idxs.push(mdi);
+    med_names.push(meds[mdi].name);
+    if (is_async) {
+        if (!frames[cells[meds[mdi].cell].owner].is_field) {
+            viol(line, "I3", cat({"async cascade holds non-root link ", name, " ", tok}));
+        }
+    } else if (!med_alive(mdi)) {
+        viol(line, "I3", cat({"sync cascade aborted: dead link on entry ",
+                              name, " ", tok}));
+    }
+}
+
+fn int open_casc_out(String outname, String outfname, bool is_async,
+                     int line, int* out_frame) {
+    if (!check_name(outname, line) || !check_dup(outname, line, 0)) return -1;
+    *out_frame = is_async ? 0 : find_frame(outfname, cur_proc);
+    if (*out_frame < 0) {
+        viol(line, "I3", cat({"out cell in unknown frame ", outname, " ", outfname}));
+        return -1;
+    }
+    if (!frames[*out_frame].alive) {
+        viol(line, "I1", cat({"cell in dead frame ", outname, " ",
+                              frames[*out_frame].name}));
+    }
+    Cell oc = { .name = outname, .owner = *out_frame, .home = *out_frame,
+                .size = 8, .cname = cname_for("c_", outname), .scope = 0 };
+    oc.med_idxs.init(tmem);
+    cells.push(oc);
+    cell_map.set(outname, (int)cells.len() - 1);
+    frames[*out_frame].outs += 1;
+    return (int)cells.len() - 1;
+}
+
+fn void open_casc(String rest, int line, bool is_async) {
+    String name, medstr, outname, outfname;
+    if (!parse_casc_header(rest, line, is_async, &name, &medstr,
+                           &outname, &outfname)) return;
+    if (!check_name(name, line)) return;
+    List{int} med_idxs; med_idxs.init(tmem);
+    List{String} med_names; med_names.init(tmem);
     if (medstr.len == 0) {
         viol(line, "STRUCT", cat({"cascade ", name, " without input mediators"}));
     }
@@ -851,64 +932,10 @@ fn void open_casc(String rest, int line, bool is_async) {
         String tok;
         if (catch mi2) { tok = ms.trim(); ms = ""; }
         else { tok = ms[:mi2].trim(); ms = ms[mi2 + 1..]; }
-        if (tok.len == 0) continue;
-        if (!check_name(tok, line)) continue;
-        int mdi = find_med(tok, cur_proc);
-        if (mdi == -2) { scope_viol(line, "mediator", tok); continue; }
-        if (mdi < 0) {
-            viol(line, "I3", cat({"cascade uses unknown link ", name, " ", tok}));
-            continue;
-        }
-        foreach (prev : med_names) {
-            if (prev == meds[mdi].name) {
-                viol(line, "DUP", cat({"cascade ", name,
-                     ": duplicate input link ", tok}));
-            }
-        }
-        med_idxs.push(mdi);
-        med_names.push(meds[mdi].name);
-        if (is_async) {
-            if (!frames[cells[meds[mdi].cell].owner].is_field) {
-                viol(line, "I3", cat({"async cascade holds non-root link ",
-                                      name, " ", tok}));
-            }
-        } else {
-            if (!med_alive(mdi)) {
-                viol(line, "I3",
-                     cat({"sync cascade aborted: dead link on entry ",
-                          name, " ", tok}));
-            }
-        }
+        add_casc_input(tok, line, name, is_async, &med_idxs, &med_names);
     }
-    // OUT — всегда НОВАЯ ячейка (AUDIT-1/#6); для acasc — в field (#7)
-    int out_cell = -1;
     int out_frame = -1;
-    if (check_name(outname, line) && check_dup(outname, line, 0)) {
-        if (is_async) {
-            out_frame = 0;
-        } else {
-            int of = find_frame(outfname, cur_proc);
-            if (of < 0) {
-                viol(line, "I3", cat({"out cell in unknown frame ",
-                                      outname, " ", outfname}));
-            }
-            else { out_frame = of; }
-        }
-        if (out_frame >= 0) {
-            if (!frames[out_frame].alive) {
-                viol(line, "I1", cat({"cell in dead frame ", outname, " ",
-                                      frames[out_frame].name}));
-            }
-            Cell oc = { .name = outname, .owner = out_frame,
-                        .cname = cname_for("c_", outname),
-                        .scope = 0, .is_out = true };
-            oc.med_idxs.init(tmem);
-            cells.push(oc);
-            cell_map.set(outname, (int)cells.len() - 1);
-            out_cell = (int)cells.len() - 1;
-            frames[out_frame].outs += 1;
-        }
-    }
+    int out_cell = open_casc_out(outname, outfname, is_async, line, &out_frame);
     casc_seq++;
     blocks.push({ .kind = 2, .aux = casc_seq });
     Cascade ca = { .name = name, .line = line, .seq = casc_seq,
@@ -917,10 +944,9 @@ fn void open_casc(String rest, int line, bool is_async) {
                    .out_cell = out_cell, .out_frame = out_frame };
     cascades.push(ca);
     cur_casc = (int)cascades.len() - 1;
-    // заголовок принадлежит объемлющему блоку
     Instr ins = { .op = Op.CASC, .line = line, .a = cur_casc };
     ins.func = cur_func();
-    ins.block = (cur_proc > 0) ? procs[(sz)(cur_proc - 1)].block : 0;
+    ins.block = cur_proc > 0 ? procs[(sz)(cur_proc - 1)].block : 0;
     instrs.push(ins);
 }
 
@@ -988,6 +1014,22 @@ fn void parse_instr(String line, int n, bool in_casc) {
 }
 
 // --- главный цикл разбора -----------------------------------------------------------------
+fn void open_proc_line(String line, int n, int sp) {
+    if (cur_proc > 0) {
+        viol(n, "STRUCT", cat({"nested proc ", line[sp..].trim()}));
+        return;
+    }
+    String pnm = line[sp..].trim();
+    if (pnm.len > 1 && pnm[pnm.len - 1] == ':') {
+        pnm = pnm[:pnm.len - 1].trim();
+    }
+    if (!is_name(pnm)) {
+        viol(n, "STRUCT", "malformed proc header");
+        return;
+    }
+    open_proc(pnm, n);
+}
+
 fn void run(String text) {
     String[] lines = text.split(tmem, "\n");
     for (sz i = 0; i < lines.len; i++) {
@@ -1024,19 +1066,7 @@ fn void run(String text) {
         }
         String w0 = line[:sp];
         if (w0 == "proc") {
-            if (cur_proc > 0) {
-                viol(n, "STRUCT", cat({"nested proc ", line[sp..].trim()}));
-                continue;
-            }
-            String pnm = line[sp..].trim();
-            if (pnm.len > 1 && pnm[pnm.len - 1] == ':') {
-                pnm = pnm[:pnm.len - 1].trim();
-            }
-            if (!is_name(pnm)) {
-                viol(n, "STRUCT", "malformed proc header");
-                continue;
-            }
-            open_proc(pnm, n);
+            open_proc_line(line, n, (int)sp);
             continue;
         }
         if (w0 == "casc" || w0 == "acasc") {
@@ -1081,8 +1111,12 @@ fn void check_jumps() {
 
 fn void compute_caps() {
     for (sz i = 0; i < frames.len(); i++) {
-        int total = frames[i].res_bytes + 16 * frames[i].outs;
-        frames[i].cap = total > 64 ? total : 64;
+        long total = frames[i].res_bytes + (long)frames[i].outs * 16;
+        if (total > 2147483647) {
+            viol(frames[i].line, "STRUCT", "frame capacity out of i32 range");
+            total = 64;
+        }
+        frames[i].cap = total > 64 ? (int)total : 64;
     }
 }
 
@@ -1170,33 +1204,216 @@ fn void emit_writeonly_silence(DString* out, int ind, uint rd, uint wr) {
     }
 }
 
-// верхнеуровневые медиаторы на ячейку cell инициализируются сразу после
-// её создания (AUDIT-4): ячейка может создаваться внутри proc (lib), и
-// тогда текстовая позиция med — мимо. Общий случай — res и OUT-ячейка
-// каскада (review #2: для OUT подъёма не было — медиатор оставался
-// нулевым, runtime FAULT)
+// Глобальный медиатор инициализируется при создании res или OUT (AUDIT-4).
 fn void emit_hoisted_meds(DString* out, int ind, int cell, int owner) {
     foreach (mi : cells[cell].med_idxs) {
         if (meds[mi].scope != 0) continue;
         pad(out, ind);
-        out.appendf("%s = rez_issue_cell(%s, %s);\n",
-                    meds[mi].cname, fexpr(owner), cells[cell].cname);
+        out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
+                    meds[mi].cname, fexpr(owner), fexpr(cells[cell].home),
+                    cells[cell].cname, cells[cell].size);
     }
 }
 
-// decay убивает поддерево рекурсивно (модель §0) — как чекер kill();
-// раньше runtime гасил только саму рамку (review #1). rez_decay
-// идемпотентен (после первого вызова arena.base = 0, free(0) безвреден);
-// guard — потомок мог не создаться в этом проходе (proc не вызывался,
-// переход через cav)
+// Потомок может не создаться в этом проходе: guard обязателен.
 fn void emit_decay_subtree(DString* out, int ind, int f) {
-    for (sz i = 0; i < frames.len(); i++) {
-        if (frames[i].is_field || frames[i].is_procframe) continue;
-        if (!is_ancestor((int)i, f, true)) continue;
-        pad(out, ind);
-        out.appendf("if (%s) rez_decay(%s);\n",
-                    frames[i].cname, frames[i].cname);
+    int cur = subtree_next(f, f);
+    while (cur >= 0) {
+        if (!frames[cur].is_field && !frames[cur].is_procframe) {
+            pad(out, ind);
+            out.appendf("if (%s) rez_decay(%s);\n",
+                        frames[cur].cname, frames[cur].cname);
+        }
+        cur = subtree_next(f, cur);
     }
+}
+
+fn void emit_bounds_guard(DString* out, int ind, Instr* ins) {
+    if (ins.c < 0) return;
+    int width = ins.op == Op.LOAD && ins.flag ? 1 : 8;
+    pad(out, ind);
+    out.appendf("if (!rez_cell_bounds(%s, r%d, %d)) { "
+                "fprintf(stderr, \"FAULT line %d: out of bounds %s\\n\"); "
+                "exit(1); }\n",
+                meds[ins.x].cname, ins.c, width, ins.line, meds[ins.x].name);
+}
+
+fn void emit_load(DString* out, int ind, Instr* ins, bool in_casc) {
+    DString oex = dstring::new(mem);
+    defer oex.free();
+    if (ins.c >= 0) { oex.appendf("r%d", ins.c); }
+    else { oex.appendf("%d", ins.b); }
+    String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";
+    if (!in_casc) {
+        pad(out, ind);
+        out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
+        pad(out, ind);
+        out.appendf("  if (!p) { fprintf(stderr, \"FAULT line %d: "
+                    "dead mediator %s\\n\"); exit(1); }\n",
+                    ins.line, meds[ins.x].name);
+        ind++;
+    }
+    emit_bounds_guard(out, ind, ins);
+    pad(out, ind);
+    if (ins.flag) {
+        out.appendf("r%d = (int64_t)*(unsigned char*)((char*)%s + %s);",
+                    ins.a, ptr, oex.str_view());
+    } else {
+        out.appendf("memcpy(&r%d, (char*)%s + %s, 8);",
+                    ins.a, ptr, oex.str_view());
+    }
+    out.append_string(in_casc ? "\n" : " }\n");
+}
+
+fn void emit_store(DString* out, int ind, Instr* ins, bool in_casc) {
+    DString sex = dstring::new(mem);
+    defer sex.free();
+    if (ins.c >= 0) { sex.appendf("r%d", ins.c); }
+    else { sex.appendf("%d", ins.b); }
+    String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";
+    if (!in_casc) {
+        pad(out, ind);
+        out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
+        pad(out, ind);
+        out.appendf("  if (!p) { fprintf(stderr, \"FAULT line %d: "
+                    "dead mediator %s\\n\"); exit(1); }\n",
+                    ins.line, meds[ins.x].name);
+        ind++;
+    }
+    emit_bounds_guard(out, ind, ins);
+    pad(out, ind);
+    out.appendf("memcpy((char*)%s + %s, &r%d, 8);",
+                ptr, sex.str_view(), ins.a);
+    out.append_string(in_casc ? "\n" : " }\n");
+}
+
+fn void emit_alu3(DString* out, int ind, Instr* ins) {
+    DString rhs = dstring::new(mem);
+    defer rhs.free();
+    if (ins.flag) { rhs.appendf("%d", ins.c); }
+    else { rhs.appendf("r%d", ins.c); }
+    bool division = ins.s2 == "/" || ins.s2 == "%";
+    bool shift = ins.s2 == "<<" || ins.s2 == ">>";
+    if (division) {
+        pad(out, ind);
+        out.appendf("if (%s == 0 || (r%d == INT64_MIN && %s == -1)) { "
+                    "fprintf(stderr, \"FAULT line %d: division\\n\"); exit(1); }\n",
+                    rhs.str_view(), ins.b, rhs.str_view(), ins.line);
+    }
+    if (shift) {
+        pad(out, ind);
+        out.appendf("if (%s < 0 || %s >= 64) { "
+                    "fprintf(stderr, \"FAULT line %d: shift\\n\"); exit(1); }\n",
+                    rhs.str_view(), rhs.str_view(), ins.line);
+    }
+    String helper = "";
+    if (ins.s2 == "+") helper = "rez_i64_add";
+    if (ins.s2 == "-") helper = "rez_i64_sub";
+    if (ins.s2 == "*") helper = "rez_i64_mul";
+    if (ins.s2 == "/") helper = "rez_i64_div";
+    if (ins.s2 == "%") helper = "rez_i64_mod";
+    if (ins.s2 == "<<") helper = "rez_i64_shl";
+    if (ins.s2 == ">>") helper = "rez_i64_shr";
+    pad(out, ind);
+    if (helper.len > 0) {
+        out.appendf("r%d = %s(r%d, %s);\n",
+                    ins.a, helper, ins.b, rhs.str_view());
+    } else {
+        out.appendf("r%d = r%d %s %s;\n", ins.a, ins.b, ins.s2, rhs.str_view());
+    }
+}
+
+fn void emit_label(DString* out, int ind, Instr* ins) {
+    int? li = label_map.get(label_key(ins.block, ins.s1));
+    if (catch li) return;
+    if (!labels[li].referenced) return;
+    pad(out, ind);
+    out.appendf("%s:\n", label_cname(ins.block, ins.s1));
+}
+
+fn void emit_own(DString* out, int ind, Instr* ins) {
+    switch (ins.op) {
+        case Op.CAV:
+            pad(out, ind);
+            out.appendf("%s = rez_cav_enter(&%s, %s, %d);\n",
+                        frames[ins.x].cname, frames[ins.x].cname,
+                        fexpr(ins.y), frames[ins.x].cap);
+            pad(out, ind);
+            out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
+                        "frame allocation %s\\n\"); exit(1); }\n",
+                        frames[ins.x].cname, ins.line, frames[ins.x].name);
+        case Op.RES:
+            pad(out, ind);
+            out.appendf("%s = rez_cell_z(%s, %d);\n",
+                        cells[ins.x].cname, fexpr(ins.y), ins.a);
+            pad(out, ind);
+            out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
+                        "arena overflow (cell %s)\\n\"); exit(1); }\n",
+                        cells[ins.x].cname, ins.line, cells[ins.x].name);
+            emit_hoisted_meds(out, ind, ins.x, ins.y);
+        case Op.MED:
+            if (ins.func == 0) break;
+            pad(out, ind);
+            int ci = meds[ins.x].cell;
+            out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
+                        meds[ins.x].cname, fexpr(cells[ci].owner),
+                        fexpr(cells[ci].home), cells[ci].cname, cells[ci].size);
+        case Op.RAISE:
+            pad(out, ind);
+            out.appendf("/* raise %s -> %s (line %d): static-only, "
+                        "no code (SPEC 9) */\n",
+                        cells[ins.x].name, frames[ins.y].name, ins.line);
+        case Op.DECAY:
+            emit_decay_subtree(out, ind, ins.x);
+            pad(out, ind);
+            out.appendf("if (%s) rez_decay(%s);\n", fexpr(ins.x), fexpr(ins.x));
+        case Op.PROBE:
+            pad(out, ind);
+            out.appendf("printf(\"%%s\\n\", rez_deref_cell(%s) ? "
+                        "\"ALIVE\" : \"DEAD\");\n", meds[ins.x].cname);
+        default: break;
+    }
+}
+
+fn void emit_casc_start(DString* out, int ind, Instr* ins) {
+    Cascade* ca = &cascades[ins.a];
+    pad(out, ind);
+    out.appendf("/* %s %s (line %d) */\n",
+                ca.is_async ? "acasc" : "casc", ca.name, ca.line);
+    pad(out, ind);
+    out.append_string("{\n");
+    ind++;
+    foreach (mi : ca.med_idxs) {
+        pad(out, ind);
+        out.appendf("void *p_%s = rez_deref_cell(%s);\n",
+                    meds[mi].name, meds[mi].cname);
+    }
+    foreach (mi : ca.med_idxs) {
+        pad(out, ind);
+        out.appendf("if (!p_%s) { fprintf(stderr, \"ABORT line %d: "
+                    "cascade %s: dead mediator %s\\n\"); "
+                    "goto casc_end_%d; }\n",
+                    meds[mi].name, ca.line, ca.name, meds[mi].name, ca.seq);
+    }
+    if (ca.out_cell < 0) return;
+    pad(out, ind);
+    out.appendf("%s = rez_cell_z(%s, 8);\n",
+                cells[ca.out_cell].cname, fexpr(ca.out_frame));
+    pad(out, ind);
+    out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
+                "arena overflow (out %s)\\n\"); exit(1); }\n",
+                cells[ca.out_cell].cname, ca.line, cells[ca.out_cell].name);
+    emit_hoisted_meds(out, ind, ca.out_cell, ca.out_frame);
+}
+
+fn void emit_casc_end(DString* out, int ind, Instr* ins) {
+    Cascade* ca = &cascades[ins.a];
+    pad(out, ind);
+    out.appendf("casc_end_%d:\n", ca.seq);
+    pad(out, ind + 1);
+    out.append_string("(void)0;\n");
+    pad(out, ind);
+    out.append_string("}\n");
 }
 
 fn void emit_body(DString* out, int func) {
@@ -1206,149 +1423,21 @@ fn void emit_body(DString* out, int func) {
         if (ins.func != func) continue;
         bool in_casc = blocks[ins.block].kind == 2;
         switch (ins.op) {
-            case Op.LABEL: {
-                // печатаем только метки-цели переходов (иначе -Wunused-label)
-                for (sz j = 0; j < labels.len(); j++) {
-                    if (labels[j].block == ins.block && labels[j].name == ins.s1) {
-                        if (labels[j].referenced) {
-                            pad(out, ind);
-                            out.appendf("%s:\n", label_cname(ins.block, ins.s1));
-                        }
-                        break;
-                    }
-                }
-            }
-            case Op.CAV:
-                pad(out, ind);
-                out.appendf("%s = rez_enter(%s, %d);\n",
-                            frames[ins.x].cname, fexpr(ins.y),
-                            frames[ins.x].cap);
-            case Op.RES:
-                pad(out, ind);
-                out.appendf("%s = rez_cell_z(%s, %d);\n",
-                            cells[ins.x].cname, fexpr(ins.y), ins.a);
-                pad(out, ind);
-                out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
-                            "arena overflow (cell %s)\\n\"); exit(1); }\n",
-                            cells[ins.x].cname, ins.line, cells[ins.x].name);
-                emit_hoisted_meds(out, ind, ins.x, ins.y);
-            case Op.MED:
-                // верхнеуровневые медиаторы инициализируются при создании
-                // ячейки (см. Op.RES), а не по текстовой позиции (AUDIT-4)
-                if (ins.func == 0) break;
-                pad(out, ind);
-                out.appendf("%s = rez_issue_cell(%s, %s);\n",
-                            meds[ins.x].cname,
-                            fexpr(cells[meds[ins.x].cell].owner),
-                            cells[meds[ins.x].cell].cname);
-            case Op.RAISE:
-                pad(out, ind);
-                out.appendf("/* raise %s -> %s (line %d): static-only, "
-                            "no code (SPEC 9) */\n",
-                            cells[ins.x].name, frames[ins.y].name, ins.line);
-            case Op.DECAY:
-                emit_decay_subtree(out, ind, ins.x);
-                pad(out, ind);
-                out.appendf("rez_decay(%s);\n", fexpr(ins.x));
-            case Op.PROBE:
-                pad(out, ind);
-                out.appendf("printf(\"%%s\\n\", rez_deref_cell(%s) ? "
-                            "\"ALIVE\" : \"DEAD\");\n", meds[ins.x].cname);
-            case Op.CASC: {
-                Cascade* ca = &cascades[ins.a];
-                pad(out, ind);
-                out.appendf("/* %s %s (line %d) */\n",
-                            ca.is_async ? "acasc" : "casc", ca.name, ca.line);
-                pad(out, ind);
-                out.append_string("{\n");
+            case Op.LABEL:
+                emit_label(out, ind, ins);
+            case Op.CAV: case Op.RES: case Op.MED:
+            case Op.RAISE: case Op.DECAY: case Op.PROBE:
+                emit_own(out, ind, ins);
+            case Op.CASC:
+                emit_casc_start(out, ind, ins);
                 ind++;
-                foreach (mi : ca.med_idxs) {
-                    pad(out, ind);
-                    out.appendf("void *p_%s = rez_deref_cell(%s);\n",
-                                meds[mi].name, meds[mi].cname);
-                }
-                foreach (mi : ca.med_idxs) {
-                    pad(out, ind);
-                    out.appendf("if (!p_%s) { fprintf(stderr, \"ABORT line %d: "
-                                "cascade %s: dead mediator %s\\n\"); "
-                                "goto casc_end_%d; }\n",
-                                meds[mi].name, ca.line, ca.name,
-                                meds[mi].name, ca.seq);
-                }
-                if (ca.out_cell >= 0) {
-                    pad(out, ind);
-                    out.appendf("%s = rez_cell_z(%s, 8);\n",
-                                cells[ca.out_cell].cname, fexpr(ca.out_frame));
-                    pad(out, ind);
-                    out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
-                                "arena overflow (out %s)\\n\"); exit(1); }\n",
-                                cells[ca.out_cell].cname, ca.line,
-                                cells[ca.out_cell].name);
-                    emit_hoisted_meds(out, ind, ca.out_cell, ca.out_frame);
-                }
-            }
-            case Op.ENDC: {
-                Cascade* ca = &cascades[ins.a];
+            case Op.ENDC:
                 ind--;
-                pad(out, ind);
-                out.appendf("casc_end_%d:\n", ca.seq);
-                pad(out, ind + 1);
-                out.append_string("(void)0;\n");
-                pad(out, ind);
-                out.append_string("}\n");
-            }
+                emit_casc_end(out, ind, ins);
             case Op.LOAD:
-                DString oex = dstring::new(mem);
-                defer oex.free();
-                if (ins.c >= 0) { oex.appendf("r%d", ins.c); }
-                else { oex.appendf("%d", ins.b); }
-                if (in_casc) {
-                    pad(out, ind);
-                    if (ins.flag) {
-                        out.appendf("r%d = (int64_t)*(unsigned char*)((char*)p_%s + %s);\n",
-                                    ins.a, meds[ins.x].name, oex.str_view());
-                    } else {
-                        out.appendf("memcpy(&r%d, (char*)p_%s + %s, 8);\n",
-                                    ins.a, meds[ins.x].name, oex.str_view());
-                    }
-                } else {
-                    pad(out, ind);
-                    out.appendf("{ void *p = rez_deref_cell(%s);\n",
-                                meds[ins.x].cname);
-                    pad(out, ind);
-                    out.appendf("  if (!p) { fprintf(stderr, \"FAULT line %d: "
-                                "dead mediator %s\\n\"); exit(1); }\n",
-                                ins.line, meds[ins.x].name);
-                    pad(out, ind);
-                    if (ins.flag) {
-                        out.appendf("  r%d = (int64_t)*(unsigned char*)((char*)p + %s); }\n",
-                                    ins.a, oex.str_view());
-                    } else {
-                        out.appendf("  memcpy(&r%d, (char*)p + %s, 8); }\n",
-                                    ins.a, oex.str_view());
-                    }
-                }
+                emit_load(out, ind, ins, in_casc);
             case Op.STORE:
-                DString sex = dstring::new(mem);
-                defer sex.free();
-                if (ins.c >= 0) { sex.appendf("r%d", ins.c); }
-                else { sex.appendf("%d", ins.b); }
-                if (in_casc) {
-                    pad(out, ind);
-                    out.appendf("memcpy((char*)p_%s + %s, &r%d, 8);\n",
-                                meds[ins.x].name, sex.str_view(), ins.a);
-                } else {
-                    pad(out, ind);
-                    out.appendf("{ void *p = rez_deref_cell(%s);\n",
-                                meds[ins.x].cname);
-                    pad(out, ind);
-                    out.appendf("  if (!p) { fprintf(stderr, \"FAULT line %d: "
-                                "dead mediator %s\\n\"); exit(1); }\n",
-                                ins.line, meds[ins.x].name);
-                    pad(out, ind);
-                    out.appendf("  memcpy((char*)p + %s, &r%d, 8); }\n",
-                                sex.str_view(), ins.a);
-                }
+                emit_store(out, ind, ins, in_casc);
             case Op.MOV:
                 pad(out, ind);
                 if (ins.flag) {
@@ -1357,17 +1446,11 @@ fn void emit_body(DString* out, int func) {
                     out.appendf("r%d = r%d;\n", ins.a, ins.b);
                 }
             case Op.ALU3:
-                pad(out, ind);
-                if (ins.flag) {
-                    out.appendf("r%d = r%d %s %d;\n", ins.a, ins.b,
-                                ins.s2, ins.c);
-                } else {
-                    out.appendf("r%d = r%d %s r%d;\n", ins.a, ins.b,
-                                ins.s2, ins.c);
-                }
+                emit_alu3(out, ind, ins);
             case Op.ALU1:
                 pad(out, ind);
-                out.appendf("r%d%s;\n", ins.a, ins.flag ? "++" : "--");
+                out.appendf("r%d = %s(r%d, 1);\n", ins.a,
+                            ins.flag ? "rez_i64_add" : "rez_i64_sub", ins.a);
             case Op.PRINT:
                 pad(out, ind);
                 out.appendf("printf(\"%%lld\\n\", (long long)r%d);\n", ins.a);
@@ -1412,8 +1495,10 @@ fn void emit_proc(DString* out, int pi) {
     uint rd, wr;
     scan_regs(pi + 1, &rd, &wr);
     emit_regs_decl(out, 1, rd | wr);
-    out.appendf("    rez_frame_reset(&%s, f_field, %d);\n",
-                frames[p.frame].cname, frames[p.frame].cap);
+    out.appendf("    if (!rez_frame_reset(&%s, f_field, %d)) { "
+                "fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\"); "
+                "exit(1); }\n",
+                frames[p.frame].cname, frames[p.frame].cap, p.line, p.name);
     emit_body(out, pi + 1);
     emit_writeonly_silence(out, 1, rd, wr);
     // ret разрушает рамку процедуры и всё поддерево (как kill в чекере,
@@ -1425,27 +1510,19 @@ fn void emit_proc(DString* out, int pi) {
 
 // глушилка неиспользованных static-входов рантайма (адрес взят — warning-а нет)
 fn void emit_silencers(DString* out) {
-    bool used_cell = false;
-    bool used_issue = false;
-    bool used_deref = g_lib_mode;   // lib экспортирует rza_deref_cell
-    bool used_decay = procs.len() > 0;
-    for (sz i = 0; i < instrs.len(); i++) {
-        switch (instrs[i].op) {
-            case Op.RES: case Op.CASC: used_cell = true;
-            case Op.MED: used_issue = true;
-            case Op.PROBE: case Op.LOAD: case Op.STORE: used_deref = true;
-            case Op.DECAY: used_decay = true;
-            default: break;
-        }
-    }
     out.append_string("    /* unused runtime entries: адрес взят, warning-а нет */\n");
-    out.append_string("    (void)&rez_issue;\n");
-    out.append_string("    (void)&rez_deref;\n");
-    if (!used_cell)  out.append_string("    (void)&rez_cell_z;\n");
-    if (!used_issue) out.append_string("    (void)&rez_issue_cell;\n");
-    if (!used_deref) out.append_string("    (void)&rez_deref_cell;\n");
-    if (!used_decay) out.append_string("    (void)&rez_leave;\n");
-    if (procs.len() == 0) out.append_string("    (void)&rez_frame_reset;\n");
+    out.append_string("    (void)&rez_arena_init; (void)&rez_arena_alloc;\n");
+    out.append_string("    (void)&rez_enter; (void)&rez_cell;\n");
+    out.append_string("    (void)&rez_arena_alloc_z; (void)&rez_enter_checked;\n");
+    out.append_string("    (void)&rez_cell_z; (void)&rez_issue_cell;\n");
+    out.append_string("    (void)&rez_deref_cell; (void)&rez_cell_bounds;\n");
+    out.append_string("    (void)&rez_frame_reset; (void)&rez_cav_enter;\n");
+    out.append_string("    (void)&rez_leave;\n");
+    out.append_string("    (void)&rez_issue; (void)&rez_deref;\n");
+    out.append_string("    (void)&rez_i64_add; (void)&rez_i64_sub;\n");
+    out.append_string("    (void)&rez_i64_mul; (void)&rez_i64_div;\n");
+    out.append_string("    (void)&rez_i64_mod; (void)&rez_i64_shl;\n");
+    out.append_string("    (void)&rez_i64_shr;\n");
     if (!g_lib_mode) {
         for (sz i = 0; i < procs.len(); i++) {
             if (!procs[i].called) {
@@ -1461,7 +1538,9 @@ fn void emit_main(DString* out) {
     scan_regs(0, &rd, &wr);
     emit_regs_decl(out, 1, rd | wr);
     emit_silencers(out);
-    out.appendf("    f_field = rez_enter(NULL, %d);\n", frames[0].cap);
+    out.appendf("    f_field = rez_enter_checked(NULL, %d);\n", frames[0].cap);
+    out.append_string("    if (!f_field) { fprintf(stderr, "
+                      "\"FAULT line 0: frame allocation field\\n\"); exit(1); }\n");
     emit_body(out, 0);
     emit_writeonly_silence(out, 1, rd, wr);
     // хвост: return 0, если верхний уровень не кончается ret
@@ -1483,7 +1562,9 @@ fn void emit_boot(DString* out) {
     scan_regs(0, &rd, &wr);
     emit_regs_decl(out, 1, rd | wr);
     emit_silencers(out);
-    out.appendf("    f_field = rez_enter(NULL, %d);\n", frames[0].cap);
+    out.appendf("    f_field = rez_enter_checked(NULL, %d);\n", frames[0].cap);
+    out.append_string("    if (!f_field) { fprintf(stderr, "
+                      "\"FAULT line 0: frame allocation field\\n\"); exit(1); }\n");
     emit_body(out, 0);
     emit_writeonly_silence(out, 1, rd, wr);
     out.append_string("}\n");
@@ -1497,23 +1578,25 @@ fn void emit_host_api(DString* out) {
                     frames[i].name, fexpr((int)i));
     }
     for (sz i = 0; i < meds.len(); i++) {
-        // ленивая инициализация: в lib-режиме ячейка может создаваться proc'ом
-        // позже rza_boot; при первом обращении медиатор довыдаётся (AUDIT-4)
+        // Ячейка может появиться после rza_boot: довыдаём медиатор лениво.
+        int ci = meds[i].cell;
         out.appendf("RezCellMed rza_med_%s(void) { "
-                    "if (!%s.cell) %s = rez_issue_cell(%s, %s); return %s; }\n",
+                    "if (!%s.cell) %s = rez_issue_cell(%s, %s, %s, %d); "
+                    "return %s; }\n",
                     meds[i].name, meds[i].cname, meds[i].cname,
-                    fexpr(cells[meds[i].cell].owner), cells[meds[i].cell].cname,
-                    meds[i].cname);
+                    fexpr(cells[ci].owner), fexpr(cells[ci].home),
+                    cells[ci].cname, cells[ci].size, meds[i].cname);
     }
     out.append_string("unsigned rza_rez3ext_abi(void) { return REZ3EXT_ABI; }\n");
     out.append_string("void *rza_arena_alloc(RezCavity *c, size_t size) "
-                      "{ void *p = rez_arena_alloc(&c->arena, size); "
-                      "if (p) memset(p, 0, size); return p; }\n");
+                      "{ return rez_cell_z(c, size); }\n");
     out.append_string("void *rza_deref_cell(RezCellMed m) "
                       "{ return rez_deref_cell(m); }\n");
 }
 
 fn String emit() {
+    assert(violations == 0);
+    assert(frames.len() > 0 && frames[0].is_field);
     DString out = dstring::new_with_capacity(mem, 8192);
     out.appendf("/* Generated by rez3asm (C3) from %s — REZ3-ASM -> C99 */\n",
                 srcname);

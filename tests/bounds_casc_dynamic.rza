@@ -1,0 +1,9 @@
+cav main, field
+res x, main, 8
+med x_m, x, main
+mov %r0, 8
+mov %r1, 42
+casc write: x_m -> out[main]
+    store [x_m + %r0], %r1
+endc
+ret

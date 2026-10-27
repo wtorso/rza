@@ -1,6 +1,4 @@
-; STRUCT: имя proc, начинающееся с frame_/med_, коллидирует с геттерами
-; host API lib-режима rza_frame_*/rza_med_* (SPEC 11, review-audit):
-; «proc med_x_m» + «med x_m» давали бы два rza_med_x_m.
+; STRUCT: префиксы frame_/med_ зарезервированы host-геттерами (SPEC §11).
 proc frame_x:              ; VIOLATION [STRUCT]: collides with host API
     ret
 proc med_x_m:              ; VIOLATION [STRUCT]: collides with host API

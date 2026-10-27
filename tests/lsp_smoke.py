@@ -1,29 +1,17 @@
 #!/usr/bin/env python3
-# lsp_smoke.py — smoke-тест LSP-сервера `rez3asm --lsp` без VS Code.
-#
-# Говорит с сервером по stdio (Content-Length framing, пишется руками).
-# Сценарий:
-#   initialize            -> capabilities.textDocumentSync == 1 (Full),
-#                            serverInfo = rez3-lsp/0.4.0
-#   didOpen bad.rza       -> ровно одна диагностика, code STRUCT, строка 0
-#     Текст "cav a": у cav два операнда (SPEC §2: cav NAME, PARENT) —
-#     чекер пишет "VIOLATION line 1 [STRUCT]: bad operands for cav"
-#     (тот же случай, что tests/viol_extra_ops.rza); LSP переводит
-#     1-based строку 1 в 0-based 0.
-#   didOpen good.rza      -> diagnostics пустой
-#     Текст "cav m, field / decay m / ret" — минимальная легальная
-#     программа (как hello из docs/GUIDE.md, но без вывода).
-#   didChange/didClose/didOpen -> STRUCT, очистка, снова пустая диагностика.
-#   shutdown + exit       -> сервер завершается с кодом 0.
-#
-# Запуск: python3 tests/lsp_smoke.py [путь к rez3asm.exe]   (из rez3-asm/)
+# LSP stdio smoke без VS Code: initialize, diagnostics, Full sync.
+# Проверки: строки 1-based -> 0-based, malformed changes, close/reopen,
+# 1000 ошибок + сводка, лимиты кадров, стабильный RSS на 2000 каскадах.
+# Запуск: python3 tests/lsp_smoke.py [путь к rez3asm.exe]
+import ctypes
 import json
+import os
 import queue
 import subprocess
 import sys
 import threading
+from ctypes import wintypes
 
-# Windows-консоль по умолчанию не в UTF-8 — имена проверок русские
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -33,6 +21,12 @@ BAD_URI = "file:///smoke-bad.rza"
 GOOD_URI = "file:///smoke-good.rza"
 BAD_TEXT = "cav a\n"
 GOOD_TEXT = "cav m, field\ndecay m\nret\n"
+CASCADE_TEXT = (
+    "cav m, field\nres x, m, 8\nmed x_m, x, m\n"
+    "casc c: x_m -> out[m]\n load %r0, [x_m + 0]\nendc\ndecay m\nret\n"
+)
+# Fixed build: 0; injected two-list leak: about 889 KiB per 2000 changes.
+RSS_GROWTH_MAX = 512 * 1024
 
 proc = subprocess.Popen(
     [EXE, "--lsp"],
@@ -42,6 +36,51 @@ proc = subprocess.Popen(
 )
 
 messages = queue.Queue()
+
+
+def rss_bytes():
+    if sys.platform == "win32":
+        class Counters(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        psapi = ctypes.windll.psapi
+        psapi.GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD,
+        ]
+        handle = kernel32.OpenProcess(0x1000, False, proc.pid)
+        if not handle:
+            raise RuntimeError("OpenProcess failed")
+        try:
+            counters = Counters()
+            counters.cb = ctypes.sizeof(counters)
+            if not ctypes.windll.psapi.GetProcessMemoryInfo(
+                handle, ctypes.byref(counters), counters.cb
+            ):
+                raise RuntimeError("GetProcessMemoryInfo failed")
+            return counters.WorkingSetSize
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        with open(f"/proc/{proc.pid}/statm", "rb") as statm:
+            return int(statm.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+    except FileNotFoundError:
+        rss_kib = subprocess.check_output(["ps", "-o", "rss=", "-p", str(proc.pid)])
+        return int(rss_kib) * 1024
 
 
 def reader():
@@ -166,21 +205,52 @@ def main():
         json.dumps(params),
     )
 
-    for i in range(256):
+    def churn(count):
+        for _ in range(count):
+            send({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": {"uri": GOOD_URI, "version": 2},
+                    "contentChanges": [{"text": CASCADE_TEXT}],
+                },
+            })
+            recv()
+
+    churn(32)
+    rss_before = rss_bytes()
+    churn(2000)
+    rss_after = rss_bytes()
+    rss_growth = max(0, rss_after - rss_before)
+    print(f"RSS before={rss_before}, after={rss_after}, growth={rss_growth}")
+    check(
+        "LSP RSS: 2000 cascade changes stay bounded",
+        rss_growth <= RSS_GROWTH_MAX,
+        f"before={rss_before}, after={rss_after}, growth={rss_growth}, "
+        f"max={RSS_GROWTH_MAX}",
+    )
+
+    for changes in ([], [{}], [None], [1], [[]]):
         send({
             "jsonrpc": "2.0",
-            "method": "textDocument/didOpen",
+            "method": "textDocument/didChange",
             "params": {
-                "textDocument": {
-                    "uri": f"file:///churn-{i:04d}.rza",
-                    "languageId": "rza",
-                    "version": 1,
-                    "text": GOOD_TEXT,
-                }
+                "textDocument": {"uri": GOOD_URI, "version": 2},
+                "contentChanges": changes,
             },
         })
-        recv()
-
+    malformed_messages = [
+        None,
+        [],
+        {"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": None},
+        {"jsonrpc": "2.0", "method": "textDocument/didChange", "params": None},
+        {"jsonrpc": "2.0", "method": "textDocument/didOpen",
+         "params": {"textDocument": None}},
+        {"jsonrpc": "2.0", "method": "textDocument/didOpen",
+         "params": {"textDocument": []}},
+    ]
+    for message in malformed_messages:
+        send(message)
     send({
         "jsonrpc": "2.0",
         "method": "textDocument/didChange",
@@ -225,6 +295,36 @@ def main():
         json.dumps(params),
     )
 
+    send({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {"uri": GOOD_URI, "version": 4},
+            "contentChanges": [{"text": "x\n" * 1002}],
+        },
+    })
+    params = recv().get("params") or {}
+    diags = params.get("diagnostics") or []
+    check(
+        "LSP diagnostics: 1000 errors + one summary",
+        len(diags) == 1001 and diags[-1].get("message") == "2 diagnostics suppressed",
+        f"count={len(diags)}, last={(diags[-1] if diags else {})}",
+    )
+    send({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {"uri": GOOD_URI, "version": 5},
+            "contentChanges": [{"text": GOOD_TEXT}],
+        },
+    })
+    params = recv().get("params") or {}
+    check(
+        "LSP diagnostics: next change resets the summary",
+        params.get("diagnostics") == [],
+        json.dumps(params),
+    )
+
     send({"jsonrpc": "2.0", "id": 2, "method": "shutdown"})
     resp = recv()
     check(
@@ -239,6 +339,21 @@ def main():
     stderr = proc.stderr.read().decode(errors="replace").strip()
     if stderr:
         print(f"--- server stderr ---\n{stderr}\n---")
+
+    oversized = [
+        ("header", b"X" * 9000, b"header too large"),
+        ("body", b"Content-Length: 16777217\r\n\r\n", b"body too large"),
+    ]
+    for name, payload, diagnostic in oversized:
+        result = subprocess.run(
+            [EXE, "--lsp"], input=payload,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15,
+        )
+        check(
+            f"oversize {name}: controlled exit 2",
+            result.returncode == 2 and diagnostic in result.stderr,
+            result.stderr.decode(errors="replace"),
+        )
     print("SMOKE OK" if failures == 0 else f"SMOKE FAILED ({failures})")
     return 0 if failures == 0 else 1
 

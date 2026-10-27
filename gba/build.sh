@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh — сборка теста .rza в GBA ROM (путь A: sly как отладчик .rza):
+# build.sh — сборка программы .rza в GBA ROM:
 #   ./build.sh ../tests/fib.rza out/fib.gba
 # Конвейер: rez3asm --emit-c → zig cc (arm-freestanding, ARMv4T) →
 # линковка с crt0/harness (zig cc как линкер) → elf → objcopy → .gba.
