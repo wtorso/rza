@@ -7,8 +7,8 @@ whenToUse: Когда пишу или правлю файлы .rza, добавл
 # REZ3-ASM — как писать
 
 Модель: 4 кирпича (Field/Cavity/Resonator/Mediator), 8 операций, 4 инварианта.
-Полная нормативная спецификация: `rez3-asm/SPEC.md` (EBNF, семантика, стирание).
-Примеры-эталоны: `rez3-asm/tests/*.rza` (fib, counter, back_button, cascade).
+Полная нормативная спецификация: `SPEC.md` (EBNF, семантика, стирание).
+Примеры-эталоны: `tests/*.rza` (fib, counter, back_button, cascade).
 
 ## Шпаргалка по языку
 
@@ -56,7 +56,7 @@ loadb %rN, [MED+off]       ; байт, zero-extend; off = imm | %rN
 ## Петля проверки (всегда прогонять)
 
 ```sh
-cd rez3-asm
+cd rza
 ./rez3asm.exe path/to/file.rza            # только проверка
 ./rez3asm.exe path/to/file.rza --emit-c   # посмотреть C99
 ./rez3asm.exe path/to/file.rza --emit-lib # C99-библиотека без main: proc → rza_NAME, хост-API rza_frame_*/rza_med_* (SPEC §11)

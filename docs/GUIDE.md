@@ -32,7 +32,7 @@ decay — единственный деструктор: гасит рамку �
 ## 2. Инструментарий за 2 минуты
 
 ```sh
-cd rez3-asm
+cd rza
 ./rez3asm.exe prog.rza                 # только проверка (петля «написал →
                                        #   проверил» — основная)
 ./rez3asm.exe prog.rza --emit-c -o prog.c   # C99 с main
