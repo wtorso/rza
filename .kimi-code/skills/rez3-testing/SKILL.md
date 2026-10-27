@@ -42,7 +42,7 @@ run_lib NAME`). Механика:
    компиляция, без запуска.
 6. Каждая ветка чекера обязана иметь тест. Новое правило = новый
    viol_-тест.
-7. Прогон: `cd rza && bash run_tests.sh` → 95/95 PASS, exit 0
+7. Прогон: `cd rza && bash run_tests.sh` → 97/97 PASS, exit 0
    (пересобирает rez3asm.exe, компилирует легальные с -std=c99 -pedantic
    -Wall -Wextra ноль warnings, сверяет stdout, отвергает незаконные).
 

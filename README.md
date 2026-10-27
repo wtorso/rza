@@ -82,11 +82,11 @@ endc
 | `load`/`store` в каскаде | `memcpy` для постоянного смещения | проверки стерты |
 | вычисляемое смещение | `rez_cell_bounds` | одна проверка доступа |
 | `casc` | блок + goto abort | проверки один раз на входе |
-| `decay` | free арен + gen++ | O(размер поддерева) |
+| `decay` | инвалидация static арен + gen++ | O(размер поддерева) |
 | `med` | указатели, поколения, size | цена видна на границе |
 
-Внешнего runtime нет: статические helpers включаются в C99. Полная таблица —
-SPEC.md §4.
+Внешнего runtime нет: статические helpers включаются в C99. Рамки и арены
+выделяются как static storage, без `malloc/free`. Полная таблица — SPEC.md §4.
 
 ## Инструментарий
 
@@ -96,7 +96,7 @@ rez3asm file.rza --emit-c     # C99 на stdout (читаемый, для люд
 rez3asm file.rza --emit-lib   # C99-библиотека: procs → void rza_NAME(void)
 rez3asm file.rza -o out.c     # -o без флагов тоже включает эмиссию C
 rez3asm --lsp                 # LSP-сервер на stdio (диагностика в редакторе)
-bash run_tests.sh             # 95/95 + ноль warnings, UBSan и fuzz-smoke
+bash run_tests.sh             # 97/97 + ноль warnings, UBSan и fuzz-smoke
 ```
 
 - `rez3asm.c3` — транспайлер на C3 0.8.5;

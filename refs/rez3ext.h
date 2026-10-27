@@ -12,7 +12,14 @@
 
 /* RezCellMed передаётся хосту по значению: все TU пересобираются вместе. */
 #define REZ3EXT_ABI 2
-#define rez_decay rez_leave
+static void rez_decay(RezCavity *c) {
+    if (!c) return;
+    c->generation = rez_g_gen++;
+    c->alive = 0;
+    c->arena.base = 0;
+    c->arena.used = 0;
+    c->arena.cap = 0;
+}
 
 /* Текущий владелец задаёт права; домашний владелец задаёт жизнь памяти. */
 typedef struct {
@@ -32,21 +39,6 @@ static void *rez_arena_alloc_z(RezArena *a, size_t size) {
     if (start > a->cap || size > a->cap - start) return 0;
     a->used = start + size;
     return a->base + start;
-}
-
-static RezCavity *rez_enter_checked(RezCavity *parent, size_t cap) {
-    RezCavity *c;
-    if (rez_g_gen == 0) return 0;
-    c = (RezCavity*)malloc(sizeof(RezCavity));
-    if (!c) return 0;
-    c->arena.base = (char*)malloc(cap);
-    if (!c->arena.base) { free(c); return 0; }
-    c->parent = parent;
-    c->generation = rez_g_gen++;
-    c->alive = 1;
-    c->arena.used = 0;
-    c->arena.cap = cap;
-    return c;
 }
 
 static void *rez_cell_z(RezCavity *c, size_t size) {
@@ -81,13 +73,10 @@ static int rez_cell_bounds(RezCellMed m, size_t offset, size_t width) {
     return offset <= m.size && width <= m.size - offset;
 }
 
-/* Отказ сохраняет прежнюю арену и поколение. */
-static int rez_frame_reset(RezCavity *c, RezCavity *parent, size_t cap) {
-    char *base;
-    if (rez_g_gen == 0) return 0;
-    base = (char*)malloc(cap);
-    if (!base) return 0;
-    if (c->arena.base) free(c->arena.base);
+/* Рамка и арена принадлежат вызывающему коду и не выделяются из кучи. */
+static int rez_frame_reset(RezCavity *c, RezCavity *parent,
+                           char *base, size_t cap) {
+    if (!c || !base || cap == 0 || rez_g_gen == 0) return 0;
     c->parent = parent;
     c->generation = rez_g_gen++;
     c->alive = 1;
@@ -97,18 +86,10 @@ static int rez_frame_reset(RezCavity *c, RezCavity *parent, size_t cap) {
     return 1;
 }
 
-/* Мёртвая рамка используется повторно; живая не теряется при повторном enter. */
-static RezCavity *rez_cav_enter(RezCavity **slot, RezCavity *parent, size_t cap) {
-    RezCavity *c;
-    if (!slot) return 0;
-    c = *slot;
-    if (!c) {
-        c = rez_enter_checked(parent, cap);
-        if (c) *slot = c;
-        return c;
-    }
-    if (c->alive) return 0;
-    if (!rez_frame_reset(c, parent, cap)) return 0;
+static RezCavity *rez_cav_enter(RezCavity *c, RezCavity *parent,
+                                char *base, size_t cap) {
+    if (!c || c->alive) return 0;
+    if (!rez_frame_reset(c, parent, base, cap)) return 0;
     return c;
 }
 

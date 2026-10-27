@@ -8,20 +8,66 @@ import std::io::file;
 import libc;
 import std::core::env;
 import std::core::dstring;
-import std::collections::map;
 import std::collections::object;
 import std::encoding::json;
 
 const String LSP_VERSION = "0.4.0";
 const int LSP_HEADER_MAX = 8192;
 const int LSP_BODY_MAX = 16777216;
+const int LSP_DOC_MAX = 1048576;
+const int LSP_DOCS_MAX = 64;
+const int LSP_URI_MAX = 1024;
+const int LSP_DIAG_TEXT_MAX = 256;
+const int LSP_RESPONSE_MAX = 4194304;
+const int LSP_JSON_COMMA_MAX = 65536;
 
 // Бинарный stdio сохраняет Content-Length на Windows.
 extern fn CInt _setmode(CInt fd, CInt mode) @feat(WIN32);
 const CInt LSP_O_BINARY @feat(WIN32) = 0x8000;
 
-HashMap{String, String} lsp_docs;   // uri -> текст документа
+struct LspDoc {
+    bool used;
+    sz uri_len;
+    sz text_len;
+    char[LSP_URI_MAX] uri;
+    char[LSP_DOC_MAX] text;
+}
+
+LspDoc[LSP_DOCS_MAX] lsp_docs;
 bool lsp_shutdown = false;
+
+fn int lsp_doc_find(String uri) {
+    for (int i = 0; i < LSP_DOCS_MAX; i++) {
+        if (!lsp_docs[i].used || lsp_docs[i].uri_len != uri.len) continue;
+        if (lsp_docs[i].uri[:lsp_docs[i].uri_len] == uri) return i;
+    }
+    return -1;
+}
+
+fn void lsp_limit(String kind) {
+    io::eprintfn("[rez3-lsp] %s exceeds static budget", kind);
+    libc::exit(2);
+}
+
+fn void lsp_doc_write(int index, String uri, String text) {
+    assert(index >= 0 && index < LSP_DOCS_MAX);
+    if (uri.len > LSP_URI_MAX) lsp_limit("URI");
+    if (text.len > LSP_DOC_MAX) lsp_limit("document");
+    LspDoc* doc = &lsp_docs[index];
+    doc.uri[:uri.len] = uri[..];
+    doc.text[:text.len] = text[..];
+    doc.uri_len = uri.len;
+    doc.text_len = text.len;
+    doc.used = true;
+}
+
+fn String lsp_doc_uri(int index) {
+    return (String)lsp_docs[index].uri[:lsp_docs[index].uri_len];
+}
+
+fn String lsp_doc_text(int index) {
+    return (String)lsp_docs[index].text[:lsp_docs[index].text_len];
+}
 
 // --- JSON-сериализация (руками: ответы маленькие и фиксированной формы) ------
 fn void json_str(DString* d, String s) {
@@ -46,7 +92,10 @@ fn void json_str(DString* d, String s) {
 // id эхом: число или строка из запроса
 fn void append_id(DString* d, Object* id) {
     if (id == null || id.is_null()) { d.append_string("null"); return; }
-    if (id.is_string()) { json_str(d, id.s); return; }
+    if (id.is_string()) {
+        json_str(d, clip_utf8(id.s, LSP_DIAG_TEXT_MAX));
+        return;
+    }
     d.appendf("%d", id.i);
 }
 
@@ -63,15 +112,15 @@ fn void lsp_write(String s) {
 }
 
 fn void lsp_send_body(String body) {
-    DString frame = dstring::new_with_capacity(mem, body.len + 40);
-    defer frame.free();
-    frame.appendf("Content-Length: %d\r\n\r\n", body.len);
-    frame.append_string(body);
-    lsp_write(frame.str_view());
+    DString header = dstring::new_with_capacity(workmem, 40);
+    defer header.free();
+    header.appendf("Content-Length: %d\r\n\r\n", body.len);
+    lsp_write(header.str_view());
+    lsp_write(body);
 }
 
 fn void lsp_respond(Object* id, String result_json) {
-    DString d = dstring::new(mem);
+    DString d = dstring::new(workmem);
     defer d.free();
     d.append_string(`{"jsonrpc":"2.0","id":`);
     append_id(&d, id);
@@ -82,19 +131,19 @@ fn void lsp_respond(Object* id, String result_json) {
 }
 
 fn void lsp_respond_error(Object* id, int code, String message) {
-    DString d = dstring::new(mem);
+    DString d = dstring::new(workmem);
     defer d.free();
     d.append_string(`{"jsonrpc":"2.0","id":`);
     append_id(&d, id);
     d.appendf(`,"error":{"code":%d,"message":`, code);
-    json_str(&d, message);
+    json_str(&d, clip_utf8(message, LSP_DIAG_TEXT_MAX));
     d.append_string("}}");
     lsp_send_body(d.str_view());
 }
 
 // --- диагностика -----------------------------------------------------------------
 fn void publish_diagnostics(String uri, bool empty) {
-    DString d = dstring::new(mem);
+    DString d = dstring::new_with_capacity(workmem, LSP_RESPONSE_MAX);
     defer d.free();
     d.append_string(`{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":`);
     json_str(&d, uri);
@@ -102,7 +151,7 @@ fn void publish_diagnostics(String uri, bool empty) {
     if (!empty) {
         foreach (i, dg : lsp_diags) {
             if (i > 0) d.append_char(',');
-            int ln = dg.line - 1;           // 1-based -> 0-based
+            int ln = dg.line - 1;
             if (ln < 0) ln = 0;
             d.appendf(`{"range":{"start":{"line":%d,"character":0},`
                       +++ `"end":{"line":%d,"character":9999}},`
@@ -114,24 +163,24 @@ fn void publish_diagnostics(String uri, bool empty) {
         }
     }
     d.append_string("]}}");
+    assert(d.len() <= LSP_RESPONSE_MAX);
     lsp_send_body(d.str_view());
 }
 
-// Пул освобождает временные данные разбора после отправки диагностик.
 fn void validate(String uri, String text) {
     reset_state();
     srcname = uri;
-    @pool() {
-        run(text);
-        int suppressed = violations - (int)lsp_diags.len();
-        if (suppressed > 0) {
-            DString msg = dstring::new(tmem);
-            msg.appendf("%d diagnostics suppressed", suppressed);
-            lsp_diags.push({ .line = 0, .rule = "STRUCT",
-                             .msg = msg.copy_str(tmem) });
-        }
-        publish_diagnostics(uri, false);
-    };
+    sz mark = work_arena.mark();
+    defer work_arena.reset(mark);
+    run(text);
+    int suppressed = violations - (int)lsp_diags.len();
+    if (suppressed > 0) {
+        DString msg = dstring::new(workmem);
+        msg.appendf("%d diagnostics suppressed", suppressed);
+        lsp_diags.push({ .line = 0, .rule = "STRUCT",
+                         .msg = msg.copy_str(workmem) });
+    }
+    publish_diagnostics(uri, false);
 }
 
 // --- обработчики textDocument/* ----------------------------------------------------
@@ -148,14 +197,15 @@ fn void on_did_open(Object* params) {
     String? uri_o = td.get_string("uri");
     if (catch uri_o) return;
     String text = td.get_string("text") ?? "";
-    if (try cur = lsp_docs.get_ref(uri_o)) {
-        cur.free(mem);
-        *cur = text.copy(mem);
-    } else {
-        // HashMap копирует и освобождает String-ключ сам (COPY_KEYS).
-        lsp_docs.set(uri_o, text.copy(mem));
+    int index = lsp_doc_find(uri_o);
+    if (index < 0) {
+        for (int i = 0; i < LSP_DOCS_MAX; i++) {
+            if (!lsp_docs[i].used) { index = i; break; }
+        }
     }
-    validate(uri_o, text);
+    if (index < 0) lsp_limit("document slots");
+    lsp_doc_write(index, uri_o, text);
+    validate(lsp_doc_uri(index), lsp_doc_text(index));
 }
 
 fn void on_did_change(Object* params) {
@@ -163,12 +213,11 @@ fn void on_did_change(Object* params) {
     if (td == null) return;
     String? uri = td.get_string("uri");
     if (catch uri) return;
-    String*? cur = lsp_docs.get_ref(uri);
-    if (catch cur) return;
+    int index = lsp_doc_find(uri);
+    if (index < 0) return;
     Object*? changes = params.get("contentChanges");
     if (catch changes) return;
     if (!changes.is_indexable()) return;
-    // Full sync: последнее change содержит весь текст
     String text = "";
     bool has_text = false;
     for (sz i = 0; i < changes.get_len(); i++) {
@@ -177,10 +226,8 @@ fn void on_did_change(Object* params) {
         if (try t = ch.get_string("text")) { text = t; has_text = true; }
     }
     if (!has_text) return;
-    String next = text.copy(mem);
-    cur.free(mem);
-    *cur = next;
-    validate(uri, text);
+    lsp_doc_write(index, uri, text);
+    validate(lsp_doc_uri(index), lsp_doc_text(index));
 }
 
 fn void on_did_close(Object* params) {
@@ -188,8 +235,12 @@ fn void on_did_close(Object* params) {
     if (td == null) return;
     String? uri = td.get_string("uri");
     if (catch uri) return;
-    if (try cur = lsp_docs.get_ref(uri)) { cur.free(mem); }
-    (void)lsp_docs.remove(uri);
+    int index = lsp_doc_find(uri);
+    if (index >= 0) {
+        lsp_docs[index].used = false;
+        lsp_docs[index].uri_len = 0;
+        lsp_docs[index].text_len = 0;
+    }
     publish_diagnostics(uri, true);
 }
 
@@ -226,7 +277,8 @@ fn void handle_message(Object* msg) {
         default:
             if (id != null) {
                 lsp_respond_error(id, -32601,
-                                  cat({"method not found: ", method}));
+                                  cat({"method not found: ",
+                                       clip_utf8(method, LSP_DIAG_TEXT_MAX)}));
             }
     }
 }
@@ -262,6 +314,45 @@ fn int header_content_length(String header) {
     return result;
 }
 
+// Ограничиваем дерево до вызова parser, который разворачивает OUT_OF_MEMORY.
+fn bool lsp_json_size_ok(String body) {
+    int commas = 0;
+    bool in_string = false;
+    bool escaped = false;
+    bool line_comment = false;
+    bool block_comment = false;
+    for (sz i = 0; i < body.len; i++) {
+        char c = body[i];
+        if (line_comment) {
+            if (c == '\n' || c == '\r') line_comment = false;
+            continue;
+        }
+        if (block_comment) {
+            if (c == '*' && i + 1 < body.len && body[i + 1] == '/') {
+                block_comment = false;
+                i++;
+            }
+            continue;
+        }
+        if (in_string) {
+            if (escaped) { escaped = false; continue; }
+            if (c == '\\') { escaped = true; continue; }
+            if (c == '"') in_string = false;
+            continue;
+        }
+        if (c == '"') { in_string = true; continue; }
+        if (c == '/' && i + 1 < body.len) {
+            if (body[i + 1] == '/') { line_comment = true; i++; continue; }
+            if (body[i + 1] == '*') { block_comment = true; i++; continue; }
+        }
+        if (c == ',') {
+            commas++;
+            if (commas > LSP_JSON_COMMA_MAX) return false;
+        }
+    }
+    return true;
+}
+
 // --- точка входа (--lsp) ------------------------------------------------------------------
 // Читаем побайтово: fread(buf, N) ждёт N байт на открытом пайпе.
 fn int lsp_main() {
@@ -270,10 +361,10 @@ fn int lsp_main() {
         _setmode(libc::fileno(libc::stdout()), LSP_O_BINARY);
     $endif
     g_lsp_mode = true;
-    lsp_docs.init(mem);
+    for (int i = 0; i < LSP_DOCS_MAX; i++) lsp_docs[i].used = false;
 
-    DString inbuf = dstring::new(mem);
-    defer inbuf.free();
+    DString inbuf = dstring::new_with_capacity(
+        mem, LSP_BODY_MAX + LSP_HEADER_MAX);
     File* in = io::stdin();
     sz header_end = -1;             // позиция "\r\n\r\n"; -1 = читаем заголовок
     int body_len = 0;
@@ -304,16 +395,19 @@ fn int lsp_main() {
         if ((sz)inbuf.len() < header_end + 4 + body_len) continue;
         String view = inbuf.str_view();
         String body = view[header_end + 4 .. header_end + 3 + body_len];
-        Object*? msg = json::parse(mem, body);
-        // буфер очищаем только после разбора: тело алиасит inbuf
+        if (!lsp_json_size_ok(body)) lsp_limit("JSON values");
+        sz mark = work_arena.mark();
+        Object*? msg = json::parse(workmem, body);
         inbuf.clear();
         header_end = -1;
         if (catch msg) {
             io::eprintfn("[rez3-lsp] bad JSON-RPC payload");
+            work_arena.reset(mark);
             continue;
         }
         handle_message(msg);
         msg.free();
+        work_arena.reset(mark);
     }
     return 0;
 }

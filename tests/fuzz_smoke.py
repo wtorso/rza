@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 161 детерминированный случай: допустимы только exit 0/1, без crash/timeout.
+# 163 детерминированных случая: exit 0/1 и точные limit-диагностики.
 import random
 import subprocess
 import sys
@@ -27,17 +27,22 @@ TOKENS = [
 ]
 
 
-def check(exe, path, failures, emit=False):
+def check(exe, path, failures, emit=False, diagnostic=None):
     command = [exe, str(path)]
     if emit:
         command += ["--emit-c", "-o", str(path.with_suffix(".c"))]
     try:
         result = subprocess.run(
             command, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, timeout=3,
+            stderr=subprocess.PIPE if diagnostic else subprocess.DEVNULL,
+            timeout=3,
         )
     except subprocess.TimeoutExpired:
         failures.append(f"timeout: {path.read_text()!r}")
+        return
+    if diagnostic:
+        if result.returncode != 1 or diagnostic not in result.stderr:
+            failures.append(f"missing {diagnostic!r}: exit {result.returncode}")
         return
     if result.returncode not in (0, 1):
         failures.append(f"exit {result.returncode}: {path.read_text()!r}")
@@ -66,10 +71,14 @@ def main():
         deep.extend(["decay f0", "ret"])
         path.write_text("\n".join(deep) + "\n")
         check(EXE, path, failures, emit=True)
+        path.write_text(";" * 1048577)
+        check(EXE, path, failures, diagnostic=b"source exceeds 1048576 bytes")
+        path.write_text("\n".join(["mov %r0, 1"] * 16385))
+        check(EXE, path, failures, diagnostic=b"too many instructions")
     if failures:
         print("\n".join(failures[:5]), file=sys.stderr)
         return 1
-    print("FUZZ OK (161 cases)")
+    print("FUZZ OK (163 cases)")
     return 0
 
 

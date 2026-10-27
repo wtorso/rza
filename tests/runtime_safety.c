@@ -1,26 +1,35 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static int fail_after = -1;
+static int heap_calls;
 static void *test_malloc(size_t size) {
-    if (fail_after == 0) return NULL;
-    if (fail_after > 0) fail_after--;
-    return malloc(size);
+    heap_calls++;
+    (void)size;
+    return NULL;
+}
+static void test_free(void *p) {
+    heap_calls++;
+    (void)p;
 }
 #define malloc test_malloc
+#define free test_free
 #include "rez3ext.h"
 #undef malloc
+#undef free
 
 #define CHECK(cond) do { if (!(cond)) return __LINE__; } while (0)
 
 int main(void) {
+    RezCavity field = {0};
     RezCavity proc = {0};
+    RezCavity slot = {0};
     RezArena empty = {0};
-    RezCavity *field;
-    RezCavity *slot = NULL;
+    char field_arena[64];
+    char proc_arena[64];
+    char slot_arena[64];
     RezCellMed med;
-    char *arena;
     unsigned gen;
+    unsigned saved;
     void *cell;
 
     (void)&rez_arena_init; (void)&rez_arena_alloc; (void)&rez_enter;
@@ -31,34 +40,27 @@ int main(void) {
     (void)&rez_i64_sub; (void)&rez_i64_mul; (void)&rez_i64_div;
     (void)&rez_i64_mod; (void)&rez_i64_shl; (void)&rez_i64_shr;
 
-    fail_after = 0;
-    CHECK(rez_enter_checked(NULL, 64) == NULL);
-    fail_after = 1;
-    CHECK(rez_enter_checked(NULL, 64) == NULL);
-    CHECK(!rez_frame_reset(&proc, NULL, 64));
-
-    fail_after = -1;
-    field = rez_enter_checked(NULL, 64);
-    CHECK(field != NULL);
-    CHECK(rez_frame_reset(&proc, field, 64));
-    arena = proc.arena.base;
+    CHECK(rez_frame_reset(&field, NULL, field_arena, 64));
+    CHECK(rez_frame_reset(&proc, &field, proc_arena, 64));
     gen = proc.generation;
-    fail_after = 0;
-    CHECK(!rez_frame_reset(&proc, field, 64));
-    CHECK(proc.arena.base == arena && proc.generation == gen && proc.alive);
-    fail_after = -1;
+    saved = rez_g_gen;
+    rez_g_gen = 0;
+    CHECK(!rez_frame_reset(&proc, &field, proc_arena, 64));
+    CHECK(proc.generation == gen && proc.alive && proc.arena.base == proc_arena);
+    rez_g_gen = saved;
 
-    CHECK(rez_cav_enter(&slot, NULL, 64) == slot && slot != NULL);
-    gen = slot->generation;
-    CHECK(rez_cav_enter(&slot, NULL, 64) == NULL);
-    CHECK(slot->generation == gen);
-    rez_leave(slot);
-    CHECK(rez_cav_enter(&slot, NULL, 64) == slot);
-    CHECK(slot->generation != gen);
+    CHECK(rez_cav_enter(&slot, NULL, slot_arena, 64) == &slot);
+    gen = slot.generation;
+    CHECK(rez_cav_enter(&slot, NULL, slot_arena, 64) == NULL);
+    CHECK(slot.generation == gen);
+    rez_decay(&slot);
+    CHECK(!slot.alive && slot.arena.base == NULL);
+    CHECK(rez_cav_enter(&slot, NULL, slot_arena, 64) == &slot);
+    CHECK(slot.generation != gen && slot.arena.base == slot_arena);
 
-    cell = rez_cell_z(field, 8);
+    cell = rez_cell_z(&field, 8);
     CHECK(cell != NULL);
-    med = rez_issue_cell(field, field, cell, 8);
+    med = rez_issue_cell(&field, &field, cell, 8);
     CHECK(rez_deref_cell(med) == cell);
     CHECK(rez_cell_bounds(med, 0, 8));
     CHECK(!rez_cell_bounds(med, 1, 8));
@@ -70,17 +72,11 @@ int main(void) {
     CHECK(rez_i64_shl(1, 63) == INT64_MIN);
     CHECK(rez_i64_div(8, 2) == 4 && rez_i64_mod(8, 3) == 2);
 
-    rez_leave(field);
+    rez_decay(&field);
     CHECK(rez_deref_cell(med) == NULL);
-    CHECK(rez_cell_z(field, 0) == NULL);
-    rez_leave(&proc);
-    rez_leave(slot);
-    rez_g_gen = 0;
-    CHECK(rez_enter_checked(NULL, 64) == NULL);
-    CHECK(!rez_frame_reset(&proc, NULL, 64));
-    CHECK(rez_cav_enter(&slot, NULL, 64) == NULL);
-    rez_g_gen = 1;
-    free(field);
-    free(slot);
+    CHECK(rez_cell_z(&field, 0) == NULL);
+    rez_decay(&proc);
+    rez_decay(&slot);
+    CHECK(heap_calls == 0);
     return 0;
 }

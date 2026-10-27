@@ -118,9 +118,13 @@ def check(name, cond, extra=""):
         print(f"FAIL - {name}{': ' + str(extra) if extra else ''}")
 
 
-def send(obj):
+def frame(obj):
     body = json.dumps(obj).encode()
-    proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+    return b"Content-Length: %d\r\n\r\n" % len(body) + body
+
+
+def send(obj):
+    proc.stdin.write(frame(obj))
     proc.stdin.flush()
 
 
@@ -325,6 +329,24 @@ def main():
         json.dumps(params),
     )
 
+    send({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {"uri": GOOD_URI, "version": 6},
+            "contentChanges": [{"text": "€" * 200 + "\n"}],
+        },
+    })
+    params = recv().get("params") or {}
+    diags = params.get("diagnostics") or []
+    message = diags[0].get("message", "") if diags else ""
+    check(
+        "LSP diagnostics: UTF-8 clip keeps whole codepoints",
+        len(diags) == 1 and len(message.encode("utf-8")) <= 256
+        and not message.endswith("�"),
+        f"bytes={len(message.encode('utf-8'))}",
+    )
+
     send({"jsonrpc": "2.0", "id": 2, "method": "shutdown"})
     resp = recv()
     check(
@@ -340,9 +362,30 @@ def main():
     if stderr:
         print(f"--- server stderr ---\n{stderr}\n---")
 
+    json_values = b"[" + b"0," * 65537 + b"0]"
     oversized = [
         ("header", b"X" * 9000, b"header too large"),
+        ("JSON values", b"Content-Length: %d\r\n\r\n" % len(json_values)
+         + json_values, b"JSON values exceeds static budget"),
         ("body", b"Content-Length: 16777217\r\n\r\n", b"body too large"),
+        ("document", frame({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": "file:///too-large.rza", "text": ";" * 1048577,
+            }},
+        }), b"document exceeds static budget"),
+        ("URI", frame({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": "file:///" + "u" * 1024, "text": "ret\n",
+            }},
+        }), b"URI exceeds static budget"),
+        ("document slots", b"".join(frame({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": f"file:///slot-{i}.rza", "text": "ret\n",
+            }},
+        }) for i in range(65)), b"document slots exceeds static budget"),
     ]
     for name, payload, diagnostic in oversized:
         result = subprocess.run(
