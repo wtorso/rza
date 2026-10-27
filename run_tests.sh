@@ -5,12 +5,6 @@
 set -u
 cd "$(dirname "$0")"
 
-# компилятор C3 для транспайлера
-if   command -v c3c >/dev/null 2>&1; then C3C="c3c"
-elif [ -n "${LOCALAPPDATA:-}" ] && [ -x "$LOCALAPPDATA/c3/c3c.exe" ]; then
-    C3C="$LOCALAPPDATA/c3/c3c.exe"
-else echo "FATAL: no c3c" >&2; exit 2; fi
-
 # компилятор C99 для сгенерированного кода
 if   command -v gcc   >/dev/null 2>&1; then CC="gcc"
 elif command -v zig   >/dev/null 2>&1; then CC="zig cc"
@@ -19,26 +13,13 @@ else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
 
 CFLAGS="-std=c99 -pedantic -Wall -Wextra -fsanitize=undefined "
 CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
-BUILD=build
+BUILD=".test-build-$$"
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
 trap 'rm -rf "$BUILD"' EXIT
 
-# шаг 0: сборка транспайлера
 echo "== build rez3asm.exe (c3c) =="
-if ! $C3C compile rez3asm.c3 lsp_server.c3 -o rez3asm.new; then
-    echo "FATAL: transpiler build failed" >&2
-    exit 2
-fi
-# VS Code держит rez3asm.exe занятым (LSP-сервер): перезаписать нельзя,
-# но работающий exe можно переименовать — меняем через rename
-if ! mv -f rez3asm.new.exe rez3asm.exe 2>/dev/null; then
-    rm -f rez3asm.old.exe 2>/dev/null
-    mv -f rez3asm.exe rez3asm.old.exe \
-        && mv -f rez3asm.new.exe rez3asm.exe \
-        || { echo "FATAL: cannot replace rez3asm.exe" >&2; exit 2; }
-fi
-mv -f rez3asm.new.pdb rez3asm.pdb 2>/dev/null
+bash build_compiler.sh
 TR="./rez3asm.exe"
 
 PASS=0; FAIL=0
@@ -246,6 +227,21 @@ run_reference() {
     ok reference
 }
 
+run_build_parallel() {
+    local p1 p2 status
+    bash build_compiler.sh >"$BUILD/parallel1.log" 2>&1 & p1=$!
+    bash build_compiler.sh >"$BUILD/parallel2.log" 2>&1 & p2=$!
+    status=0
+    wait "$p1" || status=1
+    wait "$p2" || status=1
+    if [ "$status" -ne 0 ]; then
+        bad build_parallel "concurrent compiler builds failed"
+        cat "$BUILD/parallel1.log" "$BUILD/parallel2.log"
+        return
+    fi
+    ok build_parallel
+}
+
 echo "== REZ3-ASM test run (compiler: $CC) =="
 for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
          mangle_label mangle_proc mangle_cav no_cells unaligned; do
@@ -274,6 +270,7 @@ run_viol viol_frame_static_budget STRUCT
 run_viol viol_total_static_budget STRUCT
 run_runtime_safety
 run_reference
+run_build_parallel
 
 # примеры учебника GUIDE.md — регрессия документации (аудит #3)
 for t in hello counter2 idioms settle; do
@@ -336,6 +333,7 @@ run_viol viol_med_gdup    DUP
 run_lib lib_hello
 run_lib_compile lib_scope
 run_lib lib_abort
+run_lib lib_raise
 $TR tests/fib.rza tests/counter.rza >"$BUILD/cli_two.out" 2>"$BUILD/cli_two.err"
 if [ "$?" -ne 2 ]; then
     bad cli_two_inputs "want exit 2 for two input files"

@@ -1,0 +1,10 @@
+proc setup:
+    cav main, field
+    cav tmp, main
+    res x, tmp, 8
+    raise x, main
+    med x_m, x, main
+    mov %r0, 42
+    store [x_m + 0], %r0
+    ret
+ret

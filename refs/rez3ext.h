@@ -1,17 +1,31 @@
 /* ============================================================================
- * REZ3EXT.H — безопасное расширение рантайма RESONANCE-3 для REZ3-ASM.
- * rez3.h заморожен: новые проверки и типы находятся только здесь.
+ * REZ3EXT.H — static runtime REZ3-ASM без heap-функций C89-модели.
+ * Раскладка типов совпадает с rez3.h, но старые heap API сюда не входят.
  * ASM-слой использует C99; всё static, один TU на программу.
  * ============================================================================
  */
 #ifndef REZ3EXT_H
 #define REZ3EXT_H
 
+#include <stddef.h>
 #include <stdint.h>
-#include "rez3.h"
+#include <string.h>
+
+typedef struct { char *base; size_t used, cap; } RezArena;
+typedef struct RezCavity {
+    struct RezCavity *parent;
+    unsigned generation;
+    int alive;
+    RezArena arena;
+} RezCavity;
+
+static unsigned rez_g_gen = 1;
 
 /* RezCellMed передаётся хосту по значению: все TU пересобираются вместе. */
 #define REZ3EXT_ABI 2
+
+/* Для static storage использовать rez_decay, не rez_leave: последний
+ * вызывает free и допустим только для heap-арен замороженной C89-модели. */
 static void rez_decay(RezCavity *c) {
     if (!c) return;
     c->generation = rez_g_gen++;
