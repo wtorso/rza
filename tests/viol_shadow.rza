@@ -1,4 +1,4 @@
-; DUP: proc с именем существующей рамки (review P7d)
+; DUP: proc с именем существующей рамки.
 cav  main, field
 proc main:              ; VIOLATION [DUP]: procedure shadows frame
     ret

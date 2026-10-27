@@ -17,10 +17,12 @@ elif command -v zig   >/dev/null 2>&1; then CC="zig cc"
 elif command -v clang >/dev/null 2>&1; then CC="clang"
 else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
 
-CFLAGS="-std=c99 -pedantic -Wall -Wextra -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I ."
+CFLAGS="-std=c99 -pedantic -Wall -Wextra -fsanitize=undefined "
+CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
 BUILD=build
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
+trap 'rm -rf "$BUILD"' EXIT
 
 # шаг 0: сборка транспайлера
 echo "== build rez3asm.exe (c3c) =="
@@ -75,10 +77,10 @@ run_good() {
     ok "$t"
 }
 
-# runtime-fault ($1, по умолчанию dead_link): транслируется и
-# компилируется, при запуске exit!=0 и FAULT в stderr
+# Runtime-fault: exit != 0 и точная диагностика $2 (или FAULT).
 run_dead() {
     local t=${1:-dead_link}
+    local want=${2:-FAULT}
     if ! $TR "tests/$t.rza" --emit-c -o "$BUILD/$t.c" \
             2>"$BUILD/$t.trerr"; then
         bad "$t" "transpile failed (want exit 0: runtime-fault is legal)"
@@ -98,8 +100,8 @@ run_dead() {
         bad "$t" "exited 0 (want runtime fault)"
         return
     fi
-    if ! grep -q "FAULT" "$BUILD/$t.runerr"; then
-        bad "$t" "no FAULT in stderr"; cat "$BUILD/$t.runerr"
+    if ! grep -q "$want" "$BUILD/$t.runerr"; then
+        bad "$t" "missing diagnostic: $want"; cat "$BUILD/$t.runerr"
         return
     fi
     ok "$t"
@@ -149,7 +151,11 @@ run_lib() {
         bad "$t" "transpile --emit-lib failed"; cat "$BUILD/$t.trerr"
         return
     fi
-    if [ -f "tests/$t.harness.c" ]; then HARNESS="tests/$t.harness.c"; else HARNESS="tests/lib_harness.c"; fi
+    if [ -f "tests/$t.harness.c" ]; then
+        HARNESS="tests/$t.harness.c"
+    else
+        HARNESS="tests/lib_harness.c"
+    fi
     if ! $CC $CFLAGS "$BUILD/$t.lib.c" "$HARNESS" \
             -o "$BUILD/$t.exe" 2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
@@ -192,19 +198,87 @@ run_lib_compile() {
     ok "$t"
 }
 
+run_runtime_safety() {
+    if ! $CC $CFLAGS tests/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
+            2>"$BUILD/runtime_safety.ccerr"; then
+        bad runtime_safety "compile failed"; cat "$BUILD/runtime_safety.ccerr"
+        return
+    fi
+    if [ -s "$BUILD/runtime_safety.ccerr" ]; then
+        bad runtime_safety "compiler warnings (want zero)"
+        cat "$BUILD/runtime_safety.ccerr"
+        return
+    fi
+    if ! "$BUILD/runtime_safety.exe"; then
+        bad runtime_safety "runtime checks failed"
+        return
+    fi
+    ok runtime_safety
+}
+
+run_reference() {
+    if ! $CC -std=c89 -pedantic -Wall -Wextra refs/rez3check.c \
+            -o "$BUILD/rez3check.exe" 2>"$BUILD/rez3check.ccerr"; then
+        bad reference "C89 compile failed"; cat "$BUILD/rez3check.ccerr"
+        return
+    fi
+    if [ -s "$BUILD/rez3check.ccerr" ]; then
+        bad reference "compiler warnings (want zero)"; cat "$BUILD/rez3check.ccerr"
+        return
+    fi
+    : >"$BUILD/deep.rz3"
+    echo "frame f0 -" >>"$BUILD/deep.rz3"
+    i=1
+    # MAXF=256 включает field, поэтому f0..f254 — предел без LIMIT.
+    while [ "$i" -lt 255 ]; do
+        echo "frame f$i f$((i - 1))" >>"$BUILD/deep.rz3"
+        i=$((i + 1))
+    done
+    echo "leave f0" >>"$BUILD/deep.rz3"
+    if ! "$BUILD/rez3check.exe" "$BUILD/deep.rz3" >"$BUILD/deep.ref.out"; then
+        bad reference "deep decay failed"; cat "$BUILD/deep.ref.out"
+        return
+    fi
+    if ! grep -q "violations=0" "$BUILD/deep.ref.out"; then
+        bad reference "unexpected violations"; cat "$BUILD/deep.ref.out"
+        return
+    fi
+    ok reference
+}
+
 echo "== REZ3-ASM test run (compiler: $CC) =="
 for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
          mangle_label mangle_proc mangle_cav no_cells unaligned; do
     run_good "$t"
 done
 run_good imm_bounds
+run_good arith_wrap
+run_good compare_edges
+run_good skipped_decay
+run_good cav_reuse
+run_dead cav_reentry "FAULT line 3: frame allocation f"
+run_dead raise_home "FAULT line 9: dead mediator x_m"
+run_dead bounds_dynamic "FAULT line 6: out of bounds x_m"
+run_dead bounds_casc_dynamic "FAULT line 7: out of bounds x_m"
+run_dead div_zero "FAULT line 3: division"
+run_dead div_overflow "FAULT line 4: division"
+run_dead mod_overflow "FAULT line 4: division"
+run_dead shift_range "FAULT line 2: shift"
+run_dead shift_negative "FAULT line 3: shift"
+run_viol viol_bounds_imm STRUCT
+run_viol viol_bounds_negative STRUCT
+run_viol viol_aligned_size STRUCT
+run_viol viol_res_sum_overflow STRUCT
+run_viol viol_cap_out_overflow STRUCT
+run_runtime_safety
+run_reference
 
 # примеры учебника GUIDE.md — регрессия документации (аудит #3)
 for t in hello counter2 idioms settle; do
     DIR=docs/examples run_good "$t"
 done
-run_dead
-run_dead ret_dead
+run_dead dead_link "FAULT line 10: dead mediator acc_m"
+run_dead ret_dead "FAULT line 8: dead mediator x_m"
 run_viol viol_i2        I2
 run_viol viol_i4        I4
 run_viol viol_jump      STRUCT
@@ -220,7 +294,7 @@ run_viol viol_extra_ops STRUCT
 run_viol viol_casc_dup  DUP
 run_viol viol_recursive STRUCT
 run_viol viol_shadow    DUP
-# review #6/#7 + покрытие веток чекера (review #12)
+# Покрытие веток чекера.
 run_viol viol_res_overflow STRUCT
 run_viol viol_ret_casc I3
 run_viol viol_bad_name  STRUCT
@@ -251,8 +325,7 @@ run_viol viol_casc_header STRUCT
 run_viol viol_casc_suffix STRUCT
 run_viol viol_acasc_out STRUCT
 run_viol viol_proc_header STRUCT
-# review-audit: переполнение смещения [med + off] (#3) + коллизии имён
-# с host API lib-режима (#4)
+# Переполнение смещений и коллизии host API.
 run_viol viol_mem_overflow STRUCT
 run_viol viol_host_boot   STRUCT
 run_viol viol_host_prefix STRUCT

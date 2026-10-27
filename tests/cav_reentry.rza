@@ -1,0 +1,7 @@
+mov %r1, 2
+loop:
+cav f, field
+dec %r1
+brnz %r1, loop
+decay f
+ret

@@ -1,5 +1,4 @@
-; STRUCT: константа mov/ALU ограничена i32 (AUDIT-4; норма «нет молчаливой
-; неправильности» — раньше молча обрезалось)
+; STRUCT: константа mov/ALU ограничена i32, без молчаливого усечения.
 mov  %r0, 99999999999    ; VIOLATION [STRUCT]: immediate out of i32 range
 add  %r1, %r0, 0x100000000  ; VIOLATION [STRUCT]: immediate out of i32 range
 ret

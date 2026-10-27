@@ -1,6 +1,6 @@
 ; SCOPE (AUDIT-4): медиатор, созданный внутри proc, виден только ему;
 ; из другого proc — [SCOPE]. Глобальные медиаторы на ячейки обычных
-; глобальных рамок (field/session/mission) — легальны в любом proc.
+; глобальных рамок (field/session/archive) — легальны в любом proc.
 proc p1:
     res  x, p1, 8
     med  x_m, x, p1

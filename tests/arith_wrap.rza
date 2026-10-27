@@ -1,0 +1,17 @@
+mov %r0, 2147483647
+mul %r0, %r0, %r0
+mul %r0, %r0, %r0
+print %r0                  ; (2^31-1)^4 mod 2^64 = 9223372028264841217
+mov %r1, 0
+dec %r1
+shr %r1, %r1, 1
+print %r1                  ; -1: арифметический -1 >> 1 сохраняет знак
+mov %r2, 1
+shl %r2, %r2, 63
+print %r2                  ; 2^63 со знаком i64 = -9223372036854775808
+inc %r2
+print %r2                  ; INT64_MIN + 1 = -9223372036854775807
+dec %r2
+dec %r2
+print %r2                  ; INT64_MIN - 1 по mod 2^64 = INT64_MAX
+ret

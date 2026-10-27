@@ -1,17 +1,6 @@
-// ============================================================================
-// lsp_server.c3 — LSP-сервер REZ3-ASM внутри транспайлера (`rez3asm --lsp`).
-//
-// Замена rez3-lsp.js (Node): то же минимальное подмножество LSP 3.17 —
-// JSON-RPC 2.0 поверх stdio (Content-Length framing), синхронная
-// валидация на didOpen/didChange (Full sync), без временных файлов:
-// текст документа скармливается чекеру из памяти (run + reset_state,
-// диагностика собирается viol() в lsp_diags).
-//
-// initialize → capabilities { textDocumentSync: 1 }, serverInfo;
-// shutdown → null; exit → 0 после shutdown, иначе 1; EOF на stdin → 0.
-// Неизвестный request → error -32601; уведомления без id игнорируются.
-// stdout — строго протокол; логи — только stderr.
-// ============================================================================
+// LSP 3.17 поверх stdio, Full sync. Чекер работает из памяти.
+// stdout — протокол; stderr — логи.
+// shutdown → null; exit → 0 после shutdown, иначе 1; EOF → 0.
 module rez3asm;
 
 import std::io;
@@ -24,10 +13,10 @@ import std::collections::object;
 import std::encoding::json;
 
 const String LSP_VERSION = "0.4.0";
+const int LSP_HEADER_MAX = 8192;
+const int LSP_BODY_MAX = 16777216;
 
-// Windows: stdin/stdout по умолчанию в текстовом режиме (CRLF↔LF ломает
-// Content-Length в обе стороны) — переводим в бинарный. _setmode в std C3
-// не забинден, объявляем сами; _O_BINARY = 0x8000.
+// Бинарный stdio сохраняет Content-Length на Windows.
 extern fn CInt _setmode(CInt fd, CInt mode) @feat(WIN32);
 const CInt LSP_O_BINARY @feat(WIN32) = 0x8000;
 
@@ -128,23 +117,29 @@ fn void publish_diagnostics(String uri, bool empty) {
     lsp_send_body(d.str_view());
 }
 
-// чекер из памяти: полный сброс + один проход; нарушения — в lsp_diags.
-// Временные аллокации прохода (split/cat) — из tmem, @pool возвращает их
-// после публикации диагностики: иначе каждая валидация добавляла бы ~размер
-// документа к RSS долгоживущего процесса.
+// Пул освобождает временные данные разбора после отправки диагностик.
 fn void validate(String uri, String text) {
     reset_state();
     srcname = uri;
     @pool() {
         run(text);
+        int suppressed = violations - (int)lsp_diags.len();
+        if (suppressed > 0) {
+            DString msg = dstring::new(tmem);
+            msg.appendf("%d diagnostics suppressed", suppressed);
+            lsp_diags.push({ .line = 0, .rule = "STRUCT",
+                             .msg = msg.copy_str(tmem) });
+        }
         publish_diagnostics(uri, false);
     };
 }
 
 // --- обработчики textDocument/* ----------------------------------------------------
 fn Object* lsp_text_document(Object* params) {
-    if (params == null) return null;
-    return params.get("textDocument") ?? null;
+    if (params == null || !params.is_keyable()) return null;
+    Object* td = params.get("textDocument") ?? null;
+    if (td == null || !td.is_keyable()) return null;
+    return td;
 }
 
 fn void on_did_open(Object* params) {
@@ -154,7 +149,7 @@ fn void on_did_open(Object* params) {
     if (catch uri_o) return;
     String text = td.get_string("text") ?? "";
     if (try cur = lsp_docs.get_ref(uri_o)) {
-        cur.free(mem);              // старая копия текста — в мусор
+        cur.free(mem);
         *cur = text.copy(mem);
     } else {
         // HashMap копирует и освобождает String-ключ сам (COPY_KEYS).
@@ -174,13 +169,17 @@ fn void on_did_change(Object* params) {
     if (catch changes) return;
     if (!changes.is_indexable()) return;
     // Full sync: последнее change содержит весь текст
-    String text = *cur;
+    String text = "";
+    bool has_text = false;
     for (sz i = 0; i < changes.get_len(); i++) {
         Object* ch = changes.get_at(i);
-        if (try t = ch.get_string("text")) text = t;
+        if (ch == null || !ch.is_keyable()) continue;
+        if (try t = ch.get_string("text")) { text = t; has_text = true; }
     }
-    cur.free(mem);                  // старая копия текста — в мусор
-    *cur = text.copy(mem);          // ключ уже в map — обновляем на месте
+    if (!has_text) return;
+    String next = text.copy(mem);
+    cur.free(mem);
+    *cur = next;
     validate(uri, text);
 }
 
@@ -196,6 +195,7 @@ fn void on_did_close(Object* params) {
 
 // --- диспетчер ----------------------------------------------------------------------
 fn void handle_message(Object* msg) {
+    if (msg == null || !msg.is_keyable()) return;
     Object* id = null;
     if (try i = msg.get("id")) id = i;
     String method = msg.get_string("method") ?? "";
@@ -263,10 +263,7 @@ fn int header_content_length(String header) {
 }
 
 // --- точка входа (--lsp) ------------------------------------------------------------------
-// ВАЖНО: читаем побайтово (read_byte → fgetc). File.read — это fread(buf,N),
-// который на открытом пайпе ждёт все N байт и заблокировал бы сессию после
-// первого же сообщения (проявляется только интерактивно; на закрытом stdin
-// fread отдаёт хвост по EOF, и всё «работало»).
+// Читаем побайтово: fread(buf, N) ждёт N байт на открытом пайпе.
 fn int lsp_main() {
     $if env::WIN32:
         _setmode(libc::fileno(libc::stdin()), LSP_O_BINARY);
@@ -285,10 +282,18 @@ fn int lsp_main() {
         if (catch c) break;         // EOF/ошибка stdin без exit → exit(0)
         inbuf.append_char(c);
         if (header_end < 0) {
+            if (inbuf.len() > (sz)LSP_HEADER_MAX) {
+                io::eprintfn("[rez3-lsp] header too large");
+                return 2;
+            }
             if (inbuf.len() < 4) continue;
             if (!inbuf.str_view().ends_with("\r\n\r\n")) continue;
             header_end = (sz)inbuf.len() - 4;
             body_len = header_content_length(inbuf.str_view()[:header_end]);
+            if (body_len > LSP_BODY_MAX) {
+                io::eprintfn("[rez3-lsp] body too large");
+                return 2;
+            }
             if (body_len < 0) {
                 // битый заголовок: отбрасываем байт и ресинхронизируемся
                 inbuf.delete(0, 1);

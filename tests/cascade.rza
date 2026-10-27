@@ -36,7 +36,7 @@ endc
 load  %r2, [g_m + 0]
 print %r2                  ; 6 = 5 + 1 (acasc bump по field-ячейке)
 
-; raise: ячейка переприбивается к предку; старые медиаторы мертвы
+; raise: новый текущий владелец; память остаётся в домашней рамке tmp
 cav  tmp, main
 res  lifted, tmp, 8
 raise lifted, main
