@@ -1,4 +1,4 @@
-# rez3-asm/gba — .rza на Game Boy Advance (sly как отладчик)
+# rza/gba — .rza на Game Boy Advance (sly как отладчик)
 
 Путь A: **.rza → C99 → GBA ROM → sly-debugger**. Новый бэкенд не нужен.
 GBA использует ARM7TDMI; i64 реализуется компилятором над 32-битными
@@ -9,7 +9,7 @@ GBA использует ARM7TDMI; i64 реализуется компилято
 ## Конвейер
 
 ```sh
-cd rez3-asm/gba
+cd rza/gba
 ./build.sh ../tests/fib.rza out/fib.gba     # .rza → C99 → ARM → .gba
 sly-debugger out/fib.gba                     # или перетащить в окно sly
 ```
