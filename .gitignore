@@ -1,0 +1,5 @@
+build/
+*.exe
+*.pdb
+gba/out/
+editors/vscode/node_modules/
