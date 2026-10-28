@@ -1,4 +1,4 @@
-// REZ3-ASM (.rza) -> C99. C3 0.8.5, refs/rez3.h + refs/rez3ext.h.
+// REZ3-ASM (.rza) -> C23. C3 0.8.5, refs/rez3.h + refs/rez3ext.h.
 // CLI: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]
 //      rez3asm --lsp
 // Инварианты проверяются за один проход; метки разрешаются вторым.
@@ -36,6 +36,7 @@ struct Frame {
     int    line;
     bool   alive;
     uint   gen;
+    uint   decay_id;      // первый decay, убивший рамку; 0 = жива
     String cname;
     int    scope;         // 0 = global, иначе индекс proc (1-based)
     int    res_bytes;     // сумма align16(size) всех res
@@ -188,10 +189,78 @@ int  cur_proc = 0;        // 0 = верхний уровень
 int  cur_casc = -1;       // индекс каскада или -1
 int  top_ret = 0;
 int  casc_seq = 0;
-bool g_lib_mode = false;   // --emit-lib: C99 без main, proc → rza_NAME
+bool g_lib_mode = false;   // --emit-lib: C23 без main, proc → rza_NAME
 String srcname;
 
 bool g_state_inited = false;
+
+fn int main(String[] args) {
+    assert(args.len > 0);
+    init_workmem();
+    reset_state();
+    assert(g_state_inited);
+
+    bool emit_c = false;
+    String outpath = "";
+    String src = "";
+    for (sz i = 1; i < args.len; i++) {
+        String a = args[i];
+        if (a == "--emit-c") {
+            emit_c = true;
+        } else if (a == "--emit-lib") {
+            emit_c = true;
+            g_lib_mode = true;
+        } else if (a == "--lsp") {
+            return lsp_main();
+        } else if (a == "-o") {
+            i++;
+            if (i >= args.len) {
+                io::eprintfn("rez3asm: -o needs an argument");
+                return 2;
+            }
+            outpath = args[i];
+        } else if (a.starts_with("-")) {
+            io::eprintfn("rez3asm: unknown flag %s", a);
+            return 2;
+        } else {
+            if (src.len > 0) {
+                io::eprintfn("rez3asm: expected one input file");
+                return 2;
+            }
+            src = a;
+        }
+    }
+    if (src.len == 0) {
+        io::eprintfn("usage: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c] | rez3asm --lsp");
+        io::eprintfn("  -o без --emit-c/--emit-lib тоже включает эмиссию C");
+        return 2;
+    }
+    srcname = src;
+    char[]? data = file::load(workmem, src);
+    if (catch data) {
+        io::eprintfn("rez3asm: cannot open %s", src);
+        return 2;
+    }
+    if (data.len > SOURCE_BYTES_MAX) {
+        io::eprintfn("rez3asm: source exceeds 1048576 bytes");
+        return 1;
+    }
+    run((String)data);
+    if (violations > 0) return 1;
+    if (emit_c || outpath.len > 0) {
+        String code = emit();
+        if (violations > 0) return 1;
+        if (outpath.len > 0) {
+            if (catch err = file::save(outpath, code)) {
+                io::eprintfn("rez3asm: cannot write %s", outpath);
+                return 2;
+            }
+        } else {
+            io::print(code);
+        }
+    }
+    return 0;
+}
 
 // полный сброс состояния чекера: CLI зовёт один раз, LSP — на каждую
 // валидацию (документ проверяется целиком, Full sync)
@@ -237,6 +306,28 @@ fn void reset_state() {
                   .gen = nextgen(), .cname = "f_field", .scope = 0,
                   .cap = 64, .is_field = true });
     frame_map.set("field", 0);
+    assert(frames.len() == 1);
+    assert(cells.len() == 0);
+    assert(meds.len() == 0);
+    assert(procs.len() == 0);
+    assert(cascades.len() == 0);
+    assert(blocks.len() == 1);
+    assert(labels.len() == 0);
+    assert(instrs.len() == 0);
+    assert(lsp_diags.len() == 0);
+    assert(frame_map.count == 1);
+    assert(cell_map.count == 0);
+    assert(med_map.count == 0);
+    assert(proc_map.count == 0);
+    assert(label_map.count == 0);
+    assert(label_names.count == 0);
+    assert(gencnt == 2);
+    assert(violations == 0);
+    assert(cur_proc == 0);
+    assert(cur_casc == -1);
+    assert(top_ret == 0);
+    assert(frames[0].alive);
+    assert(frames[0].gen == 1);
 }
 
 // --- утилиты -------------------------------------------------------------------
@@ -367,18 +458,24 @@ fn bool split_ops_exact(String rest, int want, int line, String opname, String[]
 // возврат: >=0 индекс, -1 unknown. Рамки и ячейки — общая хроника (AUDIT-3),
 // SCOPE для них нет (только медиаторы, find_med)
 fn int find_frame(String name, int scope) {
+    assert(name.len > 0);
+    assert(scope >= 0);
     int? fi = frame_map.get(name);
     if (catch fi) return -1;
     return frames[fi].scope == 0 || frames[fi].scope == scope ? fi : -1;
 }
 
 fn int find_cell(String name, int scope) {
+    assert(name.len > 0);
+    assert(scope >= 0);
     int? ci = cell_map.get(name);
     if (catch ci) return -1;
     return cells[ci].scope == 0 || cells[ci].scope == scope ? ci : -1;
 }
 
 fn int find_med(String name, int scope) {
+    assert(name.len > 0);
+    assert(scope >= 0);
     int? mi = med_map.get(name);
     if (catch mi) return -1;
     if (scope == 0) return meds[mi].scope == 0 ? mi : -1;
@@ -443,10 +540,11 @@ fn bool med_alive(int mi) {
     return frames[fr].alive && meds[mi].gen == frames[fr].gen;
 }
 
-fn int subtree_next(int root, int cur) {
-    assert(root >= 0 && root < (int)frames.len());
-    assert(cur >= root && cur < (int)frames.len());
-    if (frames[cur].first_child >= 0) return frames[cur].first_child;
+fn int subtree_sibling_next(int root, int cur) {
+    assert(root >= 0);
+    assert(root < (int)frames.len());
+    assert(cur >= root);
+    assert(cur < (int)frames.len());
     while (cur != root && frames[cur].next_sibling < 0) {
         cur = frames[cur].parent;
     }
@@ -454,11 +552,26 @@ fn int subtree_next(int root, int cur) {
     return frames[cur].next_sibling;
 }
 
+fn int subtree_next(int root, int cur) {
+    assert(root >= 0);
+    assert(root < (int)frames.len());
+    assert(cur >= root);
+    assert(cur < (int)frames.len());
+    if (frames[cur].first_child >= 0) return frames[cur].first_child;
+    return subtree_sibling_next(root, cur);
+}
+
 fn void kill(int f) {
+    uint decay_id = gencnt;
     int cur = f;
     while (cur >= 0) {
+        if (!frames[cur].alive) {
+            cur = subtree_sibling_next(f, cur);
+            continue;
+        }
         frames[cur].alive = false;
         frames[cur].gen = nextgen();
+        frames[cur].decay_id = decay_id;
         cur = subtree_next(f, cur);
     }
 }
@@ -514,14 +627,18 @@ fn String cname_for(String prefix, String name) {
 }
 
 fn void link_frame(int frame, int parent) {
-    assert(frame > 0 && frame < (int)frames.len());
-    assert(parent >= 0 && parent < frame);
+    assert(frame > 0);
+    assert(frame < (int)frames.len());
+    assert(parent >= 0);
+    assert(parent < frame);
     assert(frames[frame].parent == parent);
     frames[frame].next_sibling = frames[parent].first_child;
     frames[parent].first_child = frame;
 }
 
 fn void op_cav(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[3] buf;
     if (!split_ops_exact(rest, 2, line, "cav", &buf)) return;
     String name = buf[0];
@@ -552,6 +669,8 @@ fn void op_cav(String rest, int line) {
 }
 
 fn void op_res(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[3] buf;
     if (!split_ops_exact(rest, 3, line, "res", &buf)) return;
     String name = buf[0];
@@ -602,6 +721,8 @@ fn void op_res(String rest, int line) {
 }
 
 fn void op_med(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[3] buf;
     if (!split_ops_exact(rest, 3, line, "med", &buf)) return;
     String name = buf[0];
@@ -647,6 +768,8 @@ fn void op_med(String rest, int line) {
 }
 
 fn void op_raise(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[2] buf;
     if (!split_ops_exact(rest, 2, line, "raise", &buf)) return;
     String cn = buf[0];
@@ -673,6 +796,8 @@ fn void op_raise(String rest, int line) {
 }
 
 fn void op_decay(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[1] buf;
     if (!split_ops_exact(rest, 1, line, "decay", &buf)) return;
     String fname = buf[0];
@@ -691,6 +816,8 @@ fn void op_decay(String rest, int line) {
 }
 
 fn void op_probe(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[1] buf;
     if (!split_ops_exact(rest, 1, line, "probe", &buf)) return;
     String mname = buf[0];
@@ -789,6 +916,8 @@ fn void op_load2(String rest, int line, bool is_byte) {
 }
 
 fn void op_store(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[2] buf;
     if (!split_ops_exact(rest, 2, line, "store", &buf)) return;
     int off = 0;
@@ -802,6 +931,8 @@ fn void op_store(String rest, int line) {
 
 // --- данные и поток ----------------------------------------------------------------
 fn void op_mov(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[2] buf;
     if (!split_ops_exact(rest, 2, line, "mov", &buf)) return;
     int dst = parse_reg(buf[0], line);
@@ -822,6 +953,8 @@ fn void op_mov(String rest, int line) {
 }
 
 fn void op_alu3(String opname, String coper, String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[3] buf;
     if (!split_ops_exact(rest, 3, line, opname, &buf)) return;
     int d = parse_reg(buf[0], line);
@@ -853,6 +986,8 @@ fn void op_alu1(String rest, int line, bool is_inc) {
 }
 
 fn void op_print(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String[1] buf;
     if (!split_ops_exact(rest, 1, line, "print", &buf)) return;
     int r = parse_reg(buf[0], line);
@@ -861,6 +996,8 @@ fn void op_print(String rest, int line) {
 }
 
 fn void op_jmp(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String tgt = rest.trim();
     if (!check_name(tgt, line)) return;
     add_instr({ .op = Op.JMP, .line = line, .s1 = tgt });
@@ -877,6 +1014,8 @@ fn void op_br(String rest, int line, bool is_brz) {
 }
 
 fn void op_call(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
     String name = rest.trim();
     if (!check_name(name, line)) return;
     if (cur_proc > 0 && name == procs[(usz)(cur_proc - 1)].name) {
@@ -1063,7 +1202,7 @@ fn void end_casc(int line) {
     Instr ins = { .op = Op.ENDC, .line = line, .a = cur_casc };
     ins.func = cur_func();
     ins.block = (cur_proc > 0) ? procs[(sz)(cur_proc - 1)].block : 0;
-    instrs.push(ins);
+    if (!at_capacity(instrs.len(), line, "instructions")) instrs.push(ins);
     cur_casc = -1;
 }
 
@@ -1195,6 +1334,14 @@ fn void run(String text) {
              cat({"unterminated proc ", procs[(sz)(cur_proc - 1)].name,
                   " (missing ret)"}));
     }
+    assert(frames.len() <= NODE_MAX);
+    assert(cells.len() <= NODE_MAX);
+    assert(meds.len() <= NODE_MAX);
+    assert(procs.len() <= NODE_MAX);
+    assert(instrs.len() <= NODE_MAX);
+    assert(blocks.len() > 0);
+    if (violations == 0) assert(cur_casc < 0);
+    if (violations == 0) assert(cur_proc == 0);
     check_jumps();
     compute_caps();
 }
@@ -1239,9 +1386,81 @@ fn void compute_caps() {
             viol(frames[i].line, "STRUCT", "total arena capacity exceeds static budget");
         }
     }
+    assert(frames.len() > 0);
+    assert(total_all >= 0);
+    if (violations == 0) assert(total_all <= ARENA_TOTAL_MAX);
+    for (sz i = 0; i < frames.len(); i++) {
+        assert(frames[i].cap >= 64);
+        assert(frames[i].cap <= ARENA_FRAME_MAX);
+        assert(frames[i].res_bytes >= 0);
+        assert(frames[i].outs >= 0);
+        assert(frames[i].parent >= -1);
+        assert(frames[i].parent < (int)i);
+    }
 }
 
-// --- генерация C99 ------------------------------------------------------------------
+// --- генерация C23 ------------------------------------------------------------------
+struct Output {
+    DString text;
+    sz max_bytes;
+    bool overflow;
+}
+
+fn void Output.init(Output* out, sz initial_bytes, sz max_bytes) {
+    assert(initial_bytes > 0);
+    assert(max_bytes > 0);
+    sz capacity = initial_bytes < max_bytes ? initial_bytes : max_bytes;
+    out.text = dstring::new_with_capacity(workmem, capacity);
+    out.max_bytes = max_bytes;
+    out.overflow = false;
+}
+
+fn bool Output.reserve(Output* out, sz amount) {
+    assert(out.max_bytes > 0);
+    if (out.overflow) return false;
+    if (out.text.len() > out.max_bytes) {
+        out.overflow = true;
+        return false;
+    }
+    if (amount > out.max_bytes - out.text.len()) {
+        out.overflow = true;
+        return false;
+    }
+    return true;
+}
+
+fn sz? Output.write(Output* out, char[] bytes) @dynamic {
+    if (!out.reserve(bytes.len)) return io::BUFFER_EXCEEDED~;
+    out.text.append_string((String)bytes);
+    return bytes.len;
+}
+
+fn void? Output.write_byte(Output* out, char c) @dynamic {
+    char[1] byte = { c };
+    if (catch written = out.write(byte[..])) return written~;
+    return;
+}
+
+fn void Output.append_string(Output* out, String text) {
+    if (!out.reserve(text.len)) return;
+    out.text.append_string(text);
+    assert(out.text.len() <= out.max_bytes);
+}
+
+fn sz? Output.appendf(Output* out, String format, args...) @maydiscard @format(1) {
+    return io::fprintf((OutStream)out, format, ...args);
+}
+
+fn sz Output.len(Output* out) {
+    assert(out.text.len() <= out.max_bytes);
+    return out.text.len();
+}
+
+fn String Output.str_view(Output* out) {
+    assert(out.text.len() <= out.max_bytes);
+    return out.text.str_view();
+}
+
 fn String fexpr(int fi) {
     Frame* f = &frames[fi];
     if (f.is_field) return "f_field";
@@ -1262,7 +1481,7 @@ fn String label_cname(int block, String name) {
     }
 }
 
-fn void pad(DString* out, int ind) {
+fn void pad(Output* out, int ind) {
     for (int i = 0; i < ind; i++) out.append_string("    ");
 }
 
@@ -1297,7 +1516,7 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
     }
 }
 
-fn void emit_regs_decl(DString* out, int ind, uint mask) {
+fn void emit_regs_decl(Output* out, int ind, uint mask) {
     bool has_any = false;
     for (int r = 0; r < 16; r++) {
         if (mask & (1u << r)) has_any = true;
@@ -1316,7 +1535,7 @@ fn void emit_regs_decl(DString* out, int ind, uint mask) {
     out.append_string(";\n");
 }
 
-fn void emit_writeonly_silence(DString* out, int ind, uint rd, uint wr) {
+fn void emit_writeonly_silence(Output* out, int ind, uint rd, uint wr) {
     for (int r = 0; r < 16; r++) {
         if ((wr & (1u << r)) != 0 && (rd & (1u << r)) == 0) {
             pad(out, ind);
@@ -1326,7 +1545,7 @@ fn void emit_writeonly_silence(DString* out, int ind, uint rd, uint wr) {
 }
 
 // Глобальный медиатор инициализируется при создании res или OUT (AUDIT-4).
-fn void emit_hoisted_meds(DString* out, int ind, int cell) {
+fn void emit_hoisted_meds(Output* out, int ind, int cell) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
         if (meds[mi].scope != 0) continue;
@@ -1338,9 +1557,16 @@ fn void emit_hoisted_meds(DString* out, int ind, int cell) {
 }
 
 // Потомок может не создаться в этом проходе: guard обязателен.
-fn void emit_decay_subtree(DString* out, int ind, int f) {
+fn void emit_decay_subtree(Output* out, int ind, int f) {
+    uint decay_id = frames[f].decay_id;
     int cur = subtree_next(f, f);
+    assert(decay_id > 0);
     while (cur >= 0) {
+        if (frames[cur].decay_id < decay_id) {
+            cur = subtree_sibling_next(f, cur);
+            continue;
+        }
+        assert(frames[cur].decay_id == decay_id);
         if (!frames[cur].is_field && !frames[cur].is_procframe) {
             pad(out, ind);
             out.appendf("if (%s) rez_decay(%s);\n",
@@ -1350,17 +1576,22 @@ fn void emit_decay_subtree(DString* out, int ind, int f) {
     }
 }
 
-fn void emit_bounds_guard(DString* out, int ind, Instr* ins) {
+fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
     if (ins.c < 0) return;
     int width = ins.op == Op.LOAD && ins.flag ? 1 : 8;
     pad(out, ind);
-    out.appendf("if (!rez_cell_bounds(%s, r%d, %d)) { "
-                "fprintf(stderr, \"FAULT line %d: out of bounds %s\\n\"); "
-                "exit(1); }\n",
-                meds[ins.x].cname, ins.c, width, ins.line, meds[ins.x].name);
+    out.appendf("if (!rez_cell_bounds(%s, r%d, %d)) {\n",
+                meds[ins.x].cname, ins.c, width);
+    pad(out, ind + 1);
+    out.appendf("fprintf(stderr, \"FAULT line %d: out of bounds %s\\n\");\n",
+                ins.line, meds[ins.x].name);
+    pad(out, ind + 1);
+    out.append_string("exit(1);\n");
+    pad(out, ind);
+    out.append_string("}\n");
 }
 
-fn void emit_load(DString* out, int ind, Instr* ins, bool in_casc) {
+fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     DString oex = dstring::new(workmem);
     defer oex.free();
     if (ins.c >= 0) { oex.appendf("r%d", ins.c); }
@@ -1387,7 +1618,7 @@ fn void emit_load(DString* out, int ind, Instr* ins, bool in_casc) {
     out.append_string(in_casc ? "\n" : " }\n");
 }
 
-fn void emit_store(DString* out, int ind, Instr* ins, bool in_casc) {
+fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     DString sex = dstring::new(workmem);
     defer sex.free();
     if (ins.c >= 0) { sex.appendf("r%d", ins.c); }
@@ -1409,7 +1640,7 @@ fn void emit_store(DString* out, int ind, Instr* ins, bool in_casc) {
     out.append_string(in_casc ? "\n" : " }\n");
 }
 
-fn void emit_alu3(DString* out, int ind, Instr* ins) {
+fn void emit_alu3(Output* out, int ind, Instr* ins) {
     DString rhs = dstring::new(workmem);
     defer rhs.free();
     if (ins.flag) { rhs.appendf("%d", ins.c); }
@@ -1418,15 +1649,25 @@ fn void emit_alu3(DString* out, int ind, Instr* ins) {
     bool shift = ins.s2 == "<<" || ins.s2 == ">>";
     if (division) {
         pad(out, ind);
-        out.appendf("if (%s == 0 || (r%d == INT64_MIN && %s == -1)) { "
-                    "fprintf(stderr, \"FAULT line %d: division\\n\"); exit(1); }\n",
-                    rhs.str_view(), ins.b, rhs.str_view(), ins.line);
+        out.appendf("if (%s == 0 || (r%d == INT64_MIN && %s == -1)) {\n",
+                    rhs.str_view(), ins.b, rhs.str_view());
+        pad(out, ind + 1);
+        out.appendf("fprintf(stderr, \"FAULT line %d: division\\n\");\n", ins.line);
+        pad(out, ind + 1);
+        out.append_string("exit(1);\n");
+        pad(out, ind);
+        out.append_string("}\n");
     }
     if (shift) {
         pad(out, ind);
-        out.appendf("if (%s < 0 || %s >= 64) { "
-                    "fprintf(stderr, \"FAULT line %d: shift\\n\"); exit(1); }\n",
-                    rhs.str_view(), rhs.str_view(), ins.line);
+        out.appendf("if (%s < 0 || %s >= 64) {\n",
+                    rhs.str_view(), rhs.str_view());
+        pad(out, ind + 1);
+        out.appendf("fprintf(stderr, \"FAULT line %d: shift\\n\");\n", ins.line);
+        pad(out, ind + 1);
+        out.append_string("exit(1);\n");
+        pad(out, ind);
+        out.append_string("}\n");
     }
     String helper = "";
     if (ins.s2 == "+") helper = "rez_i64_add";
@@ -1445,7 +1686,7 @@ fn void emit_alu3(DString* out, int ind, Instr* ins) {
     }
 }
 
-fn void emit_label(DString* out, int ind, Instr* ins) {
+fn void emit_label(Output* out, int ind, Instr* ins) {
     int? li = label_map.get(label_key(ins.block, ins.s1));
     if (catch li) return;
     if (!labels[li].referenced) return;
@@ -1453,33 +1694,51 @@ fn void emit_label(DString* out, int ind, Instr* ins) {
     out.appendf("%s:\n", label_cname(ins.block, ins.s1));
 }
 
-fn void emit_own(DString* out, int ind, Instr* ins) {
+fn void emit_own(Output* out, int ind, Instr* ins) {
     switch (ins.op) {
         case Op.CAV:
             pad(out, ind);
-            out.appendf("%s = rez_cav_enter(%s, %s, A_%s, %d);\n",
-                        frames[ins.x].cname, frames[ins.x].cname,
-                        fexpr(ins.y), frames[ins.x].cname, frames[ins.x].cap);
+            out.appendf("%s = rez_cav_enter(\n", frames[ins.x].cname);
+            pad(out, ind + 1);
+            out.appendf("%s, %s, A_%s, %d\n",
+                        frames[ins.x].cname, fexpr(ins.y),
+                        frames[ins.x].cname, frames[ins.x].cap);
             pad(out, ind);
-            out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
-                        "frame allocation %s\\n\"); exit(1); }\n",
-                        frames[ins.x].cname, ins.line, frames[ins.x].name);
+            out.append_string(");\n");
+            pad(out, ind);
+            out.appendf("if (!%s) {\n", frames[ins.x].cname);
+            pad(out, ind + 1);
+            out.appendf("fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\");\n",
+                        ins.line, frames[ins.x].name);
+            pad(out, ind + 1);
+            out.append_string("exit(1);\n");
+            pad(out, ind);
+            out.append_string("}\n");
         case Op.RES:
             pad(out, ind);
             out.appendf("%s = rez_cell_z(%s, %d);\n",
                         cells[ins.x].cname, fexpr(ins.y), ins.a);
             pad(out, ind);
-            out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
-                        "arena overflow (cell %s)\\n\"); exit(1); }\n",
-                        cells[ins.x].cname, ins.line, cells[ins.x].name);
+            out.appendf("if (!%s) {\n", cells[ins.x].cname);
+            pad(out, ind + 1);
+            out.appendf("fprintf(stderr, \"FAULT line %d: arena overflow (cell %s)\\n\");\n",
+                        ins.line, cells[ins.x].name);
+            pad(out, ind + 1);
+            out.append_string("exit(1);\n");
+            pad(out, ind);
+            out.append_string("}\n");
             emit_hoisted_meds(out, ind, ins.x);
         case Op.MED:
             if (ins.func == 0) break;
             pad(out, ind);
             int ci = meds[ins.x].cell;
-            out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
-                        meds[ins.x].cname, fexpr(meds[ins.x].owner),
-                        fexpr(cells[ci].home), cells[ci].cname, cells[ci].size);
+            out.appendf("%s = rez_issue_cell(\n", meds[ins.x].cname);
+            pad(out, ind + 1);
+            out.appendf("%s, %s, %s, %d\n",
+                        fexpr(meds[ins.x].owner), fexpr(cells[ci].home),
+                        cells[ci].cname, cells[ci].size);
+            pad(out, ind);
+            out.append_string(");\n");
         case Op.RAISE:
             pad(out, ind);
             out.appendf("/* raise %s -> %s (line %d): static-only, "
@@ -1497,8 +1756,20 @@ fn void emit_own(DString* out, int ind, Instr* ins) {
     }
 }
 
-fn void emit_casc_start(DString* out, int ind, Instr* ins) {
+fn void emit_casc_start(Output* out, int ind, Instr* ins) {
     Cascade* ca = &cascades[ins.a];
+    assert(ins.a >= 0);
+    assert(ins.a < (int)cascades.len());
+    assert(ca.med_count > 0);
+    assert(ca.med_count <= CASC_MED_MAX);
+    assert(ca.seq > 0);
+    assert(ca.block >= 0);
+    assert(ca.block < (int)blocks.len());
+    assert(ca.out_cell >= 0);
+    assert(ca.out_cell < (int)cells.len());
+    assert(ca.out_frame >= 0);
+    assert(ca.out_frame < (int)frames.len());
+    assert(ca.name.len > 0);
     pad(out, ind);
     out.appendf("/* %s %s (line %d) */\n",
                 ca.is_async ? "acasc" : "casc", ca.name, ca.line);
@@ -1507,6 +1778,9 @@ fn void emit_casc_start(DString* out, int ind, Instr* ins) {
     ind++;
     for (int i = 0; i < ca.med_count; i++) {
         int mi = ca.med_idxs[i];
+        assert(mi >= 0);
+        assert(mi < (int)meds.len());
+        assert(meds[mi].gen > 0);
         pad(out, ind);
         out.appendf("void *p_%s = rez_deref_cell(%s);\n",
                     meds[mi].name, meds[mi].cname);
@@ -1514,24 +1788,39 @@ fn void emit_casc_start(DString* out, int ind, Instr* ins) {
     for (int i = 0; i < ca.med_count; i++) {
         int mi = ca.med_idxs[i];
         pad(out, ind);
-        out.appendf("if (!p_%s) { fprintf(stderr, \"ABORT line %d: "
-                    "cascade %s: dead mediator %s\\n\"); "
-                    "goto casc_end_%d; }\n",
-                    meds[mi].name, ca.line, ca.name, meds[mi].name, ca.seq);
+        out.appendf("if (!p_%s) {\n", meds[mi].name);
+        pad(out, ind + 1);
+        out.appendf("fprintf(stderr, \"ABORT line %d: cascade %s: "
+                    "dead mediator %s\\n\");\n", ca.line, ca.name, meds[mi].name);
+        pad(out, ind + 1);
+        out.appendf("goto casc_end_%d;\n", ca.seq);
+        pad(out, ind);
+        out.append_string("}\n");
     }
     if (ca.out_cell < 0) return;
     pad(out, ind);
     out.appendf("%s = rez_cell_z(%s, 8);\n",
                 cells[ca.out_cell].cname, fexpr(ca.out_frame));
     pad(out, ind);
-    out.appendf("if (!%s) { fprintf(stderr, \"FAULT line %d: "
-                "arena overflow (out %s)\\n\"); exit(1); }\n",
-                cells[ca.out_cell].cname, ca.line, cells[ca.out_cell].name);
+    out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
+    pad(out, ind + 1);
+    out.appendf("fprintf(stderr, \"FAULT line %d: arena overflow (out %s)\\n\");\n",
+                ca.line, cells[ca.out_cell].name);
+    pad(out, ind + 1);
+    out.append_string("exit(1);\n");
+    pad(out, ind);
+    out.append_string("}\n");
     emit_hoisted_meds(out, ind, ca.out_cell);
 }
 
-fn void emit_casc_end(DString* out, int ind, Instr* ins) {
+fn void emit_casc_end(Output* out, int ind, Instr* ins) {
     Cascade* ca = &cascades[ins.a];
+    assert(ins.a >= 0);
+    assert(ins.a < (int)cascades.len());
+    assert(ca.seq > 0);
+    assert(ca.block >= 0);
+    assert(ca.block < (int)blocks.len());
+    assert(ca.name.len > 0);
     pad(out, ind);
     out.appendf("casc_end_%d:\n", ca.seq);
     pad(out, ind + 1);
@@ -1540,11 +1829,14 @@ fn void emit_casc_end(DString* out, int ind, Instr* ins) {
     out.append_string("}\n");
 }
 
-fn void emit_body(DString* out, int func) {
+fn void emit_body(Output* out, int func) {
     int ind = 1;
+    assert(func <= (int)procs.len());
     for (sz i = 0; i < instrs.len(); i++) {
         Instr* ins = &instrs[i];
         if (ins.func != func) continue;
+        assert(ins.line > 0);
+        assert(ins.block < (int)blocks.len());
         bool in_casc = blocks[ins.block].kind == 2;
         switch (ins.op) {
             case Op.LABEL:
@@ -1608,63 +1900,55 @@ fn void emit_body(DString* out, int func) {
     }
 }
 
-fn void emit_proc(DString* out, int pi) {
+fn void emit_proc(Output* out, int pi) {
     Proc* p = &procs[pi];
-    // lib-режим: процедура — экспортируемая точка входа хоста
+    assert(pi >= 0);
+    assert(pi < (int)procs.len());
+    assert(p.frame >= 0);
+    assert(p.frame < (int)frames.len());
+    assert(p.block >= 0);
+    assert(p.block < (int)blocks.len());
+    assert(p.line > 0);
+    assert(p.cname.len > 0);
+    assert(frames[p.frame].is_procframe);
+    assert(frames[p.frame].cap <= ARENA_FRAME_MAX);
     if (g_lib_mode) {
         out.appendf("void rza_%s(void) {\n", p.name);
     } else {
-        out.appendf("static void %s(void) {\n", p.cname);
+        out.appendf("[[maybe_unused]] static void %s(void) {\n", p.cname);
     }
     uint rd, wr;
     scan_regs(pi + 1, &rd, &wr);
     emit_regs_decl(out, 1, rd | wr);
-    out.appendf("    if (!rez_frame_reset(&%s, f_field, A_%s, %d)) { "
-                "fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\"); "
-                "exit(1); }\n",
+    out.appendf("    if (!rez_frame_reset(&%s, f_field, A_%s, %d)) {\n"
+                "        fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\");\n"
+                "        exit(1);\n"
+                "    }\n",
                 frames[p.frame].cname, frames[p.frame].cname,
                 frames[p.frame].cap, p.line, p.name);
     emit_body(out, pi + 1);
     emit_writeonly_silence(out, 1, rd, wr);
-    // ret разрушает рамку процедуры и всё поддерево (как kill в чекере,
-    // AUDIT-7): рамки, созданные под ней в этом proc, гасим тоже
     emit_decay_subtree(out, 1, p.frame);
     out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
     out.append_string("}\n");
 }
 
-// глушилка неиспользованных static-входов рантайма (адрес взят — warning-а нет)
-fn void emit_silencers(DString* out) {
-    out.append_string("    /* unused runtime entries: адрес взят, warning-а нет */\n");
-    out.append_string("    (void)&rez_arena_alloc_z; (void)&rez_decay;\n");
-    out.append_string("    (void)&rez_cell_z; (void)&rez_issue_cell;\n");
-    out.append_string("    (void)&rez_deref_cell; (void)&rez_cell_bounds;\n");
-    out.append_string("    (void)&rez_frame_reset; (void)&rez_cav_enter;\n");
-    out.append_string("    (void)&rez_i64_add; (void)&rez_i64_sub;\n");
-    out.append_string("    (void)&rez_i64_mul; (void)&rez_i64_div;\n");
-    out.append_string("    (void)&rez_i64_mod; (void)&rez_i64_shl;\n");
-    out.append_string("    (void)&rez_i64_shr;\n");
-    if (!g_lib_mode) {
-        for (sz i = 0; i < procs.len(); i++) {
-            if (!procs[i].called) {
-                out.appendf("    (void)&%s;\n", procs[i].cname);
-            }
-        }
-    }
-}
-
-fn void emit_main(DString* out) {
+fn void emit_main(Output* out) {
     out.append_string("int main(void) {\n");
     uint rd, wr;
     scan_regs(0, &rd, &wr);
+    assert(frames[0].is_field);
+    assert(frames[0].cap >= 64);
+    assert(frames[0].cap <= ARENA_FRAME_MAX);
+    assert(rd <= 0xFFFF);
+    assert(wr <= 0xFFFF);
     emit_regs_decl(out, 1, rd | wr);
-    emit_silencers(out);
-    out.appendf("    if (!rez_frame_reset(f_field, NULL, A_field, %d)) { "
-                "fprintf(stderr, \"FAULT line 0: frame allocation field\\n\"); "
-                "exit(1); }\n", frames[0].cap);
+    out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n"
+                "        fprintf(stderr, \"FAULT line 0: frame allocation field\\n\");\n"
+                "        exit(1);\n"
+                "    }\n", frames[0].cap);
     emit_body(out, 0);
     emit_writeonly_silence(out, 1, rd, wr);
-    // хвост: return 0, если верхний уровень не кончается ret
     bool last_ret = false;
     for (sz i = instrs.len(); i > 0; i--) {
         if (instrs[i - 1].func == 0) {
@@ -1676,50 +1960,70 @@ fn void emit_main(DString* out) {
     out.append_string("}\n");
 }
 
-// lib-режим: верхнеуровневый код — rza_boot (включая создание field)
-fn void emit_boot(DString* out) {
+fn void emit_boot(Output* out) {
     out.append_string("void rza_boot(void) {\n");
     uint rd, wr;
     scan_regs(0, &rd, &wr);
+    assert(frames[0].is_field);
+    assert(frames[0].cap >= 64);
+    assert(frames[0].cap <= ARENA_FRAME_MAX);
+    assert(rd <= 0xFFFF);
+    assert(wr <= 0xFFFF);
     emit_regs_decl(out, 1, rd | wr);
-    emit_silencers(out);
-    out.appendf("    if (!rez_frame_reset(f_field, NULL, A_field, %d)) { "
-                "fprintf(stderr, \"FAULT line 0: frame allocation field\\n\"); "
-                "exit(1); }\n", frames[0].cap);
+    out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n"
+                "        fprintf(stderr, \"FAULT line 0: frame allocation field\\n\");\n"
+                "        exit(1);\n"
+                "    }\n", frames[0].cap);
     emit_body(out, 0);
     emit_writeonly_silence(out, 1, rd, wr);
     out.append_string("}\n");
 }
 
-// lib-режим: геттеры для хоста (рамки, медиаторы) + обёртки над static-рантаймом
-fn void emit_host_api(DString* out) {
-    out.append_string("\n/* host API: рамки, медиаторы, арена */\n");
+fn void emit_host_api(Output* out) {
+    assert(g_lib_mode);
+    assert(frames.len() <= NODE_MAX);
+    assert(meds.len() <= NODE_MAX);
+    out.append_string("\n/* Host API: frames, mediators, and arena. */\n");
     for (sz i = 0; i < frames.len(); i++) {
+        assert(frames[i].name.len > 0);
+        assert(frames[i].cname.len > 0);
+        assert(frames[i].scope >= 0);
         out.appendf("RezCavity *rza_frame_%s(void) { return %s; }\n",
                     frames[i].name, fexpr((int)i));
     }
     for (sz i = 0; i < meds.len(); i++) {
-        // Ячейка может появиться после rza_boot: довыдаём медиатор лениво.
         int ci = meds[i].cell;
-        out.appendf("RezCellMed rza_med_%s(void) { "
-                    "if (!%s.cell) %s = rez_issue_cell(%s, %s, %s, %d); "
-                    "return %s; }\n",
-                    meds[i].name, meds[i].cname, meds[i].cname,
+        assert(ci >= 0);
+        assert(ci < (int)cells.len());
+        assert(meds[i].name.len > 0);
+        assert(meds[i].gen > 0);
+        out.appendf("RezCellMed rza_med_%s(void) {\n", meds[i].name);
+        out.appendf("    if (!%s.cell) {\n", meds[i].cname);
+        out.appendf("        %s = rez_issue_cell(\n", meds[i].cname);
+        out.appendf("            %s, %s, %s, %d\n",
                     fexpr(cells[ci].owner), fexpr(cells[ci].home),
-                    cells[ci].cname, cells[ci].size, meds[i].cname);
+                    cells[ci].cname, cells[ci].size);
+        out.appendf("        );\n");
+        out.append_string("    }\n");
+        out.appendf("    return %s;\n", meds[i].cname);
+        out.append_string("}\n");
     }
-    out.append_string("unsigned rza_rez3ext_abi(void) { return REZ3EXT_ABI; }\n");
-    out.append_string("void *rza_arena_alloc(RezCavity *c, size_t size) "
-                      "{ return rez_cell_z(c, size); }\n");
-    out.append_string("void *rza_deref_cell(RezCellMed m) "
-                      "{ return rez_deref_cell(m); }\n");
+    out.append_string("uint32_t rza_rez3ext_abi(void) { return REZ3EXT_ABI; }\n");
+    out.append_string("void *rza_arena_alloc(RezCavity *cavity, uint64_t size) "
+                      "{ return rez_cell_z(cavity, size); }\n");
+    out.append_string("void *rza_deref_cell(RezCellMed mediator) "
+                      "{ return rez_deref_cell(mediator); }\n");
 }
 
-fn void emit_static_storage(DString* out) {
+fn void emit_static_storage(Output* out) {
     out.append_string("static RezCavity S_field;\n");
     out.append_string("static RezCavity *f_field = &S_field;\n");
     out.appendf("static char A_field[%d];\n", frames[0].cap);
     for (sz i = 0; i < frames.len(); i++) {
+        assert(frames[i].cname.len > 0);
+        assert(frames[i].cap >= 64);
+        assert(frames[i].cap <= ARENA_FRAME_MAX);
+        assert(frames[i].scope >= 0);
         if (frames[i].scope == 0 && !frames[i].is_field) {
             out.appendf("static RezCavity S_%s;\n", frames[i].cname);
             out.appendf("static RezCavity *%s = &S_%s;\n",
@@ -1729,16 +2033,29 @@ fn void emit_static_storage(DString* out) {
         }
     }
     for (sz i = 0; i < cells.len(); i++) {
+        assert(cells[i].owner >= 0);
+        assert(cells[i].owner < (int)frames.len());
+        assert(cells[i].home >= 0);
+        assert(cells[i].home < (int)frames.len());
         if (cells[i].scope == 0) {
             out.appendf("static void *%s;\n", cells[i].cname);
         }
     }
     for (sz i = 0; i < meds.len(); i++) {
+        assert(meds[i].cell >= 0);
+        assert(meds[i].cell < (int)cells.len());
+        assert(meds[i].cname.len > 0);
+        assert(meds[i].gen > 0);
         if (meds[i].scope == 0) {
             out.appendf("static RezCellMed %s;\n", meds[i].cname);
         }
     }
     for (sz i = 0; i < procs.len(); i++) {
+        assert(procs[i].frame >= 0);
+        assert(procs[i].frame < (int)frames.len());
+        assert(procs[i].block >= 0);
+        assert(procs[i].block < (int)blocks.len());
+        assert(procs[i].cname.len > 0);
         out.appendf("static RezCavity %s;\n", frames[procs[i].frame].cname);
         out.appendf("static char A_%s[%d];\n",
                     frames[procs[i].frame].cname, frames[procs[i].frame].cap);
@@ -1758,6 +2075,9 @@ fn void emit_static_storage(DString* out) {
             }
         }
         for (sz j = 0; j < meds.len(); j++) {
+            assert(meds[j].cell >= 0);
+            assert(meds[j].cell < (int)cells.len());
+            assert(meds[j].gen > 0);
             if (meds[j].scope == pscope) {
                 out.appendf("static RezCellMed %s;\n", meds[j].cname);
             }
@@ -1768,9 +2088,22 @@ fn void emit_static_storage(DString* out) {
 
 fn String emit() {
     assert(violations == 0);
-    assert(frames.len() > 0 && frames[0].is_field);
-    DString out = dstring::new_with_capacity(workmem, 8192);
-    out.appendf("/* Generated by rez3asm (C3) from %s — REZ3-ASM -> C99 */\n",
+    assert(frames.len() > 0);
+    assert(frames[0].is_field);
+    Output out;
+    out.init(8192, OUTPUT_BYTES_MAX);
+    assert(frames.len() <= NODE_MAX);
+    assert(cells.len() <= NODE_MAX);
+    assert(meds.len() <= NODE_MAX);
+    assert(procs.len() <= NODE_MAX);
+    assert(cascades.len() <= NODE_MAX);
+    assert(blocks.len() <= NODE_MAX);
+    assert(labels.len() <= NODE_MAX);
+    assert(instrs.len() <= NODE_MAX);
+    assert(out.max_bytes == OUTPUT_BYTES_MAX);
+    assert(out.text.len() == 0);
+    assert(srcname.len > 0);
+    out.appendf("/* Generated by rez3asm (C3) from %s — REZ3-ASM -> C23 */\n",
                 srcname);
     out.append_string("#include <stdio.h>\n");
     out.append_string("#include <stdint.h>\n");
@@ -1781,7 +2114,7 @@ fn String emit() {
         if (g_lib_mode) {
             out.appendf("void rza_%s(void);\n", procs[i].name);
         } else {
-            out.appendf("static void %s(void);\n", procs[i].cname);
+            out.appendf("[[maybe_unused]] static void %s(void);\n", procs[i].cname);
         }
     }
     if (procs.len() > 0) out.append_string("\n");
@@ -1796,77 +2129,9 @@ fn String emit() {
         emit_main(&out);
     }
     out.append_string("\n");
-    if (out.len() > OUTPUT_BYTES_MAX) {
+    if (out.overflow) {
         viol(0, "STRUCT", "generated C exceeds static budget");
-        out.free();
         return "";
     }
-    return out.copy_str(workmem);
-}
-
-// --- CLI ----------------------------------------------------------------------------
-fn int main(String[] args) {
-    init_workmem();
-    reset_state();
-
-    bool emit_c = false;
-    String outpath = "";
-    String src = "";
-    for (sz i = 1; i < args.len; i++) {
-        String a = args[i];
-        if (a == "--emit-c") {
-            emit_c = true;
-        } else if (a == "--emit-lib") {
-            emit_c = true;
-            g_lib_mode = true;
-        } else if (a == "--lsp") {
-            return lsp_main();
-        } else if (a == "-o") {
-            i++;
-            if (i >= args.len) {
-                io::eprintfn("rez3asm: -o needs an argument");
-                return 2;
-            }
-            outpath = args[i];
-        } else if (a.starts_with("-")) {
-            io::eprintfn("rez3asm: unknown flag %s", a);
-            return 2;
-        } else {
-            if (src.len > 0) {
-                io::eprintfn("rez3asm: expected one input file");
-                return 2;
-            }
-            src = a;
-        }
-    }
-    if (src.len == 0) {
-        io::eprintfn("usage: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c] | rez3asm --lsp");
-        io::eprintfn("  -o без --emit-c/--emit-lib тоже включает эмиссию C");
-        return 2;
-    }
-    srcname = src;
-    char[]? data = file::load(workmem, src);
-    if (catch data) {
-        io::eprintfn("rez3asm: cannot open %s", src);
-        return 2;
-    }
-    if (data.len > SOURCE_BYTES_MAX) {
-        io::eprintfn("rez3asm: source exceeds 1048576 bytes");
-        return 1;
-    }
-    run((String)data);
-    if (violations > 0) return 1;
-    if (emit_c || outpath.len > 0) {
-        String code = emit();
-        if (violations > 0) return 1;
-        if (outpath.len > 0) {
-            if (catch err = file::save(outpath, code)) {
-                io::eprintfn("rez3asm: cannot write %s", outpath);
-                return 2;
-            }
-        } else {
-            io::print(code);
-        }
-    }
-    return 0;
+    return out.str_view();
 }

@@ -1,0 +1,4 @@
+cascade LOAD: 3 items, total=60.0
+cascade LOAD: 6 items, total=120.0
+after back: mediator ALIVE (cart survived screen)
+after decay: mediator DEAD (intent would be dropped + logged)

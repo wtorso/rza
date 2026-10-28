@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # run_tests.sh — полный прогон REZ3-ASM: сборка транспайлера (C3), трансляция,
-# компиляция C99 (-pedantic -Wall -Wextra, ноль warnings), UBSan, запуск и
-# сверка exit/stdout, негативные тесты, LSP и fuzz. exit 0 только если всё зелёное.
-set -u
+# компиляция C23 со строгими warnings, UBSan, запуск и сверка exit/stdout,
+# негативные тесты, LSP и fuzz. exit 0 только если всё зелёное.
+set -o nounset
 cd "$(dirname "$0")"
 
-# компилятор C99 для сгенерированного кода
+# компилятор C23 для сгенерированного кода
 if   command -v gcc   >/dev/null 2>&1; then CC="gcc"
 elif command -v zig   >/dev/null 2>&1; then CC="zig cc"
 elif command -v clang >/dev/null 2>&1; then CC="clang"
 else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
 
-CFLAGS="-std=c99 -pedantic -Wall -Wextra -fsanitize=undefined "
+CFLAGS="-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
 CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
 BUILD=".test-build-$$"
-rm -rf "$BUILD"
-mkdir -p "$BUILD"
-trap 'rm -rf "$BUILD"' EXIT
+rm --recursive --force "$BUILD"
+mkdir --parents "$BUILD"
+trap 'rm --recursive --force "$BUILD"' EXIT
 
 echo "== build rez3asm.exe (c3c) =="
 bash build_compiler.sh
@@ -49,10 +49,10 @@ run_good() {
         bad "$t" "runtime failed (want exit 0)"; cat "$BUILD/$t.runerr"
         return
     fi
-    tr -d '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
-    if ! diff -u "$dir/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+    tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
+    if ! diff --unified "$dir/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
-        diff -u "$dir/$t.expected" "$BUILD/$t.out.lf"
+        diff --unified "$dir/$t.expected" "$BUILD/$t.out.lf"
         return
     fi
     ok "$t"
@@ -81,7 +81,7 @@ run_dead() {
         bad "$t" "exited 0 (want runtime fault)"
         return
     fi
-    if ! grep -q "$want" "$BUILD/$t.runerr"; then
+    if ! grep --quiet "$want" "$BUILD/$t.runerr"; then
         bad "$t" "missing diagnostic: $want"; cat "$BUILD/$t.runerr"
         return
     fi
@@ -96,7 +96,7 @@ run_viol() {
         bad "$t" "transpiler accepted invalid program (want exit 1)"
         return
     fi
-    if ! grep -q "\[$rule\]" "$BUILD/$t.err"; then
+    if ! grep --quiet "\[$rule\]" "$BUILD/$t.err"; then
         bad "$t" "no [$rule] in stderr"; cat "$BUILD/$t.err"
         return
     fi
@@ -122,6 +122,20 @@ run_py() {
 
 run_lsp_smoke() { run_py lsp_smoke tests/lsp_smoke.py; }
 run_fuzz() { run_py fuzz tests/fuzz_smoke.py; }
+
+run_c3_unit() {
+    local c3c_bin="c3c"
+    if ! command -v "$c3c_bin" >/dev/null 2>&1; then
+        c3c_bin="$LOCALAPPDATA/c3/c3c.exe"
+    fi
+    if ! "$c3c_bin" compile-test rez3asm.c3 lsp_server.c3 \
+            tests/output_writer_test.c3 -o "$BUILD/c3_tests" \
+            >"$BUILD/c3_tests.log" 2>&1; then
+        bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
+        return
+    fi
+    ok c3_unit
+}
 
 # lib-режим: $1.rza --emit-lib + компиляция с tests/lib_harness.c, запуск,
 # сверка с tests/$1.expected
@@ -150,10 +164,10 @@ run_lib() {
         bad "$t" "runtime failed (want exit 0)"; cat "$BUILD/$t.runerr"
         return
     fi
-    tr -d '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
-    if ! diff -u "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+    tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
+    if ! diff --unified "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
-        diff -u "tests/$t.expected" "$BUILD/$t.out.lf"
+        diff --unified "tests/$t.expected" "$BUILD/$t.out.lf"
         return
     fi
     ok "$t"
@@ -197,10 +211,28 @@ run_runtime_safety() {
     ok runtime_safety
 }
 
+run_shop() {
+    if ! $CC $CFLAGS refs/shop.c -o "$BUILD/shop.exe" \
+            2>"$BUILD/shop.ccerr"; then
+        bad shop "compile failed"; cat "$BUILD/shop.ccerr"
+        return
+    fi
+    if ! "$BUILD/shop.exe" >"$BUILD/shop.out" 2>"$BUILD/shop.runerr"; then
+        bad shop "runtime failed"; cat "$BUILD/shop.runerr"
+        return
+    fi
+    tr --delete '\r' <"$BUILD/shop.out" >"$BUILD/shop.out.lf"
+    if ! diff --unified tests/shop.expected "$BUILD/shop.out.lf"; then
+        bad shop "stdout mismatch"
+        return
+    fi
+    ok shop
+}
+
 run_reference() {
-    if ! $CC -std=c89 -pedantic -Wall -Wextra refs/rez3check.c \
+    if ! $CC $CFLAGS refs/rez3check.c \
             -o "$BUILD/rez3check.exe" 2>"$BUILD/rez3check.ccerr"; then
-        bad reference "C89 compile failed"; cat "$BUILD/rez3check.ccerr"
+        bad reference "C23 compile failed"; cat "$BUILD/rez3check.ccerr"
         return
     fi
     if [ -s "$BUILD/rez3check.ccerr" ]; then
@@ -220,11 +252,36 @@ run_reference() {
         bad reference "deep decay failed"; cat "$BUILD/deep.ref.out"
         return
     fi
-    if ! grep -q "violations=0" "$BUILD/deep.ref.out"; then
+    if ! grep --quiet "violations=0" "$BUILD/deep.ref.out"; then
         bad reference "unexpected violations"; cat "$BUILD/deep.ref.out"
         return
     fi
     ok reference
+}
+
+check_ref_reject() {
+    local name=$1 expected=$2 status
+    "$BUILD/rez3check.exe" >"$BUILD/$name.out"
+    status=$?
+    if [ "$status" -ne 1 ]; then
+        bad "$name" "want exit 1, got $status"; cat "$BUILD/$name.out"
+        return 1
+    fi
+    if ! grep --quiet "$expected" "$BUILD/$name.out"; then
+        bad "$name" "missing $expected"; cat "$BUILD/$name.out"
+        return 1
+    fi
+    return 0
+}
+
+run_reference_invalid() {
+    check_ref_reject ref_malformed STRUCT \
+        < <(printf 'frame only_one_operand\n') || return
+    check_ref_reject ref_overlong "line too long" \
+        < <(printf '%512s\n' x) || return
+    check_ref_reject ref_source_limit "source bytes" \
+        < <(printf '%1048577s' x) || return
+    ok reference_invalid
 }
 
 run_build_parallel() {
@@ -269,7 +326,9 @@ run_viol viol_cap_out_overflow STRUCT
 run_viol viol_frame_static_budget STRUCT
 run_viol viol_total_static_budget STRUCT
 run_runtime_safety
+run_shop
 run_reference
+run_reference_invalid
 run_build_parallel
 
 # примеры учебника GUIDE.md — регрессия документации (аудит #3)
@@ -342,6 +401,7 @@ else
 fi
 run_lsp_smoke
 run_fuzz
+run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
