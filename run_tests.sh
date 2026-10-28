@@ -18,13 +18,37 @@ rm --recursive --force "$BUILD"
 mkdir --parents "$BUILD"
 trap 'rm --recursive --force "$BUILD"' EXIT
 
-echo "== build rez3asm.exe (c3c) =="
-bash build_compiler.sh
-TR="./rez3asm.exe"
-
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "PASS $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL $1 -- $2"; }
+
+run_style() {
+    local status
+    if ! : >"$BUILD/style.out"; then
+        bad style "cannot write style output"
+        return
+    fi
+    git grep --untracked --line-number --perl-regexp '(*UTF).{101}' -- \
+        '*.c3' '*.c' '*.h' '*.sh' '*.py' '*.md' '*.rza' '*.expected' \
+        '.gitignore' '.gitmodules' 'LICENSE' >"$BUILD/style.out" 2>&1
+    status=$?
+    if [ "$status" -eq 0 ]; then
+        bad style "lines longer than 100"
+        cat "$BUILD/style.out"
+        return
+    fi
+    if [ "$status" -ne 1 ]; then
+        bad style "git grep failed"
+        cat "$BUILD/style.out"
+        return
+    fi
+    ok style
+}
+run_style
+
+echo "== build rez3asm.exe (c3c) =="
+bash build_compiler.sh
+TR="./rez3asm.exe"
 
 # легальная программа: транслируется, компилируется без warnings,
 # stdout совпадает с tests/$1.expected
@@ -256,6 +280,18 @@ run_reference() {
         bad reference "unexpected violations"; cat "$BUILD/deep.ref.out"
         return
     fi
+    # Старый link после raise остаётся жив: его owner/home не менялись.
+    printf 'frame A -\nframe B A\ncell X B\nlink M X B\nraise X A\ncasc C M > OUT A\n' \
+        >"$BUILD/raise_old.ref.rz3"
+    if ! "$BUILD/rez3check.exe" "$BUILD/raise_old.ref.rz3" \
+            >"$BUILD/raise_old.ref.out"; then
+        bad reference "live mediator rejected after raise"; cat "$BUILD/raise_old.ref.out"
+        return
+    fi
+    if ! grep --quiet "violations=0" "$BUILD/raise_old.ref.out"; then
+        bad reference "unexpected raise violations"; cat "$BUILD/raise_old.ref.out"
+        return
+    fi
     ok reference
 }
 
@@ -281,6 +317,11 @@ run_reference_invalid() {
         < <(printf '%512s\n' x) || return
     check_ref_reject ref_source_limit "source bytes" \
         < <(printf '%1048577s' x) || return
+    check_ref_reject ref_raise_dead_source I4 \
+        < <(printf 'frame A -\nframe B A\ncell X B\nleave A\nraise X field\n') || return
+    check_ref_reject ref_raise_home_casc I3 \
+        < <(printf '%s\n' 'frame A -' 'frame B A' 'cell X B' 'raise X A' \
+            'link X_M X A' 'leave B' 'casc C X_M > OUT A') || return
     ok reference_invalid
 }
 
@@ -337,6 +378,11 @@ for t in hello counter2 idioms settle; do
 done
 run_dead dead_link "FAULT line 10: dead mediator acc_m"
 run_dead ret_dead "FAULT line 8: dead mediator x_m"
+run_good raise_old_med
+run_viol viol_raise_home_casc I3
+run_viol viol_casc_missing_frame STRUCT
+run_viol viol_host_abi STRUCT
+run_viol viol_proc_colon STRUCT
 run_viol viol_i2        I2
 run_viol viol_i4        I4
 run_viol viol_jump      STRUCT

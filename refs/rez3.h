@@ -53,6 +53,7 @@ static_assert(sizeof(uint64_t) == 8);
 ) {
     if (cavity == nullptr) return false;
     if (base == nullptr) return false;
+    if ((uintptr_t)base % REZ_ALIGNMENT != 0) return false;
     if (cap == 0) return false;
     if (rez_g_gen == 0) return false;
     assert(cavity != parent);
@@ -85,6 +86,7 @@ static_assert(sizeof(uint64_t) == 8);
     uint64_t start;
     if (arena == nullptr) return nullptr;
     if (arena->base == nullptr) return nullptr;
+    if ((uintptr_t)arena->base % REZ_ALIGNMENT != 0) return nullptr;
     assert(arena->used <= arena->cap);
     if (arena->used > UINT64_MAX - (REZ_ALIGNMENT - 1)) return nullptr;
     start = (arena->used + REZ_ALIGNMENT - 1) & ~(REZ_ALIGNMENT - 1);

@@ -1,0 +1,8 @@
+cav child, field
+res x, child, 8
+raise x, field
+med x_m, x, field
+decay child
+casc c: x_m -> out[field]   ; I3: домашняя рамка медиатора мертва
+endc
+ret

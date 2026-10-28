@@ -1,0 +1,3 @@
+proc rez3ext_abi:       ; STRUCT: имя уже занято функцией проверки ABI host API
+    ret
+ret
