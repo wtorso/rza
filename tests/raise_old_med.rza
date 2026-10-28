@@ -1,0 +1,12 @@
+cav child, field
+res x, child, 8
+med old_m, x, child
+mov %r0, 42
+store [old_m + 0], %r0
+raise x, field
+casc use_old: old_m -> out[field]
+    load %r1, [old_m + 0]
+    print %r1   ; 42: сохранённые owner/home старого медиатора живы после raise
+endc
+decay child
+ret

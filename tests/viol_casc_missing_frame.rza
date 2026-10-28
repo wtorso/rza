@@ -1,0 +1,6 @@
+cav main, field
+res x, main, 8
+med x_m, x, main
+casc c: x_m -> out   ; STRUCT: у sync-каскада обязательна рамка OUT
+endc
+ret

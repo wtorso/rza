@@ -62,6 +62,7 @@ struct Med {
     int    cell;          // индекс Cell
     int    owner;         // владелец на момент объявления медиатора
     uint   gen;
+    uint   home_gen;
     String cname;
     int    scope;
 }
@@ -493,6 +494,7 @@ fn int find_proc(String name) {
 // Имена host API уникальны и проверяются до генерации C (SPEC §11).
 fn bool host_name_bad(String name, int line) {
     if (name == "boot" || name == "arena_alloc" || name == "deref_cell" ||
+        name == "rez3ext_abi" ||
         name.starts_with("frame_") || name.starts_with("med_")) {
         viol(line, "STRUCT", cat({"procedure name ", name,
              " collides with lib host API (SPEC 11)"}));
@@ -536,8 +538,14 @@ fn bool is_ancestor(int owner, int frame, bool strict) {
 }
 
 fn bool med_alive(int mi) {
-    int fr = cells[meds[mi].cell].owner;
-    return frames[fr].alive && meds[mi].gen == frames[fr].gen;
+    assert(mi >= 0);
+    assert(mi < (int)meds.len());
+    int owner = meds[mi].owner;
+    int home = cells[meds[mi].cell].home;
+    if (!frames[owner].alive) return false;
+    if (!frames[home].alive) return false;
+    if (meds[mi].gen != frames[owner].gen) return false;
+    return meds[mi].home_gen == frames[home].gen;
 }
 
 fn int subtree_sibling_next(int root, int cur) {
@@ -758,6 +766,7 @@ fn void op_med(String rest, int line) {
     }
     Med m = { .name = name, .cell = ci, .owner = cells[ci].owner,
               .gen = frames[cells[ci].owner].gen,
+              .home_gen = frames[cells[ci].home].gen,
               .cname = cname_for("m_", name), .scope = cur_proc };
     meds.push(m);
     int mi = (int)meds.len() - 1;
@@ -1101,6 +1110,10 @@ fn bool parse_casc_header(String rest, int line, bool is_async,
         *outname = outstr[:bi].trim();
         *outfname = outstr[bi + 1..ei - 1].trim();
     }
+    if (!is_async && outfname.len == 0) {
+        viol(line, "STRUCT", "sync cascade out frame is required");
+        return false;
+    }
     if (is_async && outfname.len > 0) {
         viol(line, "STRUCT", "acasc out frame is implicit (always field)");
         return false;
@@ -1268,9 +1281,11 @@ fn void open_proc_line(String line, int n, int sp) {
         return;
     }
     String pnm = line[sp..].trim();
-    if (pnm.len > 1 && pnm[pnm.len - 1] == ':') {
-        pnm = pnm[:pnm.len - 1].trim();
+    if (pnm.len <= 1 || pnm[pnm.len - 1] != ':') {
+        viol(n, "STRUCT", "malformed proc header");
+        return;
     }
+    pnm = pnm[:pnm.len - 1].trim();
     if (!is_name(pnm)) {
         viol(n, "STRUCT", "malformed proc header");
         return;
@@ -2018,7 +2033,7 @@ fn void emit_host_api(Output* out) {
 fn void emit_static_storage(Output* out) {
     out.append_string("static RezCavity S_field;\n");
     out.append_string("static RezCavity *f_field = &S_field;\n");
-    out.appendf("static char A_field[%d];\n", frames[0].cap);
+    out.appendf("_Alignas(REZ_ALIGNMENT) static char A_field[%d];\n", frames[0].cap);
     for (sz i = 0; i < frames.len(); i++) {
         assert(frames[i].cname.len > 0);
         assert(frames[i].cap >= 64);
@@ -2028,7 +2043,7 @@ fn void emit_static_storage(Output* out) {
             out.appendf("static RezCavity S_%s;\n", frames[i].cname);
             out.appendf("static RezCavity *%s = &S_%s;\n",
                         frames[i].cname, frames[i].cname);
-            out.appendf("static char A_%s[%d];\n",
+            out.appendf("_Alignas(REZ_ALIGNMENT) static char A_%s[%d];\n",
                         frames[i].cname, frames[i].cap);
         }
     }
@@ -2057,7 +2072,7 @@ fn void emit_static_storage(Output* out) {
         assert(procs[i].block < (int)blocks.len());
         assert(procs[i].cname.len > 0);
         out.appendf("static RezCavity %s;\n", frames[procs[i].frame].cname);
-        out.appendf("static char A_%s[%d];\n",
+        out.appendf("_Alignas(REZ_ALIGNMENT) static char A_%s[%d];\n",
                     frames[procs[i].frame].cname, frames[procs[i].frame].cap);
         int pscope = (int)i + 1;
         for (sz j = 0; j < frames.len(); j++) {
@@ -2065,7 +2080,7 @@ fn void emit_static_storage(Output* out) {
                 out.appendf("static RezCavity S_%s;\n", frames[j].cname);
                 out.appendf("static RezCavity *%s = &S_%s;\n",
                             frames[j].cname, frames[j].cname);
-                out.appendf("static char A_%s[%d];\n",
+                out.appendf("_Alignas(REZ_ALIGNMENT) static char A_%s[%d];\n",
                             frames[j].cname, frames[j].cap);
             }
         }

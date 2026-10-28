@@ -20,8 +20,15 @@ typedef struct {
     uint32_t gen;
     bool alive;
 } Frame;
-typedef struct { char name[NAMESZ]; int32_t frame; } Cell;
-typedef struct { char name[NAMESZ]; int32_t cell; uint32_t gen; } Link;
+typedef struct { char name[NAMESZ]; int32_t frame; int32_t home; } Cell;
+typedef struct {
+    char name[NAMESZ];
+    int32_t cell;
+    int32_t owner;
+    int32_t home;
+    uint32_t gen;
+    uint32_t home_gen;
+} Link;
 
 static Frame frames[MAXF];
 static Cell cells[MAXC];
@@ -136,13 +143,20 @@ static bool is_ancestor(int32_t first, int32_t second, bool strict) {
 }
 
 static bool link_alive(int32_t link_index) {
-    int32_t frame_index;
+    int32_t owner;
+    int32_t home;
     assert(link_index >= 0);
     assert((uint32_t)link_index < nl);
-    frame_index = cells[links[link_index].cell].frame;
-    assert(frame_index >= 0);
-    assert((uint32_t)frame_index < nf);
-    return frames[frame_index].alive && links[link_index].gen == frames[frame_index].gen;
+    owner = links[link_index].owner;
+    home = links[link_index].home;
+    assert(owner >= 0);
+    assert((uint32_t)owner < nf);
+    assert(home >= 0);
+    assert((uint32_t)home < nf);
+    if (!frames[owner].alive) return false;
+    if (!frames[home].alive) return false;
+    if (links[link_index].gen != frames[owner].gen) return false;
+    return links[link_index].home_gen == frames[home].gen;
 }
 
 static void decay(int32_t frame_index) {
@@ -216,6 +230,7 @@ static void op_cell(char *name, char *fname) {
     }
     strcpy(cells[nc].name, name);
     cells[nc].frame = frame_index;
+    cells[nc].home = frame_index;
     nc++;
 }
 
@@ -244,7 +259,10 @@ static void op_link(char *name, char *cname, char *issuer) {
     }
     strcpy(links[nl].name, name);
     links[nl].cell = cell_index;
-    links[nl].gen = frames[cells[cell_index].frame].gen;
+    links[nl].owner = cells[cell_index].frame;
+    links[nl].home = cells[cell_index].home;
+    links[nl].gen = frames[links[nl].owner].gen;
+    links[nl].home_gen = frames[links[nl].home].gen;
     nl++;
 }
 
@@ -337,6 +355,11 @@ static void op_raise(char *cname, char *fname) {
     }
     if (!frames[frame_index].alive) {
         report("I4", "raise into dead frame", cname, fname);
+        return;
+    }
+    if (!frames[cells[cell_index].frame].alive) {
+        report("I4", "raise of cell in dead frame", cname,
+               frames[cells[cell_index].frame].name);
         return;
     }
     cells[cell_index].frame = frame_index;

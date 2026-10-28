@@ -3,10 +3,11 @@
 
 #define CHECK(condition) do { if (!(condition)) return __LINE__; } while (0)
 
-static char field_arena[64];
-static char proc_arena[64];
-static char slot_arena[64];
-static char exhausted_arena[64];
+_Alignas(REZ_ALIGNMENT) static char field_arena[64];
+_Alignas(REZ_ALIGNMENT) static char proc_arena[64];
+_Alignas(REZ_ALIGNMENT) static char slot_arena[64];
+_Alignas(REZ_ALIGNMENT) static char exhausted_arena[64];
+_Alignas(16) static char misaligned_storage[65];
 
 static int32_t check_generation_exhaustion(void) {
     RezCavity exhausted = {0};
@@ -41,13 +42,19 @@ int main(void) {
     RezCavity field = {0};
     RezCavity proc = {0};
     RezCavity slot = {0};
+    RezCavity misaligned = {0};
     RezArena empty = {0};
+    RezArena misaligned_arena = { .base = misaligned_storage + 1, .cap = 64 };
     RezCellMed med;
     uint32_t gen;
     uint32_t saved;
     void *cell;
 
     static_assert(REZ3EXT_ABI == 3);
+    CHECK(rez_arena_alloc_z(&misaligned_arena, 1) == nullptr);
+    CHECK(!rez_frame_reset(&misaligned, nullptr, misaligned_storage + 1, 64));
+    CHECK(!misaligned.alive);
+    CHECK(misaligned.generation == 0);
     CHECK(rez_frame_reset(&field, nullptr, field_arena, 64));
     CHECK(rez_frame_reset(&proc, &field, proc_arena, 64));
     gen = proc.generation;

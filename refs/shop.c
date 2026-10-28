@@ -21,10 +21,10 @@ static RezCavity field_cavity;
 static RezCavity session_cavity;
 static RezCavity cart_cavity;
 static RezCavity screen_cavity;
-static char field_arena[65536];
-static char session_arena[16384];
-static char cart_arena[4096];
-static char screen_arena[4096];
+_Alignas(REZ_ALIGNMENT) static char field_arena[65536];
+_Alignas(REZ_ALIGNMENT) static char session_arena[16384];
+_Alignas(REZ_ALIGNMENT) static char cart_arena[4096];
+_Alignas(REZ_ALIGNMENT) static char screen_arena[4096];
 static CartCavity cart_instance;
 
 static int cart_load(RezCellMed cart_med, RezCavity *screen) {
