@@ -27,18 +27,29 @@ TOKENS = [
 ]
 
 
-def check(exe, path, failures, emit=False, diagnostic=None):
+def check(
+    exe, path, failures, emit=False, diagnostic=None,
+    expect_success=False, max_output_bytes=None,
+):
     command = [exe, str(path)]
     if emit:
         command += ["--emit-c", "-o", str(path.with_suffix(".c"))]
     try:
         result = subprocess.run(
             command, stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE if diagnostic else subprocess.DEVNULL,
-            timeout=3,
+            stderr=subprocess.PIPE if diagnostic or expect_success else subprocess.DEVNULL,
+            timeout=10,
         )
     except subprocess.TimeoutExpired:
         failures.append(f"timeout: {path.read_text()!r}")
+        return
+    if expect_success:
+        if result.returncode != 0:
+            failures.append(f"emit failed: exit {result.returncode}: {result.stderr!r}")
+        elif max_output_bytes is not None:
+            output_bytes = path.with_suffix(".c").stat().st_size
+            if output_bytes > max_output_bytes:
+                failures.append(f"output {output_bytes} exceeds {max_output_bytes}")
         return
     if diagnostic:
         if result.returncode != 1 or diagnostic not in result.stderr:
@@ -64,21 +75,45 @@ def main():
             path.write_text(text)
             check(EXE, path, failures)
         for _ in range(80):
-            path.write_text("\n".join(rng.choice(TOKENS) for _ in range(rng.randrange(1, 40))))
+            text = "\n".join(
+                rng.choice(TOKENS) for _ in range(rng.randrange(1, 40))
+            )
+            path.write_text(text)
             check(EXE, path, failures)
         deep = ["cav f0, field"]
         deep.extend(f"cav f{i}, f{i - 1}" for i in range(1, 4000))
         deep.extend(["decay f0", "ret"])
         path.write_text("\n".join(deep) + "\n")
-        check(EXE, path, failures, emit=True)
+        check(EXE, path, failures, emit=True, expect_success=True)
+        reverse = ["cav f0, field"]
+        reverse.extend(f"cav f{i}, f{i - 1}" for i in range(1, 4000))
+        reverse.extend(f"decay f{i}" for i in range(3999, -1, -1))
+        reverse.append("ret")
+        path.write_text("\n".join(reverse) + "\n")
+        # Each frame has fixed declarations and one enter/decay pair: 512 bytes suffices.
+        check(
+            EXE, path, failures, emit=True, expect_success=True,
+            max_output_bytes=4000 * 512,
+        )
         path.write_text(";" * 1048577)
         check(EXE, path, failures, diagnostic=b"source exceeds 1048576 bytes")
         path.write_text("\n".join(["mov %r0, 1"] * 16385))
         check(EXE, path, failures, diagnostic=b"too many instructions")
+        # Four setup instructions plus 16,380 moves fill NODE_MAX before endc.
+        cascade_cap = [
+            "cav m, field",
+            "res x, m, 8",
+            "med x_m, x, m",
+            "casc c: x_m -> out[m]",
+        ]
+        cascade_cap.extend(["mov %r0, 1"] * 16380)
+        cascade_cap.append("endc")
+        path.write_text("\n".join(cascade_cap) + "\n")
+        check(EXE, path, failures, diagnostic=b"too many instructions")
     if failures:
         print("\n".join(failures[:5]), file=sys.stderr)
         return 1
-    print("FUZZ OK (163 cases)")
+    print("FUZZ OK (165 cases)")
     return 0
 
 

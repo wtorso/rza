@@ -1,7 +1,7 @@
 # Листинг стирания каскада
 
 Пример полностью находится в этом репозитории: `tests/cascade.rza`.
-Воспроизвести C99:
+Воспроизвести C23:
 
 ```sh
 rez3asm tests/cascade.rza --emit-c -o build/cascade.c
@@ -24,26 +24,34 @@ endc
 ## Актуальный вывод компилятора
 
 ```c
-/* casc addup (line 14) */
-{
-    void *p_a_m = rez_deref_cell(m_a_m);
-    void *p_b_m = rez_deref_cell(m_b_m);
-    if (!p_a_m) { fprintf(stderr, "ABORT line 14: cascade addup: dead mediator a_m\n"); goto casc_end_1; }
-    if (!p_b_m) { fprintf(stderr, "ABORT line 14: cascade addup: dead mediator b_m\n"); goto casc_end_1; }
-    c_total = rez_cell_z(f_main, 8);
-    if (!c_total) { fprintf(stderr, "FAULT line 14: arena overflow (out total)\n"); exit(1); }
-    memcpy(&r2, (char*)p_a_m + 0, 8);
-    memcpy(&r3, (char*)p_b_m + 0, 8);
-    r4 = rez_i64_add(r2, r3);
-    memcpy((char*)p_a_m + 8, &r4, 8);
-casc_end_1:
-    (void)0;
-}
+    /* casc addup (line 14) */
+    {
+        void *p_a_m = rez_deref_cell(m_a_m);
+        void *p_b_m = rez_deref_cell(m_b_m);
+        if (!p_a_m) {
+            fprintf(stderr, "ABORT line 14: cascade addup: dead mediator a_m\n");
+            goto casc_end_1;
+        }
+        if (!p_b_m) {
+            fprintf(stderr, "ABORT line 14: cascade addup: dead mediator b_m\n");
+            goto casc_end_1;
+        }
+        c_total = rez_cell_z(f_main, 8);
+        if (!c_total) {
+            fprintf(stderr, "FAULT line 14: arena overflow (out total)\n");
+            exit(1);
+        }
+        memcpy(&r2, (char*)p_a_m + 0, 8);
+        memcpy(&r3, (char*)p_b_m + 0, 8);
+        r4 = rez_i64_add(r2, r3);
+        memcpy((char*)p_a_m + 8, &r4, 8);
+    casc_end_1:
+        (void)0;
+    }
 ```
 
-Длинные строки диагностики оставлены как в реальном выводе. Сам компилятор
-ограничен 100 колонками; сгенерированный C остаётся читаемым листингом, а не
-исходником, который нужно поддерживать вручную.
+Диагностические блоки переносятся по строкам. Все листинги valid fixtures
+проходят проверку: ни одной строки длиннее 100 колонок.
 
 ## Что стирается
 

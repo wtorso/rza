@@ -10,6 +10,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 from ctypes import wintypes
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -135,14 +136,39 @@ def recv(timeout=15):
     return msg
 
 
-def main():
+def initialize_request(ident):
+    send({"jsonrpc": "2.0", "id": ident, "method": "initialize", "params": {}})
+    return recv()
+
+
+def did_open(uri, text, version):
     send({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {"processId": None, "capabilities": {}},
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {"textDocument": {
+            "uri": uri, "languageId": "rza", "version": version, "text": text,
+        }},
     })
-    resp = recv()
+    return recv().get("params") or {}
+
+
+def did_change(text, version):
+    send({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {"uri": GOOD_URI, "version": version},
+            "contentChanges": [{"text": text}],
+        },
+    })
+    return recv().get("params") or {}
+
+
+def churn(count):
+    for _ in range(count):
+        did_change(CASCADE_TEXT, 2)
+
+
+def initialize_checks():
+    resp = initialize_request(1)
     result = resp.get("result") or {}
     check(
         "initialize: textDocumentSync = 1 (Full)",
@@ -156,114 +182,92 @@ def main():
         info.get("name") == "rez3-lsp" and info.get("version") == "0.4.0",
         json.dumps(info),
     )
-    send({
-        "jsonrpc": "2.0", "id": "x" * 300,
-        "method": "initialize", "params": {},
-    })
-    resp = recv()
+    resp = initialize_request("x" * 300)
     check(
         "initialize: oversized id gets -32600, not a truncated id",
-        resp.get("id") is None
-        and (resp.get("error") or {}).get("code") == -32600,
+        resp.get("id") is None and (resp.get("error") or {}).get("code") == -32600,
         json.dumps(resp),
     )
-    send({"jsonrpc": "2.0", "id": 1.5, "method": "initialize", "params": {}})
+    resp = initialize_request(1.5)
+    check("initialize: fractional id is echoed exactly", resp.get("id") == 1.5,
+          json.dumps(resp))
+
+
+def id_protocol_checks():
+    first = {"jsonrpc": "2.0", "id": 1.2345678901234567,
+             "method": "initialize", "params": {}}
+    second = {"jsonrpc": "2.0", "id": 1.25e20,
+              "method": "initialize", "params": {}}
+    proc.stdin.write(frame(first) + frame(second))
+    proc.stdin.flush()
+    first_resp = recv()
+    second_resp = recv()
+    check("initialize: high-precision id round trip",
+          first_resp.get("id") == first["id"], json.dumps(first_resp))
+    check("initialize: exponent id round trip",
+          second_resp.get("id") == second["id"], json.dumps(second_resp))
+    resp = initialize_request(True)
+    check(
+        "initialize: boolean id gets -32600",
+        resp.get("id") is None and (resp.get("error") or {}).get("code") == -32600,
+        json.dumps(resp),
+    )
+    request = {"jsonrpc": "2.0", "id": "fragmented",
+               "method": "initialize", "params": {}}
+    payload = frame(request)
+    midpoint = len(payload) // 2
+    proc.stdin.write(payload[:midpoint])
+    proc.stdin.flush()
+    time.sleep(0.02)
+    proc.stdin.write(payload[midpoint:])
+    proc.stdin.flush()
     resp = recv()
-    check(
-        "initialize: fractional id is echoed exactly",
-        resp.get("id") == 1.5,
-        json.dumps(resp),
-    )
-    send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+    check("framing: split request completes", resp.get("id") == "fragmented",
+          json.dumps(resp))
 
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": BAD_URI,
-                "languageId": "rza",
-                "version": 1,
-                "text": BAD_TEXT,
-            }
-        },
-    })
-    params = recv().get("params") or {}
+
+def document_open_checks():
+    params = did_open(BAD_URI, BAD_TEXT, 1)
     diags = params.get("diagnostics") or []
-    check(
-        "bad.rza: ровно одна диагностика",
-        params.get("uri") == BAD_URI and len(diags) == 1,
-        json.dumps(params),
-    )
-    d = diags[0] if diags else {}
-    check("bad.rza: code STRUCT", d.get("code") == "STRUCT", json.dumps(d))
-    check(
-        "bad.rza: строка 0 (1-based 1 -> 0-based 0)",
-        (d.get("range") or {}).get("start", {}).get("line") == 0,
-        json.dumps(d.get("range")),
-    )
-    check(
-        "bad.rza: severity=1, source=rez3asm",
-        d.get("severity") == 1 and d.get("source") == "rez3asm",
-        json.dumps(d),
-    )
+    check("bad.rza: ровно одна диагностика",
+          params.get("uri") == BAD_URI and len(diags) == 1, json.dumps(params))
+    diag = diags[0] if diags else {}
+    check("bad.rza: code STRUCT", diag.get("code") == "STRUCT", json.dumps(diag))
+    check("bad.rza: строка 0 (1-based 1 -> 0-based 0)",
+          (diag.get("range") or {}).get("start", {}).get("line") == 0,
+          json.dumps(diag.get("range")))
+    check("bad.rza: severity=1, source=rez3asm",
+          diag.get("severity") == 1 and diag.get("source") == "rez3asm",
+          json.dumps(diag))
+    params = did_open(GOOD_URI, GOOD_TEXT, 1)
+    check("good.rza: diagnostics пустой",
+          params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
+          json.dumps(params))
 
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": GOOD_URI,
-                "languageId": "rza",
-                "version": 1,
-                "text": GOOD_TEXT,
-            }
-        },
-    })
-    params = recv().get("params") or {}
-    check(
-        "good.rza: diagnostics пустой",
-        params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
-        json.dumps(params),
-    )
 
-    def churn(count):
-        for _ in range(count):
-            send({
-                "jsonrpc": "2.0",
-                "method": "textDocument/didChange",
-                "params": {
-                    "textDocument": {"uri": GOOD_URI, "version": 2},
-                    "contentChanges": [{"text": CASCADE_TEXT}],
-                },
-            })
-            recv()
-
+def rss_checks():
     churn(32)
     rss_before = rss_bytes()
     churn(2000)
     rss_after = rss_bytes()
     rss_growth = max(0, rss_after - rss_before)
     print(f"RSS before={rss_before}, after={rss_after}, growth={rss_growth}")
-    check(
-        "LSP RSS: 2000 cascade changes stay bounded",
-        rss_growth <= RSS_GROWTH_MAX,
-        f"before={rss_before}, after={rss_after}, growth={rss_growth}, "
-        f"max={RSS_GROWTH_MAX}",
-    )
+    check("LSP RSS: 2000 cascade changes stay bounded",
+          rss_growth <= RSS_GROWTH_MAX,
+          f"before={rss_before}, after={rss_after}, growth={rss_growth}")
 
+
+def malformed_change_checks():
     for changes in ([], [{}], [None], [1], [[]]):
         send({
-            "jsonrpc": "2.0",
-            "method": "textDocument/didChange",
+            "jsonrpc": "2.0", "method": "textDocument/didChange",
             "params": {
                 "textDocument": {"uri": GOOD_URI, "version": 2},
                 "contentChanges": changes,
             },
         })
     malformed_messages = [
-        None,
-        [],
+        None, [],
         {"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": None},
         {"jsonrpc": "2.0", "method": "textDocument/didChange", "params": None},
         {"jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -273,113 +277,58 @@ def main():
     ]
     for message in malformed_messages:
         send(message)
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didChange",
-        "params": {
-            "textDocument": {"uri": GOOD_URI, "version": 2},
-            "contentChanges": [{"text": BAD_TEXT}],
-        },
-    })
-    params = recv().get("params") or {}
-    check(
-        "good.rza: didChange после memory churn публикует STRUCT",
-        params.get("uri") == GOOD_URI and len(params.get("diagnostics") or []) == 1,
-        json.dumps(params),
-    )
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didClose",
-        "params": {"textDocument": {"uri": GOOD_URI}},
-    })
-    params = recv().get("params") or {}
-    check(
-        "good.rza: didClose очищает диагностику",
-        params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
-        json.dumps(params),
-    )
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": GOOD_URI,
-                "languageId": "rza",
-                "version": 3,
-                "text": GOOD_TEXT,
-            }
-        },
-    })
-    params = recv().get("params") or {}
-    check(
-        "good.rza: повторный didOpen работает",
-        params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
-        json.dumps(params),
-    )
+    params = did_change(BAD_TEXT, 2)
+    check("good.rza: didChange после memory churn публикует STRUCT",
+          params.get("uri") == GOOD_URI and len(params.get("diagnostics") or []) == 1,
+          json.dumps(params))
 
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didChange",
-        "params": {
-            "textDocument": {"uri": GOOD_URI, "version": 4},
-            "contentChanges": [{"text": "x\n" * 1002}],
-        },
-    })
+
+def close_reopen_checks():
+    send({"jsonrpc": "2.0", "method": "textDocument/didClose",
+          "params": {"textDocument": {"uri": GOOD_URI}}})
     params = recv().get("params") or {}
+    check("good.rza: didClose очищает диагностику",
+          params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
+          json.dumps(params))
+    params = did_open(GOOD_URI, GOOD_TEXT, 3)
+    check("good.rza: повторный didOpen работает",
+          params.get("uri") == GOOD_URI and params.get("diagnostics") == [],
+          json.dumps(params))
+
+
+def diagnostic_limit_checks():
+    params = did_change("x\n" * 1002, 4)
     diags = params.get("diagnostics") or []
-    check(
-        "LSP diagnostics: 1000 errors + one summary",
-        len(diags) == 1001 and diags[-1].get("message") == "2 diagnostics suppressed",
-        f"count={len(diags)}, last={(diags[-1] if diags else {})}",
-    )
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didChange",
-        "params": {
-            "textDocument": {"uri": GOOD_URI, "version": 5},
-            "contentChanges": [{"text": GOOD_TEXT}],
-        },
-    })
-    params = recv().get("params") or {}
-    check(
-        "LSP diagnostics: next change resets the summary",
-        params.get("diagnostics") == [],
-        json.dumps(params),
-    )
-
-    send({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didChange",
-        "params": {
-            "textDocument": {"uri": GOOD_URI, "version": 6},
-            "contentChanges": [{"text": "€" * 200 + "\n"}],
-        },
-    })
-    params = recv().get("params") or {}
+    check("LSP diagnostics: 1000 errors + one summary",
+          len(diags) == 1001 and diags[-1].get("message") == "2 diagnostics suppressed",
+          f"count={len(diags)}")
+    params = did_change(GOOD_TEXT, 5)
+    check("LSP diagnostics: next change resets the summary",
+          params.get("diagnostics") == [], json.dumps(params))
+    params = did_change("€" * 200 + "\n", 6)
     diags = params.get("diagnostics") or []
     message = diags[0].get("message", "") if diags else ""
-    check(
-        "LSP diagnostics: UTF-8 clip keeps whole codepoints",
-        len(diags) == 1 and len(message.encode("utf-8")) <= 256
-        and not message.endswith("�"),
-        f"bytes={len(message.encode('utf-8'))}",
-    )
+    check("LSP diagnostics: UTF-8 clip keeps whole codepoints",
+          len(diags) == 1 and len(message.encode("utf-8")) <= 256
+          and not message.endswith("�"),
+          f"bytes={len(message.encode('utf-8'))}")
 
+
+def shutdown_checks():
     send({"jsonrpc": "2.0", "id": 2, "method": "shutdown"})
     resp = recv()
-    check(
-        "shutdown: ответ null",
-        resp.get("id") == 2 and resp.get("result") is None and "error" not in resp,
-        json.dumps(resp),
-    )
+    check("shutdown: ответ null",
+          resp.get("id") == 2 and resp.get("result") is None and "error" not in resp,
+          json.dumps(resp))
     send({"jsonrpc": "2.0", "method": "exit"})
     code = proc.wait(timeout=15)
     check("exit: сервер завершился с кодом 0", code == 0, f"code={code}")
-
     stderr = proc.stderr.read().decode(errors="replace").strip()
     if stderr:
         print(f"--- server stderr ---\n{stderr}\n---")
 
+
+def oversize_checks():
     json_values = b"[" + b"0," * 65537 + b"0]"
     oversized = [
         ("header", b"X" * 9000, b"header too large"),
@@ -406,15 +355,24 @@ def main():
         }) for i in range(65)), b"document slots exceeds static budget"),
     ]
     for name, payload, diagnostic in oversized:
-        result = subprocess.run(
-            [EXE, "--lsp"], input=payload,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15,
-        )
-        check(
-            f"oversize {name}: controlled exit 2",
-            result.returncode == 2 and diagnostic in result.stderr,
-            result.stderr.decode(errors="replace"),
-        )
+        result = subprocess.run([EXE, "--lsp"], input=payload,
+                                capture_output=True, timeout=15)
+        check(f"oversize {name}: controlled exit 2",
+              result.returncode == 2 and diagnostic in result.stderr,
+              result.stderr.decode(errors="replace"))
+
+
+def main():
+    initialize_checks()
+    id_protocol_checks()
+    send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+    document_open_checks()
+    rss_checks()
+    malformed_change_checks()
+    close_reopen_checks()
+    diagnostic_limit_checks()
+    shutdown_checks()
+    oversize_checks()
     print("SMOKE OK" if failures == 0 else f"SMOKE FAILED ({failures})")
     return 0 if failures == 0 else 1
 

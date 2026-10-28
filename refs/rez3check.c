@@ -1,269 +1,574 @@
-/* ============================================================================
- * REZ3CHECK — чекер инвариантов I1–I4 для RESONANCE-3 (C89, без зависимостей)
- *
- * Вход: строчный IR, одна операция на строку:
- *   frame  NAME PARENT          — enter; PARENT = '-' означает корень (field)
- *   cell   NAME FRAME           — resonator: опора в рамке FRAME        (I1)
- *   link   NAME CELL ISSUER     — mediator: выдача прохода рамкой ISSUER (I2)
- *   casc   NAME L1,L2 > CELL FRAME — sync-каскад: все связи живы на входе(I3)
- *   acasc  NAME L1,L2 > CELL    — async-каскад: связи только в корень    (I3)
- *   raise  CELL FRAME           — подъём опоры: FRAME — строгий предок   (I4)
- *   leave  FRAME                — Decay: gen++, рамка и поддерево мертвы
- *   probe  LINK                 — alive? мягкая семантика (намерение)
- *   read   LINK                 — жёсткое чтение: DEAD = предупреждение
- *   # комментарий; пустые строки пропускаются
- *
- * Выход: список нарушений с номером строки и правилом. Exit code:
- * 0 — легально, 1 — есть нарушения, 2 — файл не открыт. Один текстовый
- * проход; поиск по таблицам и обход дерева зависят от их размера.
- * ============================================================================
- */
-
+/* REZ3CHECK: bounded C23 checker for RESONANCE-3 IR invariants I1-I4. */
+#include <assert.h>
+#include <ctype.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 
-#define MAXF 256   /* рамок   */
-#define MAXC 1024  /* ячеек   */
-#define MAXL 1024  /* связей  */
-#define MAXS 256   /* каскадов */
-#define NAMESZ 64
+#define MAXF 256u
+#define MAXC 1024u
+#define MAXL 1024u
+#define NAMESZ 64u
+#define LINE_TEXT_MAX 511u
+#define SOURCE_BYTES_MAX 1048576u
+#define CASC_LINK_MAX 64u
 
-typedef struct { char name[NAMESZ]; int parent; unsigned gen; int alive; } Frame;
-typedef struct { char name[NAMESZ]; int frame; } Cell;
-typedef struct { char name[NAMESZ]; int cell; unsigned gen; } Link;
+typedef struct {
+    char name[NAMESZ];
+    int32_t parent;
+    uint32_t gen;
+    bool alive;
+} Frame;
+typedef struct { char name[NAMESZ]; int32_t frame; } Cell;
+typedef struct { char name[NAMESZ]; int32_t cell; uint32_t gen; } Link;
 
-static Frame  frames[MAXF]; static int nf = 0;
-static Cell   cells [MAXC]; static int nc = 0;
-static Link   links [MAXL]; static int nl = 0;
-static unsigned g_gen = 1;          /* глобальный монотонный счётчик имён   */
-static int violations = 0;
-static int lineno = 0;
+static Frame frames[MAXF];
+static Cell cells[MAXC];
+static Link links[MAXL];
+static uint32_t nf;
+static uint32_t nc;
+static uint32_t nl;
+static uint32_t g_gen = 1;
+static uint32_t violations;
+static uint32_t lineno;
+static char source[SOURCE_BYTES_MAX + 1u];
+static uint32_t source_len;
 
-static unsigned next_gen(void) { return g_gen++; }
+static int32_t run(FILE *input);
+static bool read_source(FILE *input);
+static void check_source(void);
+static void check_line(char *line);
+static void check_casc_line(char *line, bool async);
+static void op_frame(char *name, char *parent);
+static void op_cell(char *name, char *fname);
+static void op_link(char *name, char *cname, char *issuer);
+static void op_casc(char *name, char *list, char *outcell, char *outframe, bool async);
+static void op_raise(char *cname, char *fname);
+static void op_leave(char *fname);
+static void op_probe(char *lname);
+static void op_read(char *lname);
 
-/* --- поиск по имени ------------------------------------------------------- */
-static int find_frame(const char *n) {
-    int i; for (i = 0; i < nf; i++) if (!strcmp(frames[i].name, n)) return i;
-    return -1;
-}
-static int find_cell(const char *n) {
-    int i; for (i = 0; i < nc; i++) if (!strcmp(cells[i].name, n)) return i;
-    return -1;
-}
-static int find_link(const char *n) {
-    int i; for (i = 0; i < nl; i++) if (!strcmp(links[i].name, n)) return i;
-    return -1;
-}
+static_assert(MAXF > 0);
+static_assert(MAXC > 0);
+static_assert(MAXL > 0);
+static_assert(NAMESZ == 64);
+static_assert(LINE_TEXT_MAX + 1 == 512);
+static_assert(SOURCE_BYTES_MAX > LINE_TEXT_MAX);
 
-/* f2 — предок f1? (или та же рамка, если strict == 0) */
-static int is_ancestor(int f1, int f2, int strict) {
-    int cur = strict ? frames[f1].parent : f1;
-    while (cur >= 0) {
-        if (cur == f2) return 1;
-        cur = frames[cur].parent;
+int main(int argc, char **argv) {
+    FILE *input = stdin;
+    int32_t status;
+    if (argc > 2) {
+        fprintf(stderr, "usage: rez3check [file.rz3]\n");
+        return 2;
     }
-    return 0;
-}
-
-/* связь жива? — поколение связи совпадает с поколением рамки ячейки */
-static int link_alive(int li) {
-    int fr = cells[links[li].cell].frame;
-    return frames[fr].alive && links[li].gen == frames[fr].gen;
-}
-
-static void report(const char *rule, const char *msg, const char *a, const char *b) {
-    violations++;
-    printf("VIOLATION line %d [%s]: %s %s %s\n", lineno, rule, msg, a, b);
-}
-static void warnx(const char *msg, const char *a) {
-    printf("warn      line %d: %s %s\n", lineno, msg, a);
-}
-
-/* --- Decay: рамка + всё поддерево умирают одним переходом ----------------- */
-static void decay(int f) {
-    int i;
-    frames[f].gen = next_gen();   /* все выданные связи мертвы (ABA закрыт) */
-    frames[f].alive = 0;
-    /* Родитель всегда имеет меньший индекс: одного прохода достаточно. */
-    for (i = f + 1; i < nf; i++) {
-        if (frames[i].alive && !frames[frames[i].parent].alive) {
-            frames[i].gen = next_gen();
-            frames[i].alive = 0;
+    if (argc == 2) {
+        input = fopen(argv[1], "rb");
+        if (input == nullptr) {
+            fprintf(stderr, "cannot open %s\n", argv[1]);
+            return 2;
         }
     }
+    status = run(input);
+    if (argc == 2 && fclose(input) != 0) {
+        fprintf(stderr, "cannot close %s\n", argv[1]);
+        return 2;
+    }
+    return status;
 }
 
-/* --- операции ------------------------------------------------------------- */
-static void op_frame(char *name, char *parent) {
-    int p = 0;                 /* '-' = прямой ребёнок field */
-    if (find_frame(name) >= 0) { report("DUP", "duplicate frame", name, ""); return; }
-    if (strcmp(parent, "-")) {
-        p = find_frame(parent);
-        if (p < 0)               { report("I1", "unknown parent frame", parent, ""); return; }
-        if (!frames[p].alive)    { report("I1", "enter under dead frame", parent, ""); return; }
+static void report(const char *rule, const char *msg, const char *left, const char *right) {
+    assert(rule != nullptr);
+    assert(msg != nullptr);
+    violations++;
+    printf("VIOLATION line %u [%s]: %s %s %s\n",
+           (unsigned)lineno, rule, msg, left, right);
+}
+
+static void warnx(const char *msg, const char *name) {
+    assert(msg != nullptr);
+    assert(name != nullptr);
+    printf("warn      line %u: %s %s\n", (unsigned)lineno, msg, name);
+}
+
+static uint32_t next_gen(void) {
+    assert(g_gen != 0);
+    return g_gen++;
+}
+
+static int32_t find_frame(const char *name) {
+    assert(name != nullptr);
+    for (uint32_t index = 0; index < nf; index++) {
+        if (strcmp(frames[index].name, name) == 0) return (int32_t)index;
     }
-    if (nf >= MAXF) { report("LIMIT", "frames", name, ""); return; }
+    return -1;
+}
+
+static int32_t find_cell(const char *name) {
+    assert(name != nullptr);
+    for (uint32_t index = 0; index < nc; index++) {
+        if (strcmp(cells[index].name, name) == 0) return (int32_t)index;
+    }
+    return -1;
+}
+
+static int32_t find_link(const char *name) {
+    assert(name != nullptr);
+    for (uint32_t index = 0; index < nl; index++) {
+        if (strcmp(links[index].name, name) == 0) return (int32_t)index;
+    }
+    return -1;
+}
+
+static bool is_ancestor(int32_t first, int32_t second, bool strict) {
+    int32_t current;
+    assert(first >= 0);
+    assert((uint32_t)first < nf);
+    assert(second >= 0);
+    current = strict ? frames[first].parent : first;
+    for (uint32_t steps = 0; steps < MAXF && current >= 0; steps++) {
+        assert((uint32_t)current < nf);
+        if (current == second) return true;
+        current = frames[current].parent;
+    }
+    return false;
+}
+
+static bool link_alive(int32_t link_index) {
+    int32_t frame_index;
+    assert(link_index >= 0);
+    assert((uint32_t)link_index < nl);
+    frame_index = cells[links[link_index].cell].frame;
+    assert(frame_index >= 0);
+    assert((uint32_t)frame_index < nf);
+    return frames[frame_index].alive && links[link_index].gen == frames[frame_index].gen;
+}
+
+static void decay(int32_t frame_index) {
+    assert(frame_index > 0);
+    assert((uint32_t)frame_index < nf);
+    frames[frame_index].gen = g_gen;
+    if (g_gen != 0) g_gen++;
+    frames[frame_index].alive = false;
+    for (uint32_t index = (uint32_t)frame_index + 1; index < nf; index++) {
+        int32_t parent = frames[index].parent;
+        if (!frames[index].alive) continue;
+        assert(parent >= 0);
+        assert((uint32_t)parent < index);
+        if (frames[parent].alive) continue;
+        frames[index].gen = g_gen;
+        if (g_gen != 0) g_gen++;
+        frames[index].alive = false;
+    }
+}
+
+static void op_frame(char *name, char *parent) {
+    int32_t parent_index = 0;
+    assert(name != nullptr);
+    assert(parent != nullptr);
+    if (find_frame(name) >= 0) {
+        report("DUP", "duplicate frame", name, "");
+        return;
+    }
+    if (strcmp(parent, "-") != 0) {
+        parent_index = find_frame(parent);
+        if (parent_index < 0) {
+            report("I1", "unknown parent frame", parent, "");
+            return;
+        }
+        if (!frames[parent_index].alive) {
+            report("I1", "enter under dead frame", parent, "");
+            return;
+        }
+    }
+    if (nf >= MAXF) {
+        report("LIMIT", "frames", name, "");
+        return;
+    }
+    if (g_gen == 0) {
+        report("LIMIT", "generation exhausted", name, "");
+        return;
+    }
     strcpy(frames[nf].name, name);
-    frames[nf].parent = p;
+    frames[nf].parent = parent_index;
     frames[nf].gen = next_gen();
-    frames[nf].alive = 1;
+    frames[nf].alive = true;
     nf++;
 }
 
 static void op_cell(char *name, char *fname) {
-    int f = find_frame(fname);
-    if (f < 0)            { report("I1", "cell in unknown frame", name, fname); return; }
-    if (!frames[f].alive) { report("I1", "cell in dead frame", name, fname); return; }
-    if (nc >= MAXC) { report("LIMIT", "cells", name, ""); return; }
-    strcpy(cells[nc].name, name); cells[nc].frame = f; nc++;
+    int32_t frame_index;
+    assert(name != nullptr);
+    assert(fname != nullptr);
+    frame_index = find_frame(fname);
+    if (frame_index < 0) {
+        report("I1", "cell in unknown frame", name, fname);
+        return;
+    }
+    if (!frames[frame_index].alive) {
+        report("I1", "cell in dead frame", name, fname);
+        return;
+    }
+    if (nc >= MAXC) {
+        report("LIMIT", "cells", name, "");
+        return;
+    }
+    strcpy(cells[nc].name, name);
+    cells[nc].frame = frame_index;
+    nc++;
 }
 
 static void op_link(char *name, char *cname, char *issuer) {
-    int c = find_cell(cname), is;
-    if (c < 0) { report("I2", "link to unknown cell", name, cname); return; }
-    is = find_frame(issuer);
-    if (is < 0) { report("I2", "unknown issuer frame", issuer, ""); return; }
-    /* I2: выдаёт владелец ячейки или его предок */
-    if (!is_ancestor(cells[c].frame, is, 0)) {
+    int32_t cell_index;
+    int32_t issuer_index;
+    assert(name != nullptr);
+    assert(cname != nullptr);
+    cell_index = find_cell(cname);
+    if (cell_index < 0) {
+        report("I2", "link to unknown cell", name, cname);
+        return;
+    }
+    issuer_index = find_frame(issuer);
+    if (issuer_index < 0) {
+        report("I2", "unknown issuer frame", issuer, "");
+        return;
+    }
+    if (!is_ancestor(cells[cell_index].frame, issuer_index, false)) {
         report("I2", "link issued by non-owner non-ancestor", issuer, cname);
         return;
     }
-    if (nl >= MAXL) { report("LIMIT", "links", name, ""); return; }
+    if (nl >= MAXL) {
+        report("LIMIT", "links", name, "");
+        return;
+    }
     strcpy(links[nl].name, name);
-    links[nl].cell = c;
-    links[nl].gen = frames[cells[c].frame].gen;
+    links[nl].cell = cell_index;
+    links[nl].gen = frames[cells[cell_index].frame].gen;
     nl++;
 }
 
-static void op_casc(char *name, char *list, char *outcell, char *outframe, int async) {
-    char buf[512]; char *tok; int of; char *e;
-    strcpy(buf, list);
-    tok = strtok(buf, ",");
-    while (tok) {
-        int li;
-        while (*tok == ' ' || *tok == '\t') tok++;          /* trim left  */
-        e = tok + strlen(tok);
-        while (e > tok && (e[-1]==' '||e[-1]=='\t')) --e;   /* trim right */
-        *e = 0;
-        li = find_link(tok);
-        if (li < 0) { report("I3", "cascade uses unknown link", name, tok); }
-        else if (async) {
-            /* async: связь обязана указывать в ячейку САМОГО field (index 0) */
-            int fr = cells[links[li].cell].frame;
-            if (fr != 0)
-                report("I3", "async cascade holds non-root link", name, tok);
-        } else {
-            /* sync: все связи живы на входе — одна проверка на границе */
-            if (!link_alive(li))
-                report("I3", "sync cascade aborted: dead link on entry", name, tok);
-        }
-        tok = strtok(NULL, ",");
+static char *trim(char *text) {
+    char *end;
+    assert(text != nullptr);
+    while (isspace((unsigned char)*text) != 0) text++;
+    end = text + strlen(text);
+    while (end > text && isspace((unsigned char)end[-1]) != 0) end--;
+    *end = '\0';
+    return text;
+}
+
+static void check_casc_link(char *name, char *token, bool async) {
+    int32_t link_index;
+    assert(name != nullptr);
+    assert(token != nullptr);
+    link_index = find_link(token);
+    if (link_index < 0) {
+        report("I3", "cascade uses unknown link", name, token);
+        return;
     }
-    /* out-ячейка (названный потребитель): async — обязана быть в корне */
+    if (async) {
+        int32_t frame_index = cells[links[link_index].cell].frame;
+        if (frame_index != 0) report("I3", "async cascade holds non-root link", name, token);
+        return;
+    }
+    if (!link_alive(link_index)) {
+        report("I3", "sync cascade aborted: dead link on entry", name, token);
+    }
+}
+
+static void op_casc(char *name, char *list, char *outcell, char *outframe, bool async) {
+    char buffer[LINE_TEXT_MAX + 1u];
+    char *cursor;
+    uint32_t count = 0;
+    assert(name != nullptr);
+    assert(list != nullptr);
+    assert(strlen(list) <= LINE_TEXT_MAX);
+    strcpy(buffer, list);
+    cursor = buffer;
+    for (;;) {
+        char *comma = strchr(cursor, ',');
+        char *token;
+        if (comma != nullptr) *comma = '\0';
+        token = trim(cursor);
+        if (*token == '\0') {
+            report("STRUCT", "empty cascade link", name, "");
+            return;
+        }
+        if (count >= CASC_LINK_MAX) {
+            report("LIMIT", "cascade links", name, "");
+            return;
+        }
+        check_casc_link(name, token, async);
+        count++;
+        if (comma == nullptr) break;
+        cursor = comma + 1;
+    }
+    assert(count > 0);
     if (async) {
         op_cell(outcell, "field");
-    } else {
-        of = find_frame(outframe);
-        if (of < 0) { report("I3", "out cell in unknown frame", outcell, outframe); return; }
-        op_cell(outcell, outframe);
+        return;
     }
+    if (find_frame(outframe) < 0) {
+        report("I3", "out cell in unknown frame", outcell, outframe);
+        return;
+    }
+    op_cell(outcell, outframe);
 }
 
 static void op_raise(char *cname, char *fname) {
-    int c = find_cell(cname), f;
-    if (c < 0) { report("I4", "raise of unknown cell", cname, ""); return; }
-    f = find_frame(fname);
-    if (f < 0) { report("I4", "raise to unknown frame", fname, ""); return; }
-    /* I4: подъём — только вверх, строгий предок */
-    if (!is_ancestor(cells[c].frame, f, 1)) {
+    int32_t cell_index;
+    int32_t frame_index;
+    assert(cname != nullptr);
+    assert(fname != nullptr);
+    cell_index = find_cell(cname);
+    if (cell_index < 0) {
+        report("I4", "raise of unknown cell", cname, "");
+        return;
+    }
+    frame_index = find_frame(fname);
+    if (frame_index < 0) {
+        report("I4", "raise to unknown frame", cname, fname);
+        return;
+    }
+    if (!is_ancestor(cells[cell_index].frame, frame_index, true)) {
         report("I4", "raise to non-ancestor (sideways/down forbidden)", cname, fname);
         return;
     }
-    if (!frames[f].alive) { report("I4", "raise into dead frame", cname, fname); return; }
-    cells[c].frame = f;   /* опора переприбита; старые связи на неё мертвы,
-                             т.к. проверка идёт по поколению рамки-владельца */
+    if (!frames[frame_index].alive) {
+        report("I4", "raise into dead frame", cname, fname);
+        return;
+    }
+    cells[cell_index].frame = frame_index;
 }
 
 static void op_leave(char *fname) {
-    int f = find_frame(fname);
-    if (f < 0)            { report("DECAY", "leave of unknown frame", fname, ""); return; }
-    if (!frames[f].alive) { report("DECAY", "double leave", fname, ""); return; }
-    if (f == 0)           { report("DECAY", "leave of root (field) forbidden", fname, ""); return; }
-    decay(f);
+    int32_t frame_index;
+    assert(fname != nullptr);
+    frame_index = find_frame(fname);
+    if (frame_index < 0) {
+        report("DECAY", "leave of unknown frame", fname, "");
+        return;
+    }
+    if (!frames[frame_index].alive) {
+        report("DECAY", "double leave", fname, "");
+        return;
+    }
+    if (frame_index == 0) {
+        report("DECAY", "leave of root (field) forbidden", fname, "");
+        return;
+    }
+    decay(frame_index);
 }
 
 static void op_probe(char *lname) {
-    int li = find_link(lname);
-    if (li < 0) { warnx("probe of unknown link", lname); return; }
-    printf("probe     line %d: %s -> %s\n", lineno, lname,
-           link_alive(li) ? "ALIVE" : "DEAD (no-op + log)");
+    int32_t link_index;
+    assert(lname != nullptr);
+    link_index = find_link(lname);
+    if (link_index < 0) {
+        warnx("probe of unknown link", lname);
+        return;
+    }
+    printf("probe     line %u: %s -> %s\n", (unsigned)lineno, lname,
+           link_alive(link_index) ? "ALIVE" : "DEAD (no-op + log)");
 }
 
 static void op_read(char *lname) {
-    int li = find_link(lname);
-    if (li < 0) { warnx("read of unknown link", lname); return; }
-    if (link_alive(li)) printf("read      line %d: %s -> OK\n", lineno, lname);
-    else warnx("read through dead link (would be fault DeadMediator)", lname);
+    int32_t link_index;
+    assert(lname != nullptr);
+    link_index = find_link(lname);
+    if (link_index < 0) {
+        warnx("read of unknown link", lname);
+        return;
+    }
+    if (link_alive(link_index)) {
+        printf("read      line %u: %s -> OK\n", (unsigned)lineno, lname);
+        return;
+    }
+    warnx("read through dead link (would be fault DeadMediator)", lname);
 }
 
-/* --- драйвер: один проход по строкам -------------------------------------- */
-static void check_line(char *line) {
-    char cmd[NAMESZ], a[NAMESZ], b[512], c[NAMESZ], d[NAMESZ];
+static bool trailing_space(const char *text) {
+    assert(text != nullptr);
+    while (*text != '\0') {
+        if (isspace((unsigned char)*text) == 0) return false;
+        text++;
+    }
+    return true;
+}
+
+static void malformed(void) {
+    report("STRUCT", "malformed operation", "", "");
+}
+
+static void check_casc_line(char *line, bool async) {
+    char name[NAMESZ];
+    char rest[LINE_TEXT_MAX + 1u];
+    char outcell[NAMESZ];
+    char outframe[NAMESZ];
     char *gt;
-    a[0] = b[0] = c[0] = d[0] = 0;
-    if (sscanf(line, "%63s", cmd) != 1) return;
-    if (cmd[0] == '#') return;
+    int consumed = 0;
+    int fields;
+    assert(line != nullptr);
+    outframe[0] = '\0';
+    if (sscanf(line, "%*s %63s %511[^\n]", name, rest) != 2) {
+        malformed();
+        return;
+    }
+    gt = strchr(rest, '>');
+    if (gt == nullptr) {
+        malformed();
+        return;
+    }
+    *gt = '\0';
+    fields = sscanf(gt + 1, "%63s %63s %n", outcell, outframe, &consumed);
+    if ((!async && fields != 2) || (async && fields != 1)) {
+        malformed();
+        return;
+    }
+    if (consumed == 0 || !trailing_space(gt + 1 + consumed)) {
+        malformed();
+        return;
+    }
+    op_casc(name, rest, outcell, outframe, async);
+}
 
-    if (!strcmp(cmd, "frame")) {
-        if (sscanf(line, "%*s %63s %63s", a, c) == 2) op_frame(a, c);
-    } else if (!strcmp(cmd, "cell")) {
-        if (sscanf(line, "%*s %63s %63s", a, c) == 2) op_cell(a, c);
-    } else if (!strcmp(cmd, "link")) {
-        if (sscanf(line, "%*s %63s %63s %63s", a, b, c) == 3) op_link(a, b, c);
-    } else if (!strcmp(cmd, "casc") || !strcmp(cmd, "acasc")) {
-        int async = (cmd[0] == 'a');
-        /* формат: casc NAME L1,L2 > OUTCELL [FRAME] */
-        if (sscanf(line, "%*s %63s %[^\n]", a, b) == 2) {
-            gt = strchr(b, '>');
-            if (gt) {
-                *gt = 0;
-                if (sscanf(gt + 1, "%63s %63s", c, d) >= 1)
-                    op_casc(a, b, c, d, async);
-            }
+static uint32_t split_tokens(char *line, char **tokens, uint32_t capacity) {
+    char *cursor = line;
+    uint32_t count = 0;
+    assert(line != nullptr);
+    assert(tokens != nullptr);
+    assert(capacity > 0);
+    for (uint32_t steps = 0; steps < LINE_TEXT_MAX; steps++) {
+        while (isspace((unsigned char)*cursor) != 0) cursor++;
+        if (*cursor == '\0') break;
+        if (count < capacity) tokens[count] = cursor;
+        count++;
+        while (*cursor != '\0' && isspace((unsigned char)*cursor) == 0) cursor++;
+        if (*cursor == '\0') break;
+        *cursor = '\0';
+        cursor++;
+    }
+    assert(*cursor == '\0');
+    return count;
+}
+
+static bool operands_valid(char **tokens, uint32_t count, uint32_t expected) {
+    assert(tokens != nullptr);
+    assert(expected > 0);
+    if (count != expected + 1) return false;
+    for (uint32_t index = 1; index < count; index++) {
+        if (strlen(tokens[index]) >= NAMESZ) return false;
+    }
+    return true;
+}
+
+static void check_line(char *line) {
+    char command[NAMESZ];
+    char *tokens[4];
+    char *comment;
+    uint32_t count;
+    assert(line != nullptr);
+    comment = strchr(line, '#');
+    if (comment != nullptr) *comment = '\0';
+    if (sscanf(line, "%63s", command) != 1) return;
+    if (strcmp(command, "casc") == 0 || strcmp(command, "acasc") == 0) {
+        check_casc_line(line, command[0] == 'a');
+        return;
+    }
+    count = split_tokens(line, tokens, 4);
+    assert(count > 0);
+    if (strcmp(command, "frame") == 0) {
+        if (!operands_valid(tokens, count, 2)) malformed();
+        else op_frame(tokens[1], tokens[2]);
+        return;
+    }
+    if (strcmp(command, "cell") == 0) {
+        if (!operands_valid(tokens, count, 2)) malformed();
+        else op_cell(tokens[1], tokens[2]);
+        return;
+    }
+    if (strcmp(command, "link") == 0) {
+        if (!operands_valid(tokens, count, 3)) malformed();
+        else op_link(tokens[1], tokens[2], tokens[3]);
+        return;
+    }
+    if (strcmp(command, "raise") == 0) {
+        if (!operands_valid(tokens, count, 2)) malformed();
+        else op_raise(tokens[1], tokens[2]);
+        return;
+    }
+    if (strcmp(command, "leave") == 0) {
+        if (!operands_valid(tokens, count, 1)) malformed();
+        else op_leave(tokens[1]);
+        return;
+    }
+    if (strcmp(command, "probe") == 0) {
+        if (!operands_valid(tokens, count, 1)) malformed();
+        else op_probe(tokens[1]);
+        return;
+    }
+    if (strcmp(command, "read") == 0) {
+        if (!operands_valid(tokens, count, 1)) malformed();
+        else op_read(tokens[1]);
+        return;
+    }
+    warnx("unknown op", command);
+}
+
+static bool read_source(FILE *input) {
+    size_t count;
+    assert(input != nullptr);
+    count = fread(source, 1, SOURCE_BYTES_MAX + 1u, input);
+    if (ferror(input) != 0) {
+        fprintf(stderr, "cannot read input\n");
+        return false;
+    }
+    if (count > SOURCE_BYTES_MAX) {
+        report("LIMIT", "source bytes", "", "");
+        source_len = 0;
+        return true;
+    }
+    if (memchr(source, '\0', count) != nullptr) {
+        report("STRUCT", "NUL in source", "", "");
+        source_len = 0;
+        return true;
+    }
+    source[count] = '\0';
+    source_len = (uint32_t)count;
+    assert(source_len <= SOURCE_BYTES_MAX);
+    return true;
+}
+
+static void check_source(void) {
+    uint32_t offset = 0;
+    strcpy(frames[0].name, "field");
+    frames[0].parent = -1;
+    frames[0].gen = next_gen();
+    frames[0].alive = true;
+    nf = 1;
+    while (offset < source_len) {
+        uint32_t end = offset;
+        uint32_t length;
+        while (end < source_len && source[end] != '\n') end++;
+        length = end - offset;
+        lineno++;
+        if (length > LINE_TEXT_MAX) {
+            report("STRUCT", "line too long", "", "");
+        } else {
+            source[end] = '\0';
+            if (length > 0 && source[end - 1] == '\r') source[end - 1] = '\0';
+            check_line(&source[offset]);
         }
-    } else if (!strcmp(cmd, "raise")) {
-        if (sscanf(line, "%*s %63s %63s", a, c) == 2) op_raise(a, c);
-    } else if (!strcmp(cmd, "leave")) {
-        if (sscanf(line, "%*s %63s", a) == 1) op_leave(a);
-    } else if (!strcmp(cmd, "probe")) {
-        if (sscanf(line, "%*s %63s", a) == 1) op_probe(a);
-    } else if (!strcmp(cmd, "read")) {
-        if (sscanf(line, "%*s %63s", a) == 1) op_read(a);
-    } else {
-        warnx("unknown op", cmd);
+        assert(end <= source_len);
+        offset = end < source_len ? end + 1 : source_len;
     }
 }
 
-int main(int argc, char **argv) {
-    char line[512];
-    FILE *f = stdin;
-    if (argc > 1) {
-        f = fopen(argv[1], "r");
-        if (!f) { fprintf(stderr, "cannot open %s\n", argv[1]); return 2; }
-    }
-    /* корень: field, бессмертен по определению (leave запрещён выше) */
-    strcpy(frames[0].name, "field");
-    frames[0].parent = -1; frames[0].gen = next_gen(); frames[0].alive = 1;
-    nf = 1;
-
-    while (fgets(line, sizeof line, f)) {
-        lineno++;
-        check_line(line);
-    }
-    if (argc > 1) fclose(f);
-
-    printf("---\nframes=%d cells=%d links=%d violations=%d\n",
-           nf, nc, nl, violations);
-    return violations ? 1 : 0;
+static int32_t run(FILE *input) {
+    if (!read_source(input)) return 2;
+    check_source();
+    printf("---\nframes=%u cells=%u links=%u violations=%u\n",
+           (unsigned)nf, (unsigned)nc, (unsigned)nl, (unsigned)violations);
+    return violations != 0 ? 1 : 0;
 }

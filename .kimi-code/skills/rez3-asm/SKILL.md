@@ -57,8 +57,8 @@ loadb %rN, [MED+off]       ; байт, zero-extend; off = imm | %rN
 ```sh
 cd rza
 ./rez3asm.exe path/to/file.rza            # только проверка
-./rez3asm.exe path/to/file.rza --emit-c   # посмотреть C99
-./rez3asm.exe path/to/file.rza --emit-lib # C99-библиотека без main: proc → rza_NAME, хост-API rza_frame_*/rza_med_* (SPEC §11)
+./rez3asm.exe path/to/file.rza --emit-c   # посмотреть C23
+./rez3asm.exe path/to/file.rza --emit-lib # C23-библиотека без main: proc → rza_NAME, хост-API rza_frame_*/rza_med_* (SPEC §11)
 ./rez3asm.exe path/to/file.rza -o out.c   # -o без флагов тоже включает эмиссию C
 ./rez3asm.exe --lsp                       # LSP-сервер на stdio (SPEC §12) — так редактор получает диагностику
 bash run_tests.sh                          # пересборка транспайлера + все тесты
@@ -69,7 +69,8 @@ I1, I2, I3, I4, DECAY, DUP, STRUCT, SCOPE. Читай правило, а не т
 
 ## Рантайм и генерация
 
-`refs/rez3.h` (не менять) + `refs/rez3ext.h`. RezCellMed хранит cell, текущего
-и домашнего владельцев, поколения и size. Выход за ячейку и опасная арифметика —
-FAULT; wrapping add/sub/mul определён. Арена = сумма align16(SIZE). Компиляция C99:
-`zig cc -std=c99 -pedantic -Wall -Wextra` (gcc → zig cc → clang).
+`refs/rez3.h` (static C23-ядро) + `refs/rez3ext.h`. RezCellMed хранит cell,
+текущего и домашнего владельцев, поколения и size. Выход за ячейку и опасная
+арифметика — FAULT; wrapping add/sub/mul определён. Арена = сумма align16(SIZE).
+`REZ3EXT_ABI = 3`. Компиляция C23:
+`zig cc -std=c23 -pedantic -Wall -Wextra -Werror` (gcc → zig cc → clang).

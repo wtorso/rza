@@ -1,73 +1,109 @@
-/* ============================================================================
- * REZ3.H — рантайм RESONANCE-3 для чистого C89. ~100 строк.
- * Четыре кирпича: Cavity (рамка+арена), Resonator (опора в арене),
- * Mediator ({ptr, gen}), Cascade (обычные функции + REZ_TRY).
- * Decay = cavity_leave(). Никаких зависимостей, никакого рантайма сверх этого.
- * ============================================================================
+/*
+ * RESONANCE-3 fixed-storage runtime core.
+ * C23: no heap allocation; every arena belongs to its caller.
  */
 #ifndef REZ3_H
 #define REZ3_H
 
-#include <stdlib.h>
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
-/* --- арена: бамп-аллокатор, один free на полость -------------------------- */
-typedef struct { char *base; size_t used, cap; } RezArena;
+#define REZ_ALIGNMENT 16ULL
 
-static void rez_arena_init(RezArena *a, size_t cap) {
-    a->base = (char*)malloc(cap); a->used = 0; a->cap = cap;
-}
-static void *rez_arena_alloc(RezArena *a, size_t size) {
-    size_t start = (a->used + 15) & ~(size_t)15;
-    if (start + size > a->cap) return 0;
-    a->used = start + size;
-    return a->base + start;
-}
+typedef struct {
+    char *base;
+    uint64_t used;
+    uint64_t cap;
+} RezArena;
 
-/* --- рамка: две жизни. Структура живёт вне арены (имя бессмертно) --------- */
 typedef struct RezCavity {
     struct RezCavity *parent;
-    unsigned generation;          /* имя: монотонно, ABA закрыт */
-    int alive;
-    RezArena arena;               /* содержимое: смертно */
+    uint32_t generation;
+    bool alive;
+    RezArena arena;
 } RezCavity;
 
-static unsigned rez_g_gen = 1;
+static uint32_t rez_g_gen = 1;
 
-static RezCavity *rez_enter(RezCavity *parent, size_t cap) {
-    RezCavity *c = (RezCavity*)malloc(sizeof(RezCavity));
-    c->parent = parent; c->generation = rez_g_gen++; c->alive = 1;
-    rez_arena_init(&c->arena, cap);
-    return c;
+static_assert(REZ_ALIGNMENT == 16);
+static_assert(sizeof(uint32_t) == 4);
+static_assert(sizeof(uint64_t) == 8);
+
+[[maybe_unused]] static void rez_decay(RezCavity *cavity) {
+    if (cavity == nullptr) return;
+    assert(cavity->arena.used <= cavity->arena.cap);
+    cavity->alive = false;
+    cavity->generation = rez_g_gen;
+    if (rez_g_gen != 0) rez_g_gen++;
+    cavity->arena.base = nullptr;
+    cavity->arena.used = 0;
+    cavity->arena.cap = 0;
+    assert(!cavity->alive);
+    assert(cavity->arena.base == nullptr);
 }
 
-/* Decay: одно событие. Связи мертвы атомарно со смертью содержимого. */
-static void rez_leave(RezCavity *c) {
-    c->generation = rez_g_gen++;
-    c->alive = 0;
-    free(c->arena.base); c->arena.base = 0;
-    /* struct не free: её generation — бессмертное имя для мёртвых проходов */
+[[maybe_unused]] static bool rez_frame_reset(
+    RezCavity *cavity,
+    RezCavity *parent,
+    char *base,
+    uint64_t cap
+) {
+    if (cavity == nullptr) return false;
+    if (base == nullptr) return false;
+    if (cap == 0) return false;
+    if (rez_g_gen == 0) return false;
+    assert(cavity != parent);
+    cavity->parent = parent;
+    cavity->generation = rez_g_gen++;
+    cavity->alive = true;
+    cavity->arena.base = base;
+    cavity->arena.used = 0;
+    cavity->arena.cap = cap;
+    assert(cavity->generation != 0);
+    assert(cavity->arena.used == 0);
+    return true;
 }
 
-/* Resonator: опора в арене полости */
-static void *rez_cell(RezCavity *c, size_t size) {
-    if (!c->alive) return 0;
-    return rez_arena_alloc(&c->arena, size);
+[[maybe_unused]] static RezCavity *rez_cav_enter(
+    RezCavity *cavity,
+    RezCavity *parent,
+    char *base,
+    uint64_t cap
+) {
+    if (cavity == nullptr) return nullptr;
+    if (cavity->alive) return nullptr;
+    if (!rez_frame_reset(cavity, parent, base, cap)) return nullptr;
+    assert(cavity->alive);
+    assert(cavity->arena.base == base);
+    return cavity;
 }
 
-/* --- Mediator: проход {ptr, gen} ------------------------------------------ */
-typedef struct { RezCavity *target; unsigned gen; } RezMediator;
-
-static RezMediator rez_issue(RezCavity *c) {
-    RezMediator m; m.target = c; m.gen = c->generation; return m;
+[[maybe_unused]] static void *rez_arena_alloc_z(RezArena *arena, uint64_t size) {
+    uint64_t start;
+    if (arena == nullptr) return nullptr;
+    if (arena->base == nullptr) return nullptr;
+    assert(arena->used <= arena->cap);
+    if (arena->used > UINT64_MAX - (REZ_ALIGNMENT - 1)) return nullptr;
+    start = (arena->used + REZ_ALIGNMENT - 1) & ~(REZ_ALIGNMENT - 1);
+    if (start > arena->cap) return nullptr;
+    if (size > arena->cap - start) return nullptr;
+    arena->used = start + size;
+    assert(arena->used <= arena->cap);
+    return arena->base + start;
 }
 
-/* Мёртвый проход — NULL. Проверка обязательна: REZ_TRY раскручивает каскад */
-static RezCavity *rez_deref(RezMediator m) {
-    return (m.target && m.gen == m.target->generation) ? m.target : 0;
+[[maybe_unused]] static void *rez_cell_z(RezCavity *cavity, uint64_t size) {
+    void *cell;
+    if (cavity == nullptr) return nullptr;
+    if (!cavity->alive) return nullptr;
+    if (size > SIZE_MAX) return nullptr;
+    cell = rez_arena_alloc_z(&cavity->arena, size);
+    if (cell != nullptr) memset(cell, 0, (size_t)size);
+    if (cell != nullptr) assert(cavity->alive);
+    return cell;
 }
 
-/* Каскад: первый мёртвый проход = атомарный abort (return из функции-каскада) */
-#define REZ_TRY(expr) do { if (!(expr)) return -1; } while (0)
-
-#endif /* REZ3_H */
+#endif
