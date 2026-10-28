@@ -1,150 +1,122 @@
-/* ============================================================================
- * REZ3EXT.H — static runtime REZ3-ASM без heap-функций C89-модели.
- * Раскладка типов совпадает с rez3.h, но старые heap API сюда не входят.
- * ASM-слой использует C99; всё static, один TU на программу.
- * ============================================================================
- */
+/* RESONANCE-3 cell mediators and defined i64 arithmetic. C23. */
 #ifndef REZ3EXT_H
 #define REZ3EXT_H
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
+#include "rez3.h"
 
-typedef struct { char *base; size_t used, cap; } RezArena;
-typedef struct RezCavity {
-    struct RezCavity *parent;
-    unsigned generation;
-    int alive;
-    RezArena arena;
-} RezCavity;
+#define REZ3EXT_ABI 3u
+static_assert(REZ3EXT_ABI == 3);
 
-static unsigned rez_g_gen = 1;
-
-/* RezCellMed передаётся хосту по значению: все TU пересобираются вместе. */
-#define REZ3EXT_ABI 2
-
-/* Для static storage использовать rez_decay, не rez_leave: последний
- * вызывает free и допустим только для heap-арен замороженной C89-модели. */
-static void rez_decay(RezCavity *c) {
-    if (!c) return;
-    c->generation = rez_g_gen++;
-    c->alive = 0;
-    c->arena.base = 0;
-    c->arena.used = 0;
-    c->arena.cap = 0;
-}
-
-/* Текущий владелец задаёт права; домашний владелец задаёт жизнь памяти. */
 typedef struct {
     void *cell;
     RezCavity *owner;
     RezCavity *home;
-    unsigned gen;
-    unsigned home_gen;
-    size_t size;
+    uint32_t gen;
+    uint32_t home_gen;
+    uint64_t size;
 } RezCellMed;
 
-static void *rez_arena_alloc_z(RezArena *a, size_t size) {
-    size_t start;
-    if (!a->base) return 0;
-    if (a->used > (size_t)-1 - 15) return 0;
-    start = (a->used + 15) & ~(size_t)15;
-    if (start > a->cap || size > a->cap - start) return 0;
-    a->used = start + size;
-    return a->base + start;
+static_assert(sizeof(((RezCellMed *)nullptr)->gen) == 4);
+static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
+
+[[maybe_unused]] static RezCellMed rez_issue_cell(
+    RezCavity *owner,
+    RezCavity *home,
+    void *cell,
+    uint64_t size
+) {
+    RezCellMed mediator;
+    assert(owner != nullptr);
+    assert(home != nullptr);
+    mediator.cell = cell;
+    mediator.owner = owner;
+    mediator.home = home;
+    mediator.gen = owner->generation;
+    mediator.home_gen = home->generation;
+    mediator.size = size;
+    assert(mediator.gen == owner->generation);
+    assert(mediator.home_gen == home->generation);
+    return mediator;
 }
 
-static void *rez_cell_z(RezCavity *c, size_t size) {
-    void *p;
-    if (!c || !c->alive) return 0;
-    p = rez_arena_alloc_z(&c->arena, size);
-    if (p) memset(p, 0, size);
-    return p;
+[[maybe_unused]] static void *rez_deref_cell(RezCellMed mediator) {
+    if (mediator.cell == nullptr) return nullptr;
+    if (mediator.owner == nullptr) return nullptr;
+    if (mediator.home == nullptr) return nullptr;
+    if (!mediator.owner->alive) return nullptr;
+    if (!mediator.home->alive) return nullptr;
+    if (mediator.gen != mediator.owner->generation) return nullptr;
+    if (mediator.home_gen != mediator.home->generation) return nullptr;
+    assert(mediator.gen != 0);
+    assert(mediator.home_gen != 0);
+    return mediator.cell;
 }
 
-static RezCellMed rez_issue_cell(RezCavity *owner, RezCavity *home,
-                                 void *cell, size_t size) {
-    RezCellMed m;
-    m.cell = cell;
-    m.owner = owner;
-    m.home = home;
-    m.gen = owner ? owner->generation : 0;
-    m.home_gen = home ? home->generation : 0;
-    m.size = size;
-    return m;
+[[maybe_unused]] static bool rez_cell_bounds(
+    RezCellMed mediator,
+    uint64_t offset,
+    uint64_t width
+) {
+    assert(mediator.size <= UINT64_MAX);
+    if (offset > mediator.size) return false;
+    assert(offset <= mediator.size);
+    return width <= mediator.size - offset;
 }
 
-static void *rez_deref_cell(RezCellMed m) {
-    if (!m.cell || !m.owner || !m.home) return 0;
-    if (!m.owner->alive || !m.home->alive) return 0;
-    if (m.gen != m.owner->generation) return 0;
-    if (m.home_gen != m.home->generation) return 0;
-    return m.cell;
-}
-
-static int rez_cell_bounds(RezCellMed m, size_t offset, size_t width) {
-    return offset <= m.size && width <= m.size - offset;
-}
-
-/* Рамка и арена принадлежат вызывающему коду и не выделяются из кучи. */
-static int rez_frame_reset(RezCavity *c, RezCavity *parent,
-                           char *base, size_t cap) {
-    if (!c || !base || cap == 0 || rez_g_gen == 0) return 0;
-    c->parent = parent;
-    c->generation = rez_g_gen++;
-    c->alive = 1;
-    c->arena.base = base;
-    c->arena.used = 0;
-    c->arena.cap = cap;
-    return 1;
-}
-
-static RezCavity *rez_cav_enter(RezCavity *c, RezCavity *parent,
-                                char *base, size_t cap) {
-    if (!c || c->alive) return 0;
-    if (!rez_frame_reset(c, parent, base, cap)) return 0;
-    return c;
-}
-
-static uint64_t rez_i64_bits(int64_t value) {
+[[maybe_unused]] static uint64_t rez_i64_bits(int64_t value) {
     uint64_t bits;
     memcpy(&bits, &value, sizeof(bits));
+    assert(sizeof(bits) == sizeof(value));
     return bits;
 }
 
-static int64_t rez_i64_value(uint64_t bits) {
+[[maybe_unused]] static int64_t rez_i64_value(uint64_t bits) {
     int64_t value;
     memcpy(&value, &bits, sizeof(value));
+    assert(sizeof(value) == sizeof(bits));
     return value;
 }
 
-static int64_t rez_i64_add(int64_t a, int64_t b) {
-    return rez_i64_value(rez_i64_bits(a) + rez_i64_bits(b));
+[[maybe_unused]] static int64_t rez_i64_add(int64_t left, int64_t right) {
+    return rez_i64_value(rez_i64_bits(left) + rez_i64_bits(right));
 }
 
-static int64_t rez_i64_sub(int64_t a, int64_t b) {
-    return rez_i64_value(rez_i64_bits(a) - rez_i64_bits(b));
+[[maybe_unused]] static int64_t rez_i64_sub(int64_t left, int64_t right) {
+    return rez_i64_value(rez_i64_bits(left) - rez_i64_bits(right));
 }
 
-static int64_t rez_i64_mul(int64_t a, int64_t b) {
-    return rez_i64_value(rez_i64_bits(a) * rez_i64_bits(b));
+[[maybe_unused]] static int64_t rez_i64_mul(int64_t left, int64_t right) {
+    return rez_i64_value(rez_i64_bits(left) * rez_i64_bits(right));
 }
 
-static int64_t rez_i64_div(int64_t a, int64_t b) { return a / b; }
-static int64_t rez_i64_mod(int64_t a, int64_t b) { return a % b; }
+[[maybe_unused]] static int64_t rez_i64_div(int64_t left, int64_t right) {
+    assert(right != 0);
+    if (left == INT64_MIN) assert(right != -1);
+    return left / right;
+}
 
-/* Диапазон проверяет вызывающий код: 0 <= shift < 64. */
-static int64_t rez_i64_shl(int64_t value, int64_t shift) {
+[[maybe_unused]] static int64_t rez_i64_mod(int64_t left, int64_t right) {
+    assert(right != 0);
+    if (left == INT64_MIN) assert(right != -1);
+    return left % right;
+}
+
+[[maybe_unused]] static int64_t rez_i64_shl(int64_t value, int64_t shift) {
+    assert(shift >= 0);
+    assert(shift < 64);
     return rez_i64_value(rez_i64_bits(value) << (unsigned)shift);
 }
 
-static int64_t rez_i64_shr(int64_t value, int64_t shift) {
-    uint64_t bits = rez_i64_bits(value);
+[[maybe_unused]] static int64_t rez_i64_shr(int64_t value, int64_t shift) {
+    uint64_t bits;
+    assert(shift >= 0);
+    assert(shift < 64);
     if (shift == 0) return value;
-    bits >>= (unsigned)shift;
+    bits = rez_i64_bits(value) >> (unsigned)shift;
     if (value < 0) bits |= ~(uint64_t)0 << (64 - (unsigned)shift);
     return rez_i64_value(bits);
 }
 
-#endif /* REZ3EXT_H */
+#define REZ_TRY(expr) do { if (!(expr)) return -1; } while (0)
+
+#endif
