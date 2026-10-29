@@ -46,6 +46,21 @@ run_style() {
 }
 run_style
 
+run_function_style() {
+    if ! python tests/function_length_test.py >"$BUILD/function_style.out" 2>&1; then
+        bad function_style "function length self-tests failed"
+        cat "$BUILD/function_style.out"
+        return
+    fi
+    if ! python tests/function_length.py >>"$BUILD/function_style.out" 2>&1; then
+        bad function_style "function length or scanner error"
+        cat "$BUILD/function_style.out"
+        return
+    fi
+    ok function_style
+}
+run_function_style
+
 echo "== build rez3asm.exe (c3c) =="
 bash build_compiler.sh
 TR="./rez3asm.exe"
