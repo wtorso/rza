@@ -137,7 +137,8 @@ fn void lsp_write(String s) {
         s = s[n..];
     }
     assert(s.len == 0);
-    if (catch err = out.flush()) lsp_fatal("stdout flush failed");
+    // C3 File.flush скрывает ошибку, поэтому результат fflush проверяется напрямую.
+    if (libc::fflush(libc::stdout()) != 0) lsp_fatal("stdout write failed");
 }
 
 fn void lsp_send_body(String body) {
@@ -358,7 +359,9 @@ fn int header_content_length(String header) {
             rest = "";
         }
         if (starts_with_icase(line, "Content-Length:")) {
-            result = line[15..].trim().to_int() ?? -1;
+            int value = line[15..].trim().to_int() ?? -1;
+            if (result >= 0 && value >= 0 && result != value) return -2;
+            result = value;
         }
     }
     return result;
@@ -430,6 +433,7 @@ fn bool next_message(DString* inbuf) {
     }
     if (header_end + 4 > (sz)LSP_HEADER_MAX) lsp_fatal("header too large");
     int body_len = header_content_length(view[:header_end]);
+    if (body_len == -2) lsp_fatal("conflicting Content-Length");
     if (body_len > LSP_BODY_MAX) lsp_fatal("body too large");
     if (body_len < 0) {
         inbuf.delete(0, 1);

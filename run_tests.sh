@@ -13,6 +13,7 @@ else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
 
 CFLAGS="-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
 CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
+export CC CFLAGS
 BUILD=".test-build-$$"
 rm --recursive --force "$BUILD"
 mkdir --parents "$BUILD"
@@ -161,6 +162,8 @@ run_py() {
 
 run_lsp_smoke() { run_py lsp_smoke tests/lsp_smoke.py; }
 run_fuzz() { run_py fuzz tests/fuzz_smoke.py; }
+run_ownership_fuzz() { run_py ownership_fuzz tests/ownership_fuzz.py; }
+run_fault_smoke() { run_py fault_smoke tests/fault_smoke.py; }
 
 run_c3_unit() {
     local c3c_bin="c3c"
@@ -461,6 +464,8 @@ else
     ok cli_two_inputs
 fi
 run_lsp_smoke
+run_ownership_fuzz
+run_fault_smoke
 run_fuzz
 run_c3_unit
 echo "----------------------------------------"
