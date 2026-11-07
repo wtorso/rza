@@ -63,6 +63,60 @@ static_assert(NAMESZ == 64);
 static_assert(LINE_TEXT_MAX + 1 == 512);
 static_assert(SOURCE_BYTES_MAX > LINE_TEXT_MAX);
 
+// Annex K сохраняет строгие clang/MSVC warnings без глобального CRT define.
+static FILE *open_input(const char *path) {
+    assert(path != nullptr);
+#if defined(_WIN32)
+    FILE *input = nullptr;
+    if (fopen_s(&input, path, "rb") != 0) return nullptr;
+    return input;
+#else
+    return fopen(path, "rb");
+#endif
+}
+
+static void copy_text(char *dest, size_t cap, const char *src) {
+    assert(dest != nullptr);
+    assert(src != nullptr);
+    assert(cap > 0);
+#if defined(_WIN32)
+    errno_t error = strcpy_s(dest, cap, src);
+    assert(error == 0);
+#else
+    size_t length = strlen(src);
+    assert(length < cap);
+    memcpy(dest, src, length + 1);
+#endif
+}
+
+#define COPY_TEXT(dest, src) copy_text(dest, sizeof(dest), src)
+
+static int scan_casc(char *line, char *name, char *rest) {
+#if defined(_WIN32)
+    return sscanf_s(line, "%*s %63s %511[^\n]",
+                    name, (unsigned)NAMESZ, rest, (unsigned)LINE_TEXT_MAX + 1u);
+#else
+    return sscanf(line, "%*s %63s %511[^\n]", name, rest);
+#endif
+}
+
+static int scan_out(char *line, char *cell, char *frame, int *consumed) {
+#if defined(_WIN32)
+    return sscanf_s(line, "%63s %63s %n", cell, (unsigned)NAMESZ,
+                    frame, (unsigned)NAMESZ, consumed);
+#else
+    return sscanf(line, "%63s %63s %n", cell, frame, consumed);
+#endif
+}
+
+static int scan_command(char *line, char *command) {
+#if defined(_WIN32)
+    return sscanf_s(line, "%63s", command, (unsigned)NAMESZ);
+#else
+    return sscanf(line, "%63s", command);
+#endif
+}
+
 int main(int argc, char **argv) {
     FILE *input = stdin;
     int32_t status;
@@ -71,7 +125,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (argc == 2) {
-        input = fopen(argv[1], "rb");
+        input = open_input(argv[1]);
         if (input == nullptr) {
             fprintf(stderr, "cannot open %s\n", argv[1]);
             return 2;
@@ -204,7 +258,7 @@ static void op_frame(char *name, char *parent) {
         report("LIMIT", "generation exhausted", name, "");
         return;
     }
-    strcpy(frames[nf].name, name);
+    COPY_TEXT(frames[nf].name, name);
     frames[nf].parent = parent_index;
     frames[nf].gen = next_gen();
     frames[nf].alive = true;
@@ -228,7 +282,7 @@ static void op_cell(char *name, char *fname) {
         report("LIMIT", "cells", name, "");
         return;
     }
-    strcpy(cells[nc].name, name);
+    COPY_TEXT(cells[nc].name, name);
     cells[nc].frame = frame_index;
     cells[nc].home = frame_index;
     nc++;
@@ -257,7 +311,7 @@ static void op_link(char *name, char *cname, char *issuer) {
         report("LIMIT", "links", name, "");
         return;
     }
-    strcpy(links[nl].name, name);
+    COPY_TEXT(links[nl].name, name);
     links[nl].cell = cell_index;
     links[nl].owner = cells[cell_index].frame;
     links[nl].home = cells[cell_index].home;
@@ -302,7 +356,7 @@ static void op_casc(char *name, char *list, char *outcell, char *outframe, bool 
     assert(name != nullptr);
     assert(list != nullptr);
     assert(strlen(list) <= LINE_TEXT_MAX);
-    strcpy(buffer, list);
+    COPY_TEXT(buffer, list);
     cursor = buffer;
     for (;;) {
         char *comma = strchr(cursor, ',');
@@ -434,7 +488,7 @@ static void check_casc_line(char *line, bool async) {
     int fields;
     assert(line != nullptr);
     outframe[0] = '\0';
-    if (sscanf(line, "%*s %63s %511[^\n]", name, rest) != 2) {
+    if (scan_casc(line, name, rest) != 2) {
         malformed();
         return;
     }
@@ -444,7 +498,7 @@ static void check_casc_line(char *line, bool async) {
         return;
     }
     *gt = '\0';
-    fields = sscanf(gt + 1, "%63s %63s %n", outcell, outframe, &consumed);
+    fields = scan_out(gt + 1, outcell, outframe, &consumed);
     if ((!async && fields != 2) || (async && fields != 1)) {
         malformed();
         return;
@@ -494,7 +548,7 @@ static void check_line(char *line) {
     assert(line != nullptr);
     comment = strchr(line, '#');
     if (comment != nullptr) *comment = '\0';
-    if (sscanf(line, "%63s", command) != 1) return;
+    if (scan_command(line, command) != 1) return;
     if (strcmp(command, "casc") == 0 || strcmp(command, "acasc") == 0) {
         check_casc_line(line, command[0] == 'a');
         return;
@@ -565,7 +619,7 @@ static bool read_source(FILE *input) {
 
 static void check_source(void) {
     uint32_t offset = 0;
-    strcpy(frames[0].name, "field");
+    COPY_TEXT(frames[0].name, "field");
     frames[0].parent = -1;
     frames[0].gen = next_gen();
     frames[0].alive = true;

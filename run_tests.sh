@@ -6,14 +6,25 @@ set -o nounset
 cd "$(dirname "$0")"
 
 # компилятор C23 для сгенерированного кода
-if   command -v gcc   >/dev/null 2>&1; then CC="gcc"
-elif command -v zig   >/dev/null 2>&1; then CC="zig cc"
-elif command -v clang >/dev/null 2>&1; then CC="clang"
-else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
+if [ -z "${CC:-}" ]; then
+    if   command -v gcc   >/dev/null 2>&1; then CC="gcc"
+    elif command -v zig   >/dev/null 2>&1; then CC="zig cc"
+    elif command -v clang >/dev/null 2>&1; then CC="clang"
+    else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
+fi
 
-CFLAGS="-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
-CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
-export CC CFLAGS
+if [ -z "${CFLAGS:-}" ]; then
+    CFLAGS="-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
+    CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
+fi
+# LNK4217 относится только к clang_rt.ubsan_standalone.lib, не к RZA objects.
+LDFLAGS="${LDFLAGS:-}"
+if [ "${OS:-}" = "Windows_NT" ]; then
+    case "$CC" in
+        *clang*) LDFLAGS+=" -Wl,/ignore:4217" ;;
+    esac
+fi
+export CC CFLAGS LDFLAGS
 BUILD=".test-build-$$"
 rm --recursive --force "$BUILD"
 mkdir --parents "$BUILD"
@@ -76,7 +87,7 @@ run_good() {
         bad "$t" "transpile failed (want exit 0)"; cat "$BUILD/$t.trerr"
         return
     fi
-    if ! $CC $CFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
+    if ! $CC $CFLAGS $LDFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
             2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -108,7 +119,7 @@ run_dead() {
         cat "$BUILD/$t.trerr"
         return
     fi
-    if ! $CC $CFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
+    if ! $CC $CFLAGS $LDFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
             2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -196,7 +207,7 @@ run_lib() {
     else
         HARNESS="tests/lib_harness.c"
     fi
-    if ! $CC $CFLAGS "$BUILD/$t.lib.c" "$HARNESS" \
+    if ! $CC $CFLAGS $LDFLAGS "$BUILD/$t.lib.c" "$HARNESS" \
             -o "$BUILD/$t.exe" 2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -239,7 +250,7 @@ run_lib_compile() {
 }
 
 run_runtime_safety() {
-    if ! $CC $CFLAGS tests/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
+    if ! $CC $CFLAGS $LDFLAGS tests/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
             2>"$BUILD/runtime_safety.ccerr"; then
         bad runtime_safety "compile failed"; cat "$BUILD/runtime_safety.ccerr"
         return
@@ -257,7 +268,7 @@ run_runtime_safety() {
 }
 
 run_shop() {
-    if ! $CC $CFLAGS refs/shop.c -o "$BUILD/shop.exe" \
+    if ! $CC $CFLAGS $LDFLAGS refs/shop.c -o "$BUILD/shop.exe" \
             2>"$BUILD/shop.ccerr"; then
         bad shop "compile failed"; cat "$BUILD/shop.ccerr"
         return
@@ -275,7 +286,7 @@ run_shop() {
 }
 
 run_reference() {
-    if ! $CC $CFLAGS refs/rez3check.c \
+    if ! $CC $CFLAGS $LDFLAGS refs/rez3check.c \
             -o "$BUILD/rez3check.exe" 2>"$BUILD/rez3check.ccerr"; then
         bad reference "C23 compile failed"; cat "$BUILD/rez3check.ccerr"
         return
