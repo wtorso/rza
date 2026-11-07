@@ -164,6 +164,8 @@ run_lsp_smoke() { run_py lsp_smoke tests/lsp_smoke.py; }
 run_fuzz() { run_py fuzz tests/fuzz_smoke.py; }
 run_ownership_fuzz() { run_py ownership_fuzz tests/ownership_fuzz.py; }
 run_fault_smoke() { run_py fault_smoke tests/fault_smoke.py; }
+run_deterministic_artifacts() { run_py deterministic_artifacts tests/deterministic_artifacts.py; }
+run_tiny_budgets() { run_py tiny_budgets tests/tiny_budgets.py; }
 
 run_c3_unit() {
     local c3c_bin="c3c"
@@ -467,6 +469,8 @@ fi
 run_lsp_smoke
 run_ownership_fuzz
 run_fault_smoke
+run_deterministic_artifacts
+run_tiny_budgets
 run_fuzz
 run_c3_unit
 echo "----------------------------------------"
