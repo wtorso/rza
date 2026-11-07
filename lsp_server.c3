@@ -205,8 +205,6 @@ fn void validate(String uri, String text) {
     assert(uri.len <= (sz)LSP_URI_MAX);
     assert(text.len <= (sz)LSP_DOC_MAX);
     reset_state();
-    srcname = uri;
-    assert(srcname == uri);
     sz mark = work_arena.mark();
     defer work_arena.reset(mark);
     run(text);
