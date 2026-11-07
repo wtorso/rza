@@ -174,7 +174,7 @@ run_c3_unit() {
     fi
     if ! "$c3c_bin" compile-test rez3asm.c3 lsp_server.c3 \
             memory_guard.c3 scratch_memory.c3 tests/output_writer_test.c3 \
-            tests/memory_guard_test.c3 -o "$BUILD/c3_tests" \
+            tests/memory_guard_test.c3 tests/checker_budget_test.c3 -o "$BUILD/c3_tests" \
             >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
         return
