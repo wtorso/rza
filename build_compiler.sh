@@ -11,7 +11,7 @@ NEW="rez3asm.$$.new"
 OLD="rez3asm.$$.old"
 trap 'rm --force "$NEW.exe" "$NEW.pdb" "$OLD.exe" "$OLD.pdb" 2>/dev/null || true' EXIT
 
-if ! $C3C compile rez3asm.c3 lsp_server.c3 -o "$NEW" \
+if ! $C3C compile rez3asm.c3 lsp_server.c3 memory_guard.c3 scratch_memory.c3 -o "$NEW" \
         --validation=obnoxious \
         --warn-deadcode=error \
         --warn-recursivecontracts=error \

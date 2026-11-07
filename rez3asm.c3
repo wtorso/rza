@@ -17,14 +17,23 @@ const int CASC_MED_MAX = 64;
 const int SOURCE_BYTES_MAX = 1048576;
 const int OUTPUT_BYTES_MAX = 67108864;
 const int WORK_BYTES = 134217728;
+const sz OFFSET_STRING_BYTES = 32;
 
 char[WORK_BYTES] work_storage;
 ArenaAllocator work_arena;
 Allocator workmem;
+AllocationGuard list_guard;
+Allocator list_mem;
+ScratchMemory load_offset_scratch;
+ScratchMemory store_offset_scratch;
 
 fn void init_workmem() {
     work_arena.init(work_storage[..]);
     workmem = &work_arena;
+    load_offset_scratch.init(workmem, OFFSET_STRING_BYTES);
+    store_offset_scratch.init(workmem, OFFSET_STRING_BYTES);
+    list_guard.init(mem);
+    list_mem = &list_guard;
 }
 
 // --- модель ------------------------------------------------------------------
@@ -199,6 +208,7 @@ fn int main(String[] args) {
     assert(args.len > 0);
     init_workmem();
     reset_state();
+    list_guard.freeze();
     assert(g_state_inited);
 
     bool emit_c = false;
@@ -267,15 +277,15 @@ fn int main(String[] args) {
 // валидацию (документ проверяется целиком, Full sync)
 fn void reset_state() {
     if (!g_state_inited) {
-        frames.init(mem, NODE_MAX);
-        cells.init(mem, NODE_MAX);
-        meds.init(mem, NODE_MAX);
-        procs.init(mem, NODE_MAX);
-        cascades.init(mem, NODE_MAX);
-        blocks.init(mem, NODE_MAX);
-        labels.init(mem, NODE_MAX);
-        instrs.init(mem, NODE_MAX);
-        lsp_diags.init(mem, LSP_DIAG_MAX + 1);
+        frames.init(list_mem, NODE_MAX);
+        cells.init(list_mem, NODE_MAX);
+        meds.init(list_mem, NODE_MAX);
+        procs.init(list_mem, NODE_MAX);
+        cascades.init(list_mem, NODE_MAX);
+        blocks.init(list_mem, NODE_MAX);
+        labels.init(list_mem, NODE_MAX);
+        instrs.init(list_mem, NODE_MAX);
+        lsp_diags.init(list_mem, LSP_DIAG_MAX + 1);
         g_state_inited = true;
     }
     frames.clear();
@@ -1607,8 +1617,9 @@ fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
 }
 
 fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
-    DString oex = dstring::new(workmem);
-    defer oex.free();
+    DString* oex = load_offset_scratch.acquire(OFFSET_STRING_BYTES);
+    assert(oex != null);
+    defer assert(load_offset_scratch.release(oex));
     if (ins.c >= 0) { oex.appendf("r%d", ins.c); }
     else { oex.appendf("%d", ins.b); }
     String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";
@@ -1634,8 +1645,9 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
 }
 
 fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
-    DString sex = dstring::new(workmem);
-    defer sex.free();
+    DString* sex = store_offset_scratch.acquire(OFFSET_STRING_BYTES);
+    assert(sex != null);
+    defer assert(store_offset_scratch.release(sex));
     if (ins.c >= 0) { sex.appendf("r%d", ins.c); }
     else { sex.appendf("%d", ins.b); }
     String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";

@@ -488,7 +488,14 @@ fn int lsp_main() {
     assert(LSP_RESPONSE_MAX >= LSP_DIAG_TEXT_MAX * LSP_DIAG_MAX);
     assert(LSP_INPUT_MAX >= LSP_BODY_MAX + LSP_HEADER_MAX);
     for (int i = 0; i < LSP_DOCS_MAX; i++) lsp_docs[i].used = false;
-    DString inbuf = dstring::new_with_capacity(mem, LSP_INPUT_MAX);
+    AllocationGuard input_guard;
+    input_guard.init(mem);
+    DString inbuf = dstring::new_with_capacity(&input_guard, LSP_INPUT_MAX);
+    input_guard.freeze();
+    defer {
+        input_guard.deinit();
+        inbuf.free();
+    }
     while (true) {
         assert(inbuf.len() <= (sz)LSP_INPUT_MAX);
         while (next_message(&inbuf)) {}
