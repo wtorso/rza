@@ -405,7 +405,7 @@ run_reference_invalid
 run_build_parallel
 
 # примеры учебника GUIDE.md — регрессия документации (аудит #3)
-for t in hello counter2 idioms settle; do
+for t in hello counter2 idioms settle shop; do
     DIR=docs/examples run_good "$t"
 done
 run_dead dead_link "FAULT line 10: dead mediator acc_m"
