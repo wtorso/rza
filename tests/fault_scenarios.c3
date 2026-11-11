@@ -1,16 +1,15 @@
 module rza_tests;
 
+import libc;
+import std::collections::object;
 import std::core::dstring;
 import std::io;
 import std::io::file;
 import std::io::path;
 import std::os::process;
 
-char[65536] fault_stderr_buf;
-
 fn String? read_child_stderr(Process* child) {
-    sz count = child.read_stderr(fault_stderr_buf[..].ptr, fault_stderr_buf.len)!;
-    return (String)fault_stderr_buf[:count];
+    return lsp_stderr_text();
 }
 
 fn int? test_lsp_boundaries() {
@@ -18,29 +17,35 @@ fn int? test_lsp_boundaries() {
     defer lsp_destroy(&child);
     String first = lsp_frame(initialize("1"));
     for (sz i = 0; i < first.len; i++) lsp_send(&child, first[i:1])!;
-    if (!expect(lsp_recv(&child)!.contains(`"id":1`), "split initialize")) return 1;
+    if (!expect(json_id_int(json_message(lsp_recv(&child)!)!, 1),
+            "split initialize")) return 1;
     DString pair = dstring::temp(lsp_frame(initialize("2")));
     pair.append(lsp_frame(initialize("3")));
     lsp_send(&child, pair.str_view())!;
-    if (!expect(lsp_recv(&child)!.contains(`"id":2`), "pipeline first")) return 1;
-    if (!expect(lsp_recv(&child)!.contains(`"id":3`), "pipeline second")) return 1;
+    if (!expect(json_id_int(json_message(lsp_recv(&child)!)!, 2),
+            "pipeline first")) return 1;
+    if (!expect(json_id_int(json_message(lsp_recv(&child)!)!, 3),
+            "pipeline second")) return 1;
     String body = initialize("4");
     String duplicate = string::tformat(
         "Content-Length: %d\r\nContent-Length: %d\r\n\r\n%s",
         body.len, body.len, body);
     lsp_send(&child, duplicate)!;
-    if (!expect(lsp_recv(&child)!.contains(`"id":4`), "duplicate length")) return 1;
+    if (!expect(json_id_int(json_message(lsp_recv(&child)!)!, 4),
+            "duplicate length")) return 1;
     lsp_send(&child, "Content-Length: 1\r\n\r\n{")!;
     lsp_send(&child, lsp_frame(initialize("5")))!;
-    if (!expect(lsp_recv(&child)!.contains(`"id":5`), "JSON recovery")) return 1;
+    if (!expect(json_id_int(json_message(lsp_recv(&child)!)!, 5),
+            "JSON recovery")) return 1;
     String unknown = `{"jsonrpc":"2.0","id":6,"method":"unknown/method"}`;
     lsp_send(&child, lsp_frame(unknown))!;
-    if (!expect(lsp_recv(&child)!.contains(`"code":-32601`), "unknown method")) {
-        return 1;
-    }
+    if (!expect(json_error_code(json_message(lsp_recv(&child)!)!, -32601),
+            "unknown method")) return 1;
     String boolean = `{"jsonrpc":"2.0","id":true,"method":"initialize"}`;
     lsp_send(&child, lsp_frame(boolean))!;
-    if (!expect(lsp_recv(&child)!.contains(`"code":-32600`), "boolean id")) return 1;
+    Object* boolean_response = json_message(lsp_recv(&child)!)!;
+    if (!expect(json_id_null(boolean_response) &&
+            json_error_code(boolean_response, -32600), "boolean id")) return 1;
     child.terminate()!;
     (void)wait_process(&child);
     String stderr = read_child_stderr(&child)!;
@@ -69,8 +74,10 @@ fn int? test_exit_codes() {
     normal.append(exit_frame);
     ProcessResult done = run_simple_input({"./rez3asm.exe", "--lsp"},
         normal.str_view())!;
-    if (!expect(done.status == 0 && done.stdout_text.contains(`"result":null`),
-            "shutdown and exit")) return 1;
+    Object* response = json_framed(done.stdout_text)!;
+    Object* result = response.get("result")!;
+    if (!expect(done.status == 0 && json_id_int(response, 1) && result.is_null() &&
+            !response.has_key("error"), "shutdown and exit")) return 1;
     ProcessResult eof = run_simple_input({"./rez3asm.exe", "--lsp"}, "")!;
     if (!expect(eof.status == 0, "LSP EOF")) return 1;
     return 0;
@@ -92,18 +99,26 @@ fn int? test_io_failure(bool stdout_failure) {
     write_file(path, "")!;
     File special = file::open(path, stdout_failure ? "rb" : "wb")!;
     defer (void)special.close();
+    CFile raw = libc::tmpfile();
+    if (raw == null) return TEST_ERROR~;
+    lsp_stderr_file = file::from_handle(raw);
     Process child = process::spawn({"./rez3asm.exe", "--lsp"},
         SpawnOptions.INHERIT_ENV, {},
         stdout_failure ? process::CAPTURE : process_file(special),
         stdout_failure ? process_file(special) : process::CAPTURE,
-        process::CAPTURE)!;
+        process_file(lsp_stderr_file))!;
     defer lsp_destroy(&child);
     if (stdout_failure) lsp_send(&child, lsp_frame(initialize("1")))!;
     int status = wait_process(&child)!;
     String expected = stdout_failure ? "[rez3-lsp] stdout write failed" :
         "[rez3-lsp] stdin read failed";
     String stderr = read_child_stderr(&child)!;
-    if (!expect(status == 2 && normalize_lines(stderr) == expected,
+    bool stdout_empty = true;
+    if (!stdout_failure) {
+        char[1] buffer;
+        stdout_empty = child.read_stdout(buffer[..].ptr, 1)! == 0;
+    }
+    if (!expect(status == 2 && stdout_empty && normalize_lines(stderr) == expected,
             "LSP descriptor failure")) return 1;
     return 0;
 }

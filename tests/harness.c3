@@ -113,14 +113,32 @@ fn ProcessResult? compile_c(String generated, String executable) {
     return run_simple(command.array_view());
 }
 
+String temp_root;
+
+fn String temp_root_path() {
+    if (temp_root.len > 0) return temp_root;
+    $if env::WIN32:
+        uint pid = win32::getCurrentProcessId();
+    $else
+        Pid_t pid = posix::getpid();
+    $endif
+    temp_root = string::tformat("build/rza-tests-%d", pid);
+    return temp_root;
+}
+
 fn void? reset_temp_dir() {
-    Path directory = path::tnew("build/rza-tests")!;
+    Path directory = path::tnew(temp_root_path())!;
     if (path::exists(directory)) path::rmtree(directory)!;
     path::mkdir(directory, true)!;
 }
 
+fn void? cleanup_temp_dir() {
+    Path directory = path::tnew(temp_root_path())!;
+    if (path::exists(directory)) path::rmtree(directory)!;
+}
+
 fn String temp_path(String name) {
-    return string::tformat("build/rza-tests/%s", name);
+    return string::tformat("%s/%s", temp_root_path(), name);
 }
 
 fn char[]? read_file(String path, char[] buffer) {

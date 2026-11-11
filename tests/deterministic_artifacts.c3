@@ -85,6 +85,7 @@ fn int? check_paths_and_indexed() {
 }
 
 fn int artifacts_main() {
+    defer (void)cleanup_temp_dir();
     int? status = artifacts_run();
     if (catch status) {
         io::eprintn("DETERMINISTIC_ARTIFACTS FAILED");

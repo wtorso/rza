@@ -137,6 +137,7 @@ fn int? run_capacity_cases() {
 }
 
 fn int fuzz_main() {
+    defer (void)cleanup_temp_dir();
     int? status = fuzz_run();
     if (catch status) {
         io::eprintn("FUZZ FAILED");

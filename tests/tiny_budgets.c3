@@ -1,5 +1,6 @@
 module rza_tests;
 
+import std::collections::object;
 import std::core::dstring;
 import std::io;
 
@@ -120,14 +121,16 @@ fn int? check_id_boundaries() {
     for (int i = 0; i < 256; i++) id.append("x");
     ProcessResult ok = run_simple_input({"./rez3asm.exe", "--lsp"},
         lsp_frame(initialize(string::tformat(`"%s"`, id.str_view()))))!;
-    String expected = string::tformat(`"id":"%s"`, id.str_view());
-    if (!expect(ok.status == 0 && ok.stdout_text.contains(expected) &&
-            ok.stderr_text.len == 0, "LSP id 256")) return 1;
+    Object* message = json_framed(ok.stdout_text)!;
+    Object* id_value = message.get("id")!;
+    if (!expect(ok.status == 0 && id_value.is_string() &&
+            id_value.s == id.str_view() && ok.stderr_text.len == 0,
+            "LSP id 256")) return 1;
     id.append("x");
     ProcessResult bad = run_simple_input({"./rez3asm.exe", "--lsp"},
         lsp_frame(initialize(string::tformat(`"%s"`, id.str_view()))))!;
-    if (!expect(bad.status == 0 && bad.stdout_text.contains(`"id":null`) &&
-            bad.stdout_text.contains(`"code":-32600`) &&
+    message = json_framed(bad.stdout_text)!;
+    if (!expect(bad.status == 0 && json_id_null(message) && json_error_code(message, -32600) &&
             bad.stderr_text.len == 0, "LSP id 257")) return 1;
     return 0;
 }
@@ -137,9 +140,11 @@ fn int? check_uri_boundaries() {
     for (sz i = uri.len(); i < 1024; i++) uri.append("u");
     ProcessResult ok = run_simple_input({"./rez3asm.exe", "--lsp"},
         lsp_frame(document_message(uri.str_view())))!;
-    String expected = string::tformat(`"uri":"%s"`, uri.str_view());
-    if (!expect(ok.status == 0 && ok.stdout_text.contains(expected) &&
-            ok.stdout_text.contains(`"diagnostics":[]`) &&
+    Object* message = json_framed(ok.stdout_text)!;
+    Object* params = message.get("params")!;
+    Object* actual_uri = params.get("uri")!;
+    if (!expect(ok.status == 0 && actual_uri.is_string() &&
+            actual_uri.s == uri.str_view() && json_diagnostics(message)!.len() == 0 &&
             ok.stderr_text.len == 0, "LSP URI 1024")) {
         print_result(ok);
         return 1;
@@ -166,7 +171,8 @@ fn String sized_header(int size) {
 fn int? check_header_boundaries() {
     ProcessResult ok = run_simple_input({"./rez3asm.exe", "--lsp"},
         sized_header(8192))!;
-    if (!expect(ok.status == 0 && ok.stdout_text.contains(`"id":1`) &&
+    Object* message = json_framed(ok.stdout_text)!;
+    if (!expect(ok.status == 0 && json_id_int(message, 1) &&
             ok.stderr_text.len == 0, "LSP header 8192")) return 1;
     ProcessResult bad = run_simple_input({"./rez3asm.exe", "--lsp"},
         sized_header(8193))!;
@@ -177,6 +183,7 @@ fn int? check_header_boundaries() {
 }
 
 fn int budgets_main() {
+    defer (void)cleanup_temp_dir();
     int? status = budgets_run();
     if (catch status) {
         io::eprintn("TINY_BUDGETS FAILED");

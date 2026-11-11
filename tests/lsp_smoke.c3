@@ -1,5 +1,6 @@
 module rza_tests;
 
+import std::collections::object;
 import std::core::dstring;
 import std::io;
 import std::io::path;
@@ -55,72 +56,80 @@ fn String? lsp_call(Process* child, String body) {
     return lsp_recv(child)!;
 }
 
-fn int count_substr(String text, String needle) {
-    int count = 0;
-    while (true) {
-        sz? found = text.index_of(needle);
-        if (catch found) return count;
-        count++;
-        text = text[found + needle.len..];
-    }
-}
-
-fn bool diagnostics_count(String body, int count) {
-    return count_substr(body, `"code":`) == count;
+fn Object*? lsp_call_json(Process* child, String body) {
+    return json_message(lsp_call(child, body)!);
 }
 
 fn int? initialize_checks(Process* child) {
-    String response = lsp_call(child, initialize("1"))!;
-    if (!expect(response.contains(`"id":1`) &&
-            response.contains(`"textDocumentSync":1`), "initialize Full sync")) return 1;
-    if (!expect(response.contains(`"name":"rez3-lsp"`) &&
-            response.contains(`"version":"0.4.0"`), "initialize serverInfo")) return 1;
+    Object* response = lsp_call_json(child, initialize("1"))!;
+    if (!expect(json_id_int(response, 1), "initialize id")) return 1;
+    Object* result = response.get("result")!;
+    Object* capabilities = result.get("capabilities")!;
+    Object* sync = capabilities.get("textDocumentSync")!;
+    if (!expect(sync.is_int() && sync.i == 1, "initialize Full sync")) return 1;
+    Object* info = result.get("serverInfo")!;
+    if (!expect((info.get_string("name") ?? "") == "rez3-lsp" &&
+            (info.get_string("version") ?? "") == "0.4.0", "initialize serverInfo")) {
+        return 1;
+    }
     DString long_id = dstring::temp();
     for (int i = 0; i < 300; i++) long_id.append("x");
-    response = lsp_call(child, initialize(string::tformat(`"%s"`, long_id.str_view())))!;
-    if (!expect(response.contains(`"id":null`) && response.contains(`"code":-32600`),
-            "oversized id")) return 1;
-    response = lsp_call(child, initialize("1.5"))!;
-    if (!expect(response.contains(`"id":1.5`), "fractional id")) return 1;
+    response = lsp_call_json(child,
+        initialize(string::tformat(`"%s"`, long_id.str_view())))!;
+    if (!expect(json_id_null(response) &&
+            json_error_code(response, -32600), "oversized id")) return 1;
+    response = lsp_call_json(child, initialize("1.5"))!;
+    if (!expect(json_id_number(response, 1.5), "fractional id")) return 1;
     return 0;
 }
 
 fn int? id_protocol_checks(Process* child) {
-    String response = lsp_call(child, initialize("1.2345678901234567"))!;
-    if (!expect(response.contains(`"id":1.2345678901234567`),
+    String raw = lsp_call(child, initialize("1.2345678901234567"))!;
+    if (!expect(raw.contains(`"id":1.2345678901234567`) &&
+            json_id_number(json_message(raw)!, 1.2345678901234567),
             "high precision id")) return 1;
-    response = lsp_call(child, initialize("1.25e+20"))!;
-    if (!expect(response.contains(`"id":1.25e+20`), "exponent id")) return 1;
-    response = lsp_call(child, initialize("true"))!;
-    if (!expect(response.contains(`"id":null`) && response.contains(`"code":-32600`),
-            "boolean id")) return 1;
+    raw = lsp_call(child, initialize("1.25e+20"))!;
+    if (!expect(raw.contains(`"id":1.25e+20`) &&
+            json_id_number(json_message(raw)!, 1.25e20), "exponent id")) return 1;
+    Object* response = lsp_call_json(child, initialize("true"))!;
+    if (!expect(json_id_null(response) &&
+            json_error_code(response, -32600), "boolean id")) return 1;
     String payload = lsp_frame(initialize(`"fragmented"`));
     lsp_send(child, payload[:payload.len / 2])!;
     thread::sleep_ms(20)!;
     lsp_send(child, payload[payload.len / 2..])!;
-    response = lsp_recv(child)!;
-    if (!expect(response.contains(`"id":"fragmented"`), "fragmented request")) return 1;
+    response = json_message(lsp_recv(child)!)!;
+    Object* id = response.get("id")!;
+    if (!expect(id.is_string() && id.s == "fragmented", "fragmented request")) return 1;
     return 0;
 }
 
 fn int? document_open_checks(Process* child) {
-    String response = lsp_call(child, open_message(BAD_URI, BAD_TEXT, 1))!;
-    if (!expect(response.contains(BAD_URI) && diagnostics_count(response, 1),
-            "bad document count")) return 1;
-    if (!expect(response.contains(`"code":"STRUCT"`) &&
-            response.contains(`"start":{"line":0`) &&
-            response.contains(`"severity":1`) && response.contains(`"source":"rez3asm"`),
-            "bad document diagnostic")) return 1;
-    response = lsp_call(child, open_message(GOOD_URI, GOOD_TEXT, 1))!;
-    if (!expect(response.contains(GOOD_URI) && response.contains(`"diagnostics":[]`),
-            "good document")) return 1;
+    Object* response = lsp_call_json(child, open_message(BAD_URI, BAD_TEXT, 1))!;
+    Object* params = response.get("params")!;
+    if (!expect((params.get_string("uri") ?? "") == BAD_URI &&
+            json_diagnostics(response)!.len() == 1, "bad document count")) return 1;
+    Object* diagnostic = json_diagnostics(response)!.get_at(0);
+    Object* range = diagnostic.get("range")!;
+    Object* start = range.get("start")!;
+    Object* line = start.get("line")!;
+    if (!expect((diagnostic.get_string("code") ?? "") == "STRUCT" &&
+            line.is_int() && line.i == 0 &&
+            (diagnostic.get_string("source") ?? "") == "rez3asm" &&
+            diagnostic.get("severity")!.i == 1, "bad document diagnostic")) return 1;
+    response = lsp_call_json(child, open_message(GOOD_URI, GOOD_TEXT, 1))!;
+    params = response.get("params")!;
+    if (!expect((params.get_string("uri") ?? "") == GOOD_URI &&
+            json_diagnostics(response)!.len() == 0, "good document")) return 1;
     return 0;
 }
 
 fn int? churn(Process* child, int count) {
     for (int i = 0; i < count; i++) {
-        String response = lsp_call(child, change_message(CASCADE_TEXT, 2))!;
-        if (!expect(response.contains(GOOD_URI), "memory churn response")) return 1;
+        Object* response = lsp_call_json(child, change_message(CASCADE_TEXT, 2))!;
+        Object* params = response.get("params")!;
+        if (!expect((params.get_string("uri") ?? "") == GOOD_URI,
+                "memory churn response")) return 1;
     }
     return 0;
 }
@@ -131,7 +140,7 @@ fn int? memory_checks(Process* child) {
     if (churn(child, 2000)! != 0) return 1;
     ulong after = process_memory_bytes(child)!;
     ulong growth = after > before ? after - before : 0;
-    io::printfn("RSS before=%d, after=%d, growth=%d", before, after, growth);
+    io::printfn("MEMORY before=%d, after=%d, growth=%d", before, after, growth);
     if (!expect(growth <= MEMORY_GROWTH_MAX, "memory growth over 512 KiB")) return 1;
     return 0;
 }
@@ -155,57 +164,63 @@ fn int? malformed_change_checks(Process* child) {
     for (sz i = 0; i < malformed.len; i++) lsp_send(child, lsp_frame(malformed[i]))!;
     String missing = "cav m, field\nres x, m, 8\nmed x_m, x, m\n"
         "casc c: x_m -> out\nendc\nret\n";
-    String response = lsp_call(child, change_message(missing, 2))!;
-    if (!expect(response.contains(GOOD_URI) && diagnostics_count(response, 2) &&
-            count_substr(response, `"code":"STRUCT"`) == 2,
-            "malformed cascade diagnostics")) return 1;
-    response = lsp_call(child, change_message(BAD_TEXT, 2))!;
-    if (!expect(response.contains(GOOD_URI) && diagnostics_count(response, 1),
-            "change after churn")) return 1;
+    Object* response = lsp_call_json(child, change_message(missing, 2))!;
+    Object* diagnostics = json_diagnostics(response)!;
+    bool valid = diagnostics.len() == 2;
+    for (sz i = 0; i < diagnostics.len(); i++) {
+        if ((diagnostics.get_at(i).get_string("code") ?? "") != "STRUCT") valid = false;
+    }
+    if (!expect(valid, "malformed cascade diagnostics")) return 1;
+    response = lsp_call_json(child, change_message(BAD_TEXT, 2))!;
+    if (!expect(json_diagnostics(response)!.len() == 1, "change after churn")) return 1;
     return 0;
 }
 
 fn int? close_reopen_checks(Process* child) {
     String close = `{"jsonrpc":"2.0","method":"textDocument/didClose",`
         `"params":{"textDocument":{"uri":"file:///smoke-good.rza"}}}`;
-    String response = lsp_call(child, close)!;
-    if (!expect(response.contains(GOOD_URI) && response.contains(`"diagnostics":[]`),
-            "close diagnostics")) return 1;
-    response = lsp_call(child, open_message(GOOD_URI, GOOD_TEXT, 3))!;
-    if (!expect(response.contains(GOOD_URI) && response.contains(`"diagnostics":[]`),
-            "reopen diagnostics")) return 1;
+    Object* response = lsp_call_json(child, close)!;
+    Object* params = response.get("params")!;
+    if (!expect((params.get_string("uri") ?? "") == GOOD_URI &&
+            json_diagnostics(response)!.len() == 0, "close diagnostics")) return 1;
+    response = lsp_call_json(child, open_message(GOOD_URI, GOOD_TEXT, 3))!;
+    params = response.get("params")!;
+    if (!expect((params.get_string("uri") ?? "") == GOOD_URI &&
+            json_diagnostics(response)!.len() == 0, "reopen diagnostics")) return 1;
     return 0;
 }
 
 fn int? diagnostic_limit_checks(Process* child) {
     DString many = dstring::temp();
     for (int i = 0; i < 1002; i++) many.append("x\n");
-    String response = lsp_call(child, change_message(many.str_view(), 4))!;
-    if (!expect(diagnostics_count(response, 1001) &&
-            response.contains("2 diagnostics suppressed"), "diagnostic summary")) return 1;
-    response = lsp_call(child, change_message(GOOD_TEXT, 5))!;
-    if (!expect(response.contains(`"diagnostics":[]`), "summary reset")) return 1;
+    Object* response = lsp_call_json(child, change_message(many.str_view(), 4))!;
+    Object* diagnostics = json_diagnostics(response)!;
+    bool summary = diagnostics.len() == 1001;
+    if (summary) {
+        Object* last = diagnostics.get_at(diagnostics.len() - 1);
+        summary = (last.get_string("message") ?? "") == "2 diagnostics suppressed";
+    }
+    if (!expect(summary, "diagnostic summary")) return 1;
+    response = lsp_call_json(child, change_message(GOOD_TEXT, 5))!;
+    if (!expect(json_diagnostics(response)!.len() == 0, "summary reset")) return 1;
     DString unicode = dstring::temp();
     for (int i = 0; i < 200; i++) unicode.append("€");
     unicode.append("\n");
-    response = lsp_call(child, change_message(unicode.str_view(), 6))!;
-    sz? start = response.index_of(`"message":"`);
-    if (catch start) {
-        expect(false, "UTF-8 diagnostic missing");
-        return 1;
-    }
-    String rest = response[start + 11..];
-    sz end = rest.index_of_char('"') ?? rest.len;
-    String message = rest[:end];
+    response = lsp_call_json(child, change_message(unicode.str_view(), 6))!;
+    diagnostics = json_diagnostics(response)!;
+    if (!expect(diagnostics.len() == 1, "UTF-8 diagnostic missing")) return 1;
+    String message = diagnostics.get_at(0).get_string("message") ?? "";
     if (!expect(message.len <= 256 && !message.ends_with("�"),
             "UTF-8 diagnostic clip")) return 1;
     return 0;
 }
 
 fn int? shutdown_checks(Process* child) {
-    String response = lsp_call(child,
+    Object* response = lsp_call_json(child,
         `{"jsonrpc":"2.0","id":2,"method":"shutdown"}`)!;
-    if (!expect(response.contains(`"id":2,"result":null`), "shutdown response")) return 1;
+    Object* result = response.get("result")!;
+    if (!expect(json_id_int(response, 2) && result.is_null() &&
+            !response.has_key("error"), "shutdown response")) return 1;
     lsp_send(child, lsp_frame(`{"jsonrpc":"2.0","method":"exit"}`))!;
     int status = wait_process(child)!;
     if (!expect(status == 0, "LSP exit status")) return 1;
@@ -260,6 +275,7 @@ fn int? oversize_document_checks() {
 }
 
 fn int lsp_main() {
+    defer (void)cleanup_temp_dir();
     int? status = lsp_run();
     if (catch status) {
         io::eprintn("SMOKE FAILED");
@@ -283,7 +299,6 @@ fn int? lsp_run() {
     if (shutdown_checks(&child)! != 0) return 1;
     if (oversize_static_checks()! != 0) return 1;
     if (oversize_document_checks()! != 0) return 1;
-    path::rmtree(path::tnew("build/rza-tests")!)!;
     io::printn("SMOKE OK");
     return 0;
 }

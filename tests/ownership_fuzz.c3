@@ -52,6 +52,7 @@ fn int? run_ownership_case(OwnershipCase expected, String name, bool inject) {
 }
 
 fn int ownership_main() {
+    defer (void)cleanup_temp_dir();
     int? status = ownership_run();
     if (catch status) {
         io::eprintn("OWNERSHIP_FUZZ FAILED");
