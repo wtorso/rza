@@ -2075,7 +2075,7 @@ fn void emit_static_storage(Output* out) {
         assert(meds[i].cname.len > 0);
         assert(meds[i].gen > 0);
         if (meds[i].scope == 0) {
-            out.appendf("static RezCellMed %s;\n", meds[i].cname);
+            out.appendf("[[maybe_unused]] static RezCellMed %s;\n", meds[i].cname);
         }
     }
     for (sz i = 0; i < procs.len(); i++) {
@@ -2107,7 +2107,7 @@ fn void emit_static_storage(Output* out) {
             assert(meds[j].cell < (int)cells.len());
             assert(meds[j].gen > 0);
             if (meds[j].scope == pscope) {
-                out.appendf("static RezCellMed %s;\n", meds[j].cname);
+                out.appendf("[[maybe_unused]] static RezCellMed %s;\n", meds[j].cname);
             }
         }
     }
