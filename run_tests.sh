@@ -41,7 +41,7 @@ run_style() {
         return
     fi
     git grep --untracked --line-number --perl-regexp '(*UTF).{101}' -- \
-        '*.c3' '*.c' '*.h' '*.sh' '*.py' '*.md' '*.rza' '*.expected' \
+        '*.c3' '*.c' '*.h' '*.sh' '*.md' '*.rza' '*.expected' \
         '.gitignore' '.gitmodules' 'LICENSE' >"$BUILD/style.out" 2>&1
     status=$?
     if [ "$status" -eq 0 ]; then
@@ -165,23 +165,6 @@ run_viol() {
         return
     fi
     ok "$t"
-}
-
-# python3 на Windows может быть битым стабом WindowsApps — проверяем запуск.
-run_py() {
-    local name=$1 script=$2
-    local py=""
-    local c
-    for c in python3 python; do
-        if command -v "$c" >/dev/null 2>&1 && "$c" -c "pass" >/dev/null 2>&1; then
-            py="$c"; break
-        fi
-    done
-    if [ -z "$py" ]; then
-        bad "$name" "no working python3/python"; return
-    fi
-    if "$py" "$script" ./rez3asm.exe; then ok "$name"
-    else bad "$name" "script failed"; fi
 }
 
 run_c3() {

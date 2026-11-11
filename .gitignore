@@ -4,4 +4,3 @@ build/
 *.pdb
 .test-build-*/
 editors/vscode/node_modules/
-__pycache__/
