@@ -64,7 +64,8 @@ run_function_style() {
         c3c_bin="$LOCALAPPDATA/c3/c3c.exe"
     fi
     if ! "$c3c_bin" compile tests/runner.c3 tests/harness.c3 \
-            tests/function_length.c3 -o "$BUILD/rza_tests" \
+            tests/function_length.c3 tests/deterministic_artifacts.c3 \
+            tests/tiny_budgets.c3 tests/fuzz_smoke.c3 -o "$BUILD/rza_tests" \
             >"$BUILD/function_style.out" 2>&1; then
         bad function_style "C3 test runner build failed"
         cat "$BUILD/function_style.out"
@@ -180,12 +181,18 @@ run_py() {
     else bad "$name" "script failed"; fi
 }
 
+run_c3() {
+    local name=$1 command=$2
+    if "$BUILD/rza_tests.exe" "$command"; then ok "$name"
+    else bad "$name" "C3 scenario failed"; fi
+}
+
 run_lsp_smoke() { run_py lsp_smoke tests/lsp_smoke.py; }
-run_fuzz() { run_py fuzz tests/fuzz_smoke.py; }
+run_fuzz() { run_c3 fuzz fuzz; }
 run_ownership_fuzz() { run_py ownership_fuzz tests/ownership_fuzz.py; }
 run_fault_smoke() { run_py fault_smoke tests/fault_smoke.py; }
-run_deterministic_artifacts() { run_py deterministic_artifacts tests/deterministic_artifacts.py; }
-run_tiny_budgets() { run_py tiny_budgets tests/tiny_budgets.py; }
+run_deterministic_artifacts() { run_c3 deterministic_artifacts artifacts; }
+run_tiny_budgets() { run_c3 tiny_budgets budgets; }
 
 run_c3_unit() {
     local c3c_bin="c3c"
