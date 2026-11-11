@@ -67,7 +67,8 @@ run_function_style() {
             tests/function_length.c3 tests/deterministic_artifacts.c3 \
             tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
             tests/ownership_fuzz.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
-            tests/fault_smoke.c3 -o "$BUILD/rza_tests" \
+            tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_memory_posix.c3 \
+            tests/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
             >"$BUILD/function_style.out" 2>&1; then
         bad function_style "C3 test runner build failed"
         cat "$BUILD/function_style.out"
@@ -189,7 +190,7 @@ run_c3() {
     else bad "$name" "C3 scenario failed"; fi
 }
 
-run_lsp_smoke() { run_py lsp_smoke tests/lsp_smoke.py; }
+run_lsp_smoke() { run_c3 lsp_smoke lsp; }
 run_fuzz() { run_c3 fuzz fuzz; }
 run_ownership_fuzz() { run_c3 ownership_fuzz ownership; }
 run_fault_smoke() { run_c3 fault_smoke faults; }

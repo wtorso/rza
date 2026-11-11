@@ -1,11 +1,13 @@
 module rza_tests;
 
+import libc;
 import std::io;
+import std::net::os;
 import std::os::process;
 import std::thread;
 import std::time;
 
-const sz LSP_CLIENT_BYTES_MAX = 4 * 1024 * 1024;
+const sz LSP_CLIENT_BYTES_MAX = 4 * 1024 * 1024 + 16384;
 char[LSP_CLIENT_BYTES_MAX] lsp_input_buf;
 char[LSP_CLIENT_BYTES_MAX] lsp_message_buf;
 char[16384] lsp_read_chunk;
@@ -14,8 +16,16 @@ sz lsp_input_len;
 fn Process? lsp_start() {
     lsp_input_len = 0;
     String[] command = { "./rez3asm.exe", "--lsp" };
-    SpawnOptions options = SpawnOptions.INHERIT_ENV | SpawnOptions.ASYNC_OUTPUT;
-    return process::spawn(command, options);
+    SpawnOptions options = SpawnOptions.INHERIT_ENV;
+    $if env::WIN32:
+        options |= SpawnOptions.ASYNC_OUTPUT;
+    $endif
+    Process child = process::spawn(command, options)!;
+    $if !env::WIN32:
+        NativeSocket socket = (NativeSocket)libc::fileno(child.stdout_file);
+        socket.set_non_blocking(true)!;
+    $endif
+    return child;
 }
 
 fn void? lsp_send(Process* child, String payload) {
@@ -63,6 +73,10 @@ fn String? lsp_recv(Process* child) {
             return (String)lsp_message_buf[:body_len];
         }
         if ((time::now() - started).to_ms() > 15000) {
+            sz prefix_len = min(lsp_input_len, (sz)200);
+            String prefix = (String)lsp_input_buf[:prefix_len];
+            io::eprintfn("recv timeout: bytes=%d body_start=%d prefix=%s",
+                lsp_input_len, body_start, prefix);
             child.terminate()!;
             (void)child.join();
             return TEST_ERROR~;

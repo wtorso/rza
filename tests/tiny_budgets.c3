@@ -3,8 +3,6 @@ module rza_tests;
 import std::core::dstring;
 import std::io;
 
-const String GOOD_TEXT = "cav m, field\ndecay m\nret\n";
-
 fn String mediator_source(int count) {
     DString out = dstring::temp("cav main, field\nres x, main, 8\n");
     for (int i = 0; i < count; i++) out.appendf("med m%d_m, x, main\n", i);
