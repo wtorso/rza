@@ -9,7 +9,8 @@ else echo "FATAL: no c3c" >&2; exit 2; fi
 
 NEW="rez3asm.$$.new"
 OLD="rez3asm.$$.old"
-trap 'rm --force "$NEW.exe" "$NEW.pdb" "$OLD.exe" "$OLD.pdb" 2>/dev/null || true' EXIT
+trap 'rm --force "$NEW" "$NEW.exe" "$NEW.pdb" "$OLD.exe" "$OLD.pdb" \
+    2>/dev/null || true' EXIT
 
 if ! $C3C compile rez3asm.c3 lsp_server.c3 memory_guard.c3 scratch_memory.c3 -o "$NEW" \
         --validation=obnoxious \
@@ -23,6 +24,10 @@ if ! $C3C compile rez3asm.c3 lsp_server.c3 memory_guard.c3 scratch_memory.c3 -o 
         --warn-unusedlocal=no; then
     echo "FATAL: transpiler build failed" >&2
     exit 2
+fi
+if [ -f "$NEW" ] && [ ! -f "$NEW.exe" ]; then
+    mv --force "$NEW" "$NEW.exe" \
+        || { echo "FATAL: cannot normalize compiler output" >&2; exit 2; }
 fi
 # VS Code может держать текущий exe: сначала переименовываем его.
 if ! mv --force "$NEW.exe" rez3asm.exe 2>/dev/null; then
