@@ -147,6 +147,36 @@ fn bool is_int(String s) {
     return true;
 }
 
+fn bool immediate_error(String text, int line) {
+    viol(line, "STRUCT", cat({"immediate out of i64 range: ", text}));
+    return false;
+}
+
+fn bool parse_i64(String text, int line, long* value) {
+    bool negative = text[0] == '-';
+    String magnitude = negative ? text[1..] : text;
+    bool hex = magnitude.starts_with("0x") || magnitude.starts_with("0X");
+    if (hex) {
+        ulong? parsed = magnitude.to_ulong();
+        if (catch parsed) return immediate_error(text, line);
+        ulong u = parsed;
+        if (negative) {
+            if (u > 0x8000000000000000) return immediate_error(text, line);
+            if (u == 0x8000000000000000) { *value = -9223372036854775807 - 1; }
+            else { *value = -(long)u; }
+        } else if (u > (ulong)long::max) {
+            *value = -1 - (long)(ulong::max - u);
+        } else {
+            *value = (long)u;
+        }
+    } else {
+        long? parsed = text.to_long();
+        if (catch parsed) return immediate_error(text, line);
+        *value = parsed;
+    }
+    return true;
+}
+
 fn bool check_name(String name, int line) {
     if (!is_name(name)) {
         viol(line, "STRUCT", cat({"bad name ", name}));
@@ -682,6 +712,20 @@ fn void op_store(String rest, int line) {
                 .c = off_reg, .flag = false });
 }
 
+fn void op_storeb(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
+    String[2] buf;
+    if (!split_ops_exact(rest, 2, line, "storeb", &buf)) return;
+    int off = 0;
+    int off_reg = -1;
+    int mi = resolve_mem_med(buf[0], line, "storeb", &off, &off_reg);
+    int src = parse_reg(buf[1], line);
+    if (mi < 0 || src < 0) return;
+    add_instr({ .op = Op.STORE, .line = line, .a = src, .x = mi, .b = off,
+                .c = off_reg, .flag = true });
+}
+
 // --- данные и поток ----------------------------------------------------------------
 fn void op_mov(String rest, int line) {
     assert(line > 0);
@@ -691,13 +735,10 @@ fn void op_mov(String rest, int line) {
     int dst = parse_reg(buf[0], line);
     if (dst < 0) return;
     if (is_int(buf[1])) {
-        int? v = buf[1].to_int();
-        if (catch v) {
-            viol(line, "STRUCT", cat({"immediate out of i32 range: ", buf[1]}));
-            return;
-        }
+        long value;
+        if (!parse_i64(buf[1], line, &value)) return;
         add_instr({ .op = Op.MOV, .line = line, .a = dst,
-                    .b = v, .flag = true });
+                    .immediate = value, .flag = true });
         return;
     }
     int src = parse_reg(buf[1], line);
@@ -715,13 +756,10 @@ fn void op_alu3(String opname, String coper, String rest, int line) {
     if (d < 0 || a < 0) return;
     // AUDIT-5: третий операнд — imm (флаг) или регистр
     if (is_int(buf[2])) {
-        int? v = buf[2].to_int();
-        if (catch v) {
-            viol(line, "STRUCT", cat({"immediate out of i32 range: ", buf[2]}));
-            return;
-        }
-        add_instr({ .op = Op.ALU3, .line = line, .a = d, .b = a, .c = v,
-                    .s2 = coper, .flag = true });
+        long value;
+        if (!parse_i64(buf[2], line, &value)) return;
+        add_instr({ .op = Op.ALU3, .line = line, .a = d, .b = a,
+                    .immediate = value, .s2 = coper, .flag = true });
         return;
     }
     int b = parse_reg(buf[2], line);
@@ -982,6 +1020,7 @@ fn bool casc_body_ok(String op) {
         case "jmp": case "brz": case "brnz": case "inc": case "dec":
         case "add": case "sub": case "mul": case "div": case "mod":
         case "and": case "or": case "xor": case "shl": case "shr":
+        case "storeb": case "slt":
             return true;
         default:
             return false;
@@ -1009,7 +1048,9 @@ fn void parse_instr(String line, int n, bool in_casc) {
     else if (op == "load") { op_load2(rest, n, false); }
     else if (op == "loadb") { op_load2(rest, n, true); }
     else if (op == "store") { op_store(rest, n); }
+    else if (op == "storeb") { op_storeb(rest, n); }
     else if (op == "mov") { op_mov(rest, n); }
+    else if (op == "slt") { op_alu3(op, "<", rest, n); }
     else if (op == "add") { op_alu3(op, "+", rest, n); }
     else if (op == "sub") { op_alu3(op, "-", rest, n); }
     else if (op == "mul") { op_alu3(op, "*", rest, n); }

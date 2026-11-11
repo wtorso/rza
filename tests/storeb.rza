@@ -1,0 +1,13 @@
+res tab, field, 16
+med tab_m, tab, field
+mov %r0, -1
+storeb [tab_m + 0], %r0
+loadb %r1, [tab_m + 0]
+print %r1                  ; 255: low 8 бит of -1
+mov %r0, 300
+storeb [tab_m + 1], %r0
+loadb %r2, [tab_m + 1]
+print %r2                  ; 44: 300 mod 256
+mov %r0, 0
+store [tab_m + 8], %r0
+ret

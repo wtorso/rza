@@ -119,6 +119,7 @@ struct Instr {
     int    x, y;          // индексы frame/cell/med/proc
     String s1, s2;        // имена меток / C-оператор
     bool   flag;
+    long   immediate;
 }
 
 const int NAME_MAP_MAX = 32768;

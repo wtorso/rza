@@ -1,0 +1,6 @@
+res x, field, 1
+med x_m, x, field
+mov %r0, 1
+mov %r1, 255
+storeb [x_m + %r0], %r1
+ret

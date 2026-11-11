@@ -1,0 +1,4 @@
+res x, field, 1
+med x_m, x, field
+storeb [x_m + 1], %r0
+ret

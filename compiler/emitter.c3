@@ -192,7 +192,7 @@ fn void emit_decay_subtree(Output* out, int ind, int f) {
 
 fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
     if (ins.c < 0) return;
-    int width = ins.op == Op.LOAD && ins.flag ? 1 : 8;
+    int width = ins.flag ? 1 : 8;
     pad(out, ind);
     out.appendf("if (!rez_cell_bounds(%s, r%d, %d)) {\n",
                 meds[ins.x].cname, ins.c, width);
@@ -251,16 +251,28 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     }
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
-    out.appendf("memcpy((char*)%s + %s, &r%d, 8);",
-                ptr, sex.str_view(), ins.a);
+    if (ins.flag) {
+        out.appendf("*(unsigned char*)((char*)%s + %s) = (unsigned char)r%d;",
+                    ptr, sex.str_view(), ins.a);
+    } else {
+        out.appendf("memcpy((char*)%s + %s, &r%d, 8);",
+                    ptr, sex.str_view(), ins.a);
+    }
     out.append_string(in_casc ? "\n" : " }\n");
 }
 
 fn void emit_alu3(Output* out, int ind, Instr* ins) {
     DString rhs = dstring::new(workmem);
     defer rhs.free();
-    if (ins.flag) { rhs.appendf("%d", ins.c); }
+    if (ins.flag && ins.immediate == -9223372036854775807 - 1) {
+        rhs.append("INT64_MIN");
+    } else if (ins.flag) { rhs.appendf("%d", ins.immediate); }
     else { rhs.appendf("r%d", ins.c); }
+    if (ins.s2 == "<") {
+        pad(out, ind);
+        out.appendf("r%d = r%d < %s;\n", ins.a, ins.b, rhs.str_view());
+        return;
+    }
     bool division = ins.s2 == "/" || ins.s2 == "%";
     bool shift = ins.s2 == "<<" || ins.s2 == ">>";
     if (division) {
@@ -516,7 +528,11 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
             case Op.STORE: emit_store(out, ind, ins, true);
             case Op.MOV:
                 pad(out, ind);
-                if (ins.flag) { out.appendf("r%d = %d;\n", ins.a, ins.b); }
+                if (ins.flag) { if (ins.immediate == -9223372036854775807 - 1) {
+                    out.appendf("r%d = INT64_MIN;\n", ins.a);
+                } else {
+                    out.appendf("r%d = %d;\n", ins.a, ins.immediate);
+                } }
                 else { out.appendf("r%d = r%d;\n", ins.a, ins.b); }
             case Op.ALU3: emit_alu3(out, ind, ins);
             case Op.ALU1:
@@ -680,7 +696,11 @@ fn void emit_body(Output* out, int func) {
             case Op.MOV:
                 pad(out, ind);
                 if (ins.flag) {
-                    out.appendf("r%d = %d;\n", ins.a, ins.b);
+                    if (ins.immediate == -9223372036854775807 - 1) {
+                    out.appendf("r%d = INT64_MIN;\n", ins.a);
+                } else {
+                    out.appendf("r%d = %d;\n", ins.a, ins.immediate);
+                }
                 } else {
                     out.appendf("r%d = r%d;\n", ins.a, ins.b);
                 }

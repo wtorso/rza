@@ -430,6 +430,13 @@ run_viol viol_async_home I3
 run_viol viol_await_operand STRUCT
 run_viol viol_await_casc STRUCT
 run_viol viol_host_await STRUCT
+run_good i64_immediates
+run_good storeb
+run_good slt
+run_viol viol_i64_immediate STRUCT
+run_viol viol_i64_hex STRUCT
+run_viol viol_storeb STRUCT
+run_dead storeb_oob "FAULT line 5: out of bounds x_m"
 run_dead cav_reentry "FAULT line 3: frame allocation f"
 run_dead raise_home "FAULT line 9: dead mediator x_m"
 run_dead bounds_dynamic "FAULT line 6: out of bounds x_m"
