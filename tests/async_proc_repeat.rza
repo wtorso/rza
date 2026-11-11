@@ -1,0 +1,19 @@
+res x, field, 8
+med x_m, x, field
+proc worker:
+    acasc bump: x_m -> out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    med out_m, out, field
+    probe out_m                  ; DEAD: прошлый OUT не протекает в новый вызов
+    await %r0
+    print %r0                    ; 1: один bump за вызов
+    probe out_m                  ; ALIVE: новый OUT опубликован
+    ret
+call worker
+call worker
+load %r0, [x_m + 0]
+print %r0                        ; 2: два вызова дали два increment
+ret

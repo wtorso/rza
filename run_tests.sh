@@ -145,6 +145,14 @@ run_dead() {
         bad "$t" "exited 0 (want runtime fault)"
         return
     fi
+    if [ -f "tests/$t.expected" ]; then
+        tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
+        if ! diff --unified "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+            bad "$t" "stdout mismatch before fault"
+            diff --unified "tests/$t.expected" "$BUILD/$t.out.lf"
+            return
+        fi
+    fi
     if ! grep --quiet "$want" "$BUILD/$t.runerr"; then
         bad "$t" "missing diagnostic: $want"; cat "$BUILD/$t.runerr"
         return
@@ -361,6 +369,15 @@ run_reference() {
         bad reference "unexpected raise violations"; cat "$BUILD/raise_old.ref.out"
         return
     fi
+    printf '%s\n' 'await %r0' >"$BUILD/await.ref.rz3"
+    if ! "$BUILD/rez3check.exe" "$BUILD/await.ref.rz3" >"$BUILD/await.ref.out"; then
+        bad reference "valid await rejected"; cat "$BUILD/await.ref.out"
+        return
+    fi
+    if ! grep --quiet "violations=0" "$BUILD/await.ref.out"; then
+        bad reference "unexpected await violations"; cat "$BUILD/await.ref.out"
+        return
+    fi
     ok reference
 }
 
@@ -391,6 +408,14 @@ run_reference_invalid() {
     check_ref_reject ref_raise_home_casc I3 \
         < <(printf '%s\n' 'frame A -' 'frame B A' 'cell X B' 'raise X A' \
             'link X_M X A' 'leave B' 'casc C X_M > OUT A') || return
+    check_ref_reject ref_await_suffix STRUCT \
+        < <(printf '%s\n' 'await %r0junk') || return
+    check_ref_reject ref_await_missing STRUCT \
+        < <(printf '%s\n' 'await') || return
+    check_ref_reject ref_await_extra STRUCT \
+        < <(printf '%s\n' 'await %r0 %r1') || return
+    check_ref_reject ref_await_range STRUCT \
+        < <(printf '%s\n' 'await %r16') || return
     ok reference_invalid
 }
 
@@ -423,6 +448,9 @@ run_good async_fifo
 run_good async_await_empty
 run_abort async_abort "ABORT line 11: cascade blocked: dead mediator out_m"
 run_good async_proc_drain
+run_good async_proc_pending
+run_good async_proc_repeat
+run_abort async_proc_abort "ABORT line 10: cascade blocked: dead mediator out_m"
 run_dead async_pending_out "FAULT line 12: dead mediator out_m"
 run_dead async_repeat "FAULT line 5: async task bump already pending"
 run_dead async_queue_full "FAULT line 259: async queue full"
@@ -527,6 +555,7 @@ run_lib_compile lib_scope
 run_lib lib_abort
 run_lib lib_raise
 run_lib lib_async
+run_lib lib_async_boot
 $TR tests/fib.rza tests/counter.rza >"$BUILD/cli_two.out" 2>"$BUILD/cli_two.err"
 if [ "$?" -ne 2 ]; then
     bad cli_two_inputs "want exit 2 for two input files"

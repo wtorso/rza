@@ -1,0 +1,18 @@
+res x, field, 8
+med x_m, x, field
+proc worker:
+    acasc bump: x_m -> out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    med out_m, out, field
+    probe out_m                  ; DEAD: OUT ещё не опубликован
+    await %r0
+    print %r0                    ; 1: bump выполнен
+    probe out_m                  ; ALIVE: OUT опубликован после await
+    ret
+call worker
+load %r0, [x_m + 0]
+print %r0                        ; 1: x увеличен ровно один раз
+ret

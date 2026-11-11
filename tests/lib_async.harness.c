@@ -17,6 +17,7 @@ int main(void) {
     RezCellMed pending = rza_med_out_m();
     if (pending.cell != nullptr) return 11;
     rza_bump();
+    if (rza_deref_cell(pending) != nullptr) return 16;
     RezCellMed completed = rza_med_out_m();
     if (completed.cell == nullptr) return 12;
     if (rza_await() != 0) return 13;

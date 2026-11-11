@@ -206,4 +206,3 @@ bool g_lib_mode = false;   // --emit-lib: C23 без main, proc → rza_NAME
 char[32] source_hash;
 
 bool g_state_inited = false;
-

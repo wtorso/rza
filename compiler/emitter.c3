@@ -358,8 +358,9 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
             emit_hoisted_meds(out, ind, ins.x);
         case Op.MED:
             if (ins.func == 0) break;
-            pad(out, ind);
             int ci = meds[ins.x].cell;
+            if (cells[ci].async_out) break;
+            pad(out, ind);
             out.appendf("%s = rez_issue_cell(\n", meds[ins.x].cname);
             pad(out, ind + 1);
             out.appendf("%s, %s, %s, %d\n",
@@ -387,7 +388,6 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
 fn void emit_clear_meds(Output* out, int ind, int cell) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
-        if (meds[mi].scope != 0) continue;
         pad(out, ind);
         out.appendf("%s = (RezCellMed){0};\n", meds[mi].cname);
     }
@@ -727,13 +727,9 @@ fn void emit_body(Output* out, int func) {
             case Op.CALL: emit_call(out, ind, ins);
             case Op.AWAIT: emit_await(out, ind, ins);
             case Op.RET:
-                if (ins.func == 0) {
-                    pad(out, ind);
-                    // lib-режим: верхнеуровневый ret = конец rza_boot (void)
-                    out.append_string(g_lib_mode ? "return;\n"
-                                                 : "return 0;\n");
-                }
-                // ret процедуры: закрытие функции делает emit_proc
+                // Общий epilogue сначала делает drain, возврат происходит
+                // только после него: top-level ret не обходит очередь.
+                // ret процедуры закрывается emit_proc.
         }
     }
 }

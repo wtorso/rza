@@ -1,5 +1,15 @@
+res one, field, 1
+med one_m, one, field
 res tab, field, 16
 med tab_m, tab, field
+mov %r0, 7
+storeb [one_m + 0], %r0
+loadb %r0, [one_m + 0]
+print %r0                  ; 7: однобайтовая ячейка допускает storeb
+mov %r0, 9
+storeb [tab_m + 15], %r0
+loadb %r0, [tab_m + 15]
+print %r0                  ; 9: storeb разрешён в последний байт ячейки
 mov %r0, -1
 storeb [tab_m + 0], %r0
 loadb %r1, [tab_m + 0]

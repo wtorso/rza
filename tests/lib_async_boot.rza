@@ -1,0 +1,9 @@
+res x, field, 8
+med x_m, x, field
+acasc boot_update: x_m -> boot_out
+    load %r0, [x_m + 0]
+    inc %r0
+    store [x_m + 0], %r0
+endc
+med boot_out_m, boot_out, field
+ret

@@ -540,6 +540,18 @@ static bool operands_valid(char **tokens, uint32_t count, uint32_t expected) {
     return true;
 }
 
+static bool await_register_valid(char *token) {
+    int32_t value = 0;
+    assert(token != nullptr);
+    if (token[0] != '%' || token[1] != 'r' || token[2] == '\0') return false;
+    for (uint32_t i = 2; token[i] != '\0'; i++) {
+        if (!isdigit((unsigned char)token[i])) return false;
+        value = value * 10 + (token[i] - '0');
+        if (value > 15) return false;
+    }
+    return true;
+}
+
 static void check_line(char *line) {
     char command[NAMESZ];
     char *tokens[4];
@@ -591,8 +603,7 @@ static void check_line(char *line) {
         return;
     }
     if (strcmp(command, "await") == 0) {
-        if (!operands_valid(tokens, count, 1) || tokens[1][0] != '%' ||
-            tokens[1][1] != 'r' || !isdigit((unsigned char)tokens[1][2])) {
+        if (!operands_valid(tokens, count, 1) || !await_register_valid(tokens[1])) {
             malformed();
         }
         return;

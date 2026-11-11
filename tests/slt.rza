@@ -9,4 +9,6 @@ print %r4                  ; 1: INT64_MIN < INT64_MAX
 mov %r5, 9223372036854775807
 slt %r6, %r5, -9223372036854775808
 print %r6                  ; 0: INT64_MAX >= INT64_MIN
+slt %r7, %r5, %r3
+print %r7                  ; 0: INT64_MAX >= INT64_MIN по регистрам
 ret

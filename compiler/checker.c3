@@ -665,7 +665,7 @@ fn int resolve_mem_med(String tok, int line, String opname, int* off, int* off_r
         viol(line, "STRUCT", cat({opname, " via unknown mediator ", mname}));
         return -1;
     }
-    int width = opname == "loadb" ? 1 : 8;
+    int width = (opname == "loadb" || opname == "storeb") ? 1 : 8;
     int size = cells[meds[mi].cell].size;
     if (*off_reg < 0 && (*off < 0 || *off > size || width > size - *off)) {
         viol(line, "STRUCT", cat({opname, " out of bounds via ", mname}));
