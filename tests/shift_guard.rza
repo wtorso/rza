@@ -1,0 +1,18 @@
+; Guard before shift: prefix 64 selects the all-ones IPv4 sentinel, as upstream.
+mov %r0, 64
+mov %r1, 32
+slt %r2, %r1, %r0
+brnz %r2, ipv6
+sub %r3, %r1, %r0
+mov %r4, 1
+shl %r4, %r4, %r3
+dec %r4
+xor %r4, %r4, -1
+and %r4, %r4, 4294967295
+print %r4
+jmp done
+ipv6:
+mov %r4, 4294967295
+print %r4                  ; 2^32-1: subnet mask is not applicable to IPv6.
+done:
+ret

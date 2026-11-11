@@ -1,0 +1,31 @@
+; Same CRC32C as crc32c.rza, but each byte also repeats the lifetime check.
+res input, field, 4096
+res crc, field, 8
+med input_m, input, field
+med crc_m, crc, field
+
+proc checksum:
+    mov %r0, 0xffffffff
+    mov %r1, 0
+    mov %r2, 4096
+crc_byte:
+    brz %r2, crc_done
+    loadb %r3, [input_m + %r1]
+    xor %r0, %r0, %r3
+    mov %r4, 8
+crc_bit:
+    and %r5, %r0, 1
+    shr %r0, %r0, 1
+    brz %r5, crc_next
+    xor %r0, %r0, 0x82f63b78
+crc_next:
+    dec %r4
+    brnz %r4, crc_bit
+    inc %r1
+    dec %r2
+    jmp crc_byte
+crc_done:
+    xor %r0, %r0, 0xffffffff
+    store [crc_m + 0], %r0
+    ret
+ret

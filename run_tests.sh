@@ -221,6 +221,15 @@ run_fault_smoke() { run_c3 fault_smoke faults; }
 run_deterministic_artifacts() { run_c3 deterministic_artifacts artifacts; }
 run_tiny_budgets() { run_c3 tiny_budgets budgets; }
 
+run_benchmark_sources() {
+    if ! bash bench/check.sh "$BUILD/bench" >"$BUILD/bench.log" 2>&1; then
+        bad benchmark_sources "workload outputs differ or build failed"
+        cat "$BUILD/bench.log"
+        return
+    fi
+    ok benchmark_sources
+}
+
 run_c3_unit() {
     local c3c_bin="c3c"
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
@@ -441,6 +450,8 @@ for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
 done
 run_good imm_bounds
 run_good arith_wrap
+run_good shift_guard
+run_good capacity_guard
 run_good compare_edges
 run_good skipped_decay
 run_good cav_reuse
@@ -474,6 +485,7 @@ run_dead div_overflow "FAULT line 4: division"
 run_dead mod_overflow "FAULT line 4: division"
 run_dead shift_range "FAULT line 2: shift"
 run_dead shift_negative "FAULT line 3: shift"
+run_dead shift_ibft "FAULT line 6: shift"
 run_viol viol_bounds_imm STRUCT
 run_viol viol_bounds_negative STRUCT
 run_viol viol_aligned_size STRUCT
@@ -568,6 +580,9 @@ run_fault_smoke
 run_deterministic_artifacts
 run_tiny_budgets
 run_fuzz
+if [ "${OS:-}" != "Windows_NT" ]; then
+    run_benchmark_sources
+fi
 run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"

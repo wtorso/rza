@@ -1,0 +1,47 @@
+; CAN BCM sizing idiom: reject before multiplication; this is not dynamic res.
+res count, field, 8
+res result, field, 8
+med count_m, count, field
+med result_m, result, field
+
+proc validate:
+    load %r0, [count_m + 0]
+    slt %r1, %r0, 1
+    brnz %r1, invalid
+    slt %r1, %r0, 257
+    brz %r1, invalid
+    mul %r2, %r0, 16
+    store [result_m + 0], %r2
+    jmp done
+invalid:
+    mov %r2, 22
+    store [result_m + 0], %r2
+done:
+    ret
+
+mov %r0, -1
+store [count_m + 0], %r0
+call validate
+load %r3, [result_m + 0]
+print %r3                  ; 22: negative count is rejected before multiplication.
+mov %r0, 1073741824
+store [count_m + 0], %r0
+call validate
+load %r3, [result_m + 0]
+print %r3                  ; 22: 2^30 frames exceeds the 256-frame protocol limit.
+mov %r0, 256
+store [count_m + 0], %r0
+call validate
+load %r3, [result_m + 0]
+print %r3                  ; 4096: accepted limit 256 * 16-byte CAN frame.
+mov %r0, 1
+store [count_m + 0], %r0
+call validate
+load %r3, [result_m + 0]
+print %r3                  ; 16: one accepted frame has size 16.
+mov %r0, 0
+store [count_m + 0], %r0
+call validate
+load %r3, [result_m + 0]
+print %r3                  ; 22: zero frames is rejected as in the TX_SETUP guard.
+ret

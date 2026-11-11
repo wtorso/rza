@@ -1,0 +1,8 @@
+; CVE-2025-21993 model: IPv6 prefix 64 gives 32 - 64 = -32.
+mov %r0, 64
+mov %r1, 32
+sub %r2, %r1, %r0
+mov %r3, 1
+shl %r3, %r3, %r2
+print %r3
+ret

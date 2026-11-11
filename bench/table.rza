@@ -1,0 +1,88 @@
+; 512 open-addressed (key,value) slots, 1024 requests: 256 insert + 768 update.
+; Independent digest: 4 * sum[r=0..255] (r mod 8) * key(r) = 462336.
+res slots, field, 8192
+res result, field, 8
+med slots_m, slots, field
+med result_m, result, field
+
+proc table:
+    casc batch: slots_m,result_m -> completion[table]
+        mov %r0, 0
+        mov %r1, 512
+    clear_slot:
+        brz %r1, requests_start
+        mul %r2, %r0, 16
+        mov %r3, 0
+        store [slots_m + %r2], %r3
+        add %r2, %r2, 8
+        store [slots_m + %r2], %r3
+        inc %r0
+        dec %r1
+        jmp clear_slot
+    requests_start:
+        mov %r0, 0
+    request:
+        slt %r7, %r0, 1024
+        brz %r7, digest_start
+        mul %r1, %r0, 37
+        add %r1, %r1, 11
+        and %r1, %r1, 255
+        inc %r1
+        mul %r2, %r1, 2654435761
+        and %r2, %r2, 511
+        mov %r4, 0
+    probe:
+        mul %r3, %r2, 16
+        load %r5, [slots_m + %r3]
+        brz %r5, insert
+        sub %r6, %r5, %r1
+        brz %r6, update
+        inc %r2
+        and %r2, %r2, 511
+        inc %r4
+        slt %r7, %r4, 512
+        brnz %r7, probe
+        jmp table_full
+    update:
+        add %r3, %r3, 8
+        load %r6, [slots_m + %r3]
+        and %r7, %r0, 7
+        add %r6, %r6, %r7
+        store [slots_m + %r3], %r6
+        jmp next_request
+    insert:
+        store [slots_m + %r3], %r1
+        add %r3, %r3, 8
+        and %r6, %r0, 7
+        store [slots_m + %r3], %r6
+    next_request:
+        inc %r0
+        jmp request
+    digest_start:
+        mov %r0, 0
+        mov %r1, 512
+        mov %r6, 0
+    digest_slot:
+        brz %r1, digest_done
+        mul %r2, %r0, 16
+        load %r3, [slots_m + %r2]
+        brz %r3, digest_next
+        add %r2, %r2, 8
+        load %r4, [slots_m + %r2]
+        mul %r4, %r4, %r3
+        add %r6, %r6, %r4
+        jmp digest_next
+    digest_next:
+        inc %r0
+        dec %r1
+        jmp digest_slot
+    table_full:
+        mov %r6, 0
+        store [result_m + 0], %r6
+        jmp batch_done
+    digest_done:
+        store [result_m + 0], %r6
+    batch_done:
+    endc
+    ret
+ret
