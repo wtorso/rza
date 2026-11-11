@@ -61,7 +61,7 @@ run_style
 run_function_style() {
     local c3c_bin="c3c"
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
-        c3c_bin="$LOCALAPPDATA/c3/c3c.exe"
+        c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
     if ! "$c3c_bin" compile tests/runner.c3 tests/harness.c3 \
             tests/function_length.c3 tests/deterministic_artifacts.c3 \
@@ -224,7 +224,7 @@ run_tiny_budgets() { run_c3 tiny_budgets budgets; }
 run_c3_unit() {
     local c3c_bin="c3c"
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
-        c3c_bin="$LOCALAPPDATA/c3/c3c.exe"
+        c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
     if ! "$c3c_bin" compile-test rez3asm.c3 compiler/model.c3 \
             compiler/checker.c3 compiler/emitter.c3 lsp_server.c3 \
