@@ -1,0 +1,48 @@
+{
+  // build_compiler.sh uses unique outputs to keep parallel builds atomic.
+  "langrev": "1",
+  "warnings": [ "no-unused" ],
+  "dependency-search-paths": [ ],
+  "dependencies": [ ],
+  "authors": [ "wtorso <41353182+wtorso@users.noreply.github.com>" ],
+  "version": "0.1.0",
+  "sources": [ ],
+  "test-sources": [ ],
+  "build-dir": "build",
+  "output": "build",
+  "targets": {
+    "rez3asm": {
+      "type": "executable",
+      "sources": [
+        "rez3asm.c3",
+        "compiler/model.c3",
+        "compiler/checker.c3",
+        "compiler/emitter.c3",
+        "lsp_server.c3",
+        "memory_guard.c3",
+        "scratch_memory.c3"
+      ]
+    },
+    "rza_tests": {
+      "type": "executable",
+      "sources": [
+        "tests/runner.c3",
+        "tests/harness.c3",
+        "tests/function_length.c3",
+        "tests/deterministic_artifacts.c3",
+        "tests/tiny_budgets.c3",
+        "tests/fuzz_smoke.c3",
+        "tests/ownership_model.c3",
+        "tests/ownership_fuzz.c3",
+        "tests/lsp_client.c3",
+        "tests/fault_scenarios.c3",
+        "tests/fault_smoke.c3",
+        "tests/lsp_smoke.c3",
+        "tests/lsp_memory_posix.c3",
+        "tests/lsp_memory_win32.c3"
+      ]
+    }
+  },
+  "cpu": "generic",
+  "opt": "O0"
+}
