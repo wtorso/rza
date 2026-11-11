@@ -1,6 +1,7 @@
 module rza_tests;
 
 import std::core::dstring;
+import std::io::path;
 
 fn String c3_function(sz line_count) {
     DString text = dstring::temp();
@@ -105,4 +106,26 @@ fn void function_length_unclosed_function_is_error() @test {
     scan_function_text("bad.c3", "fn void f() {", &result);
     assert(result.error);
     assert(result.count == 0);
+}
+
+
+fn void function_length_real_git_discovery_and_statuses() @test {
+    reset_temp_dir()!!;
+    Path original = path::cwd(mem)!!;
+    defer original.free(mem);
+    defer (void)cleanup_temp_dir();
+    defer (void)path::chdir(original);
+    path::chdir(path::tnew(temp_root_path())!!)!!;
+    ProcessResult initialized = run_simple({"git", "init"})!!;
+    assert(initialized.status == 0);
+    path::mkdir(path::tnew("src")!!, true)!!;
+    path::mkdir(path::tnew("out")!!, true)!!;
+    path::mkdir(path::tnew("build")!!, true)!!;
+    write_file("src/pass.c3", c3_function(70))!!;
+    write_file("out/bad.c3", c3_function(71))!!;
+    write_file("build/bad.c3", c3_function(71))!!;
+    assert(function_style_main({}) == 0);
+    write_file("src/fail.c3", c3_function(71))!!;
+    assert(function_style_main({}) == 1);
+    assert(function_style_main({"missing.c3"}) == 2);
 }

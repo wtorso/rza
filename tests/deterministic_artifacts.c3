@@ -7,7 +7,7 @@ import std::io::file;
 import std::io::path;
 
 const long OUTPUT_BYTES_MAX = 67108864;
-const sz ARTIFACT_READ_BYTES_MAX = 2 * 1024 * 1024;
+const sz ARTIFACT_READ_BYTES_MAX = 67108864;
 char[ARTIFACT_READ_BYTES_MAX] artifact_output_buf;
 char[1024 * 1024] artifact_source_buf;
 
@@ -95,6 +95,7 @@ fn int artifacts_main() {
 }
 
 fn int? artifacts_run() {
+    assert(ARTIFACT_READ_BYTES_MAX == OUTPUT_BYTES_MAX);
     reset_temp_dir()!;
     if (check_repeat_and_change()! != 0) return 1;
     if (check_paths_and_indexed()! != 0) return 1;
