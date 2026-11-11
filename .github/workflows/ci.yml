@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: rza-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install C3 0.8.5_1
+        shell: bash
+        run: |
+          mkdir --parents build/toolchain
+          curl -fL https://github.com/c3lang/c3c/releases/download/v0.8.5_1/c3-linux.tar.gz \
+            -o build/toolchain/c3.tar.gz
+          printf '%s  %s\n' \
+            '939135bc6fbe9d67bf3b19c08146b93ab10996718aafff692294ae6c0b3a3f88' \
+            build/toolchain/c3.tar.gz | sha256sum --check
+          tar -xzf build/toolchain/c3.tar.gz -C build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/c3" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/c3/c3c" --version
+      - name: Quickstart
+        shell: bash
+        run: |
+          bash build_compiler.sh
+          mkdir --parents build
+          ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
+          "${{ matrix.cc }}" -std=c23 -pedantic -Wall -Wextra -Werror \
+            -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
+            build/hello.c -o build/hello.exe
+          test "$(./build/hello.exe)" = 41
+      - name: Full suite
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+        run: bash run_tests.sh
+      - name: Hygiene
+        shell: bash
+        run: |
+          git diff --check
+          test -z "$(git status --porcelain)"
+          shopt -s nullglob
+          dirs=(build/rza-tests-*)
+          if (( ${#dirs[@]} )); then
+            printf 'temporary test directories remain: %s\n' "${dirs[*]}" >&2
+            exit 1
+          fi
+          if pgrep -f '[r]ez3asm.exe --lsp'; then
+            echo 'LSP process remains' >&2
+            exit 1
+          fi
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install C3 0.8.5_1
+        shell: bash
+        run: |
+          mkdir --parents build/toolchain
+          curl.exe -fL https://github.com/c3lang/c3c/releases/download/v0.8.5_1/c3-windows.zip \
+            -o build/toolchain/c3.zip
+          printf '%s  %s\n' \
+            '8cfdb48d8f9f1bc0d320a3e941c98ccdb8c8c0194564b1a7dd9fd2ab24292081' \
+            build/toolchain/c3.zip | sha256sum --check
+          unzip -q build/toolchain/c3.zip -d build/toolchain
+          c3c_dir=$(dirname "$(find build/toolchain -name c3c.exe -print -quit)")
+          test -n "$c3c_dir"
+          printf '%s\n' "$c3c_dir" >> "$GITHUB_PATH"
+          "$c3c_dir/c3c.exe" --version
+      - name: Quickstart
+        shell: bash
+        run: |
+          bash build_compiler.sh
+          mkdir --parents build
+          ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
+          clang -std=c23 -pedantic -Wall -Wextra -Werror \
+            -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
+            build/hello.c -o build/hello.exe
+          test "$(./build/hello.exe)" = 41
+      - name: Full suite
+        shell: bash
+        env:
+          CC: clang
+        run: bash run_tests.sh
+      - name: Hygiene
+        shell: bash
+        run: |
+          git diff --check
+          test -z "$(git status --porcelain)"
+          shopt -s nullglob
+          dirs=(build/rza-tests-*)
+          if (( ${#dirs[@]} )); then
+            printf 'temporary test directories remain: %s\n' "${dirs[*]}" >&2
+            exit 1
+          fi
+          if tasklist //FI "IMAGENAME eq rez3asm.exe" | grep -q 'rez3asm.exe'; then
+            echo 'LSP process remains' >&2
+            exit 1
+          fi
