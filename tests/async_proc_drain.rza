@@ -1,0 +1,18 @@
+res x, field, 8
+med x_m, x, field
+mov %r0, 0
+store [x_m + 0], %r0
+proc worker:
+    acasc bump: x_m -> out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    med out_m, out, field
+    ret
+call worker
+load %r0, [x_m + 0]
+print %r0                  ; 1: ret процедуры уже сделал drain
+await %r1
+print %r1                  ; 0: очередь после drain пуста
+ret

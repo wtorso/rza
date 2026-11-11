@@ -38,6 +38,37 @@ static int32_t check_generation_exhaustion(void) {
     return 0;
 }
 
+static bool async_succeed(void *context) {
+    (*(int *)context)++;
+    return true;
+}
+
+static bool async_abort(void *context) {
+    (void)context;
+    return false;
+}
+
+static int check_async_queue(void) {
+    RezAsyncQueue queue = {0};
+    int completed = 0;
+    bool pending = false;
+    bool other_pending = false;
+    CHECK(rez_async_enqueue(&queue, async_succeed, &completed, &pending));
+    CHECK(rez_async_enqueue(&queue, async_abort, &completed, &other_pending));
+    CHECK(queue.count == 2);
+    CHECK(rez_async_drain(&queue) == 1);
+    CHECK(completed == 1);
+    CHECK(queue.count == 0);
+    CHECK(rez_async_drain(&queue) == 0);
+    for (uint32_t i = 0; i < REZ_ASYNC_MAX; i++) {
+        bool slot_pending = false;
+        CHECK(rez_async_enqueue(&queue, async_succeed, &completed, &slot_pending));
+    }
+    CHECK(!rez_async_enqueue(&queue, async_succeed, &completed, &pending));
+    CHECK(rez_async_drain(&queue) == REZ_ASYNC_MAX);
+    return 0;
+}
+
 int main(void) {
     RezCavity field = {0};
     RezCavity proc = {0};
@@ -50,7 +81,7 @@ int main(void) {
     uint32_t saved;
     void *cell;
 
-    static_assert(REZ3EXT_ABI == 3);
+    static_assert(REZ3EXT_ABI == 4);
     CHECK(rez_arena_alloc_z(&misaligned_arena, 1) == nullptr);
     CHECK(!rez_frame_reset(&misaligned, nullptr, misaligned_storage + 1, 64));
     CHECK(!misaligned.alive);
@@ -97,5 +128,6 @@ int main(void) {
     CHECK(rez_cell_z(&field, 0) == nullptr);
     rez_decay(&proc);
     rez_decay(&slot);
+    CHECK(check_async_queue() == 0);
     return check_generation_exhaustion();
 }

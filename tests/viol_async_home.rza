@@ -1,0 +1,10 @@
+cav main, field
+res x, main, 8
+med x_m, x, main
+raise x, field
+med raised_m, x, field
+acasc bad: raised_m -> out
+    load %r0, [raised_m + 0]
+endc
+decay main
+ret

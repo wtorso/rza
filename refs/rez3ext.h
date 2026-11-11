@@ -4,8 +4,62 @@
 
 #include "rez3.h"
 
-#define REZ3EXT_ABI 3u
-static_assert(REZ3EXT_ABI == 3);
+#define REZ3EXT_ABI 4u
+static_assert(REZ3EXT_ABI == 4);
+
+#define REZ_ASYNC_MAX 64u
+
+typedef bool (*RezAsyncRun)(void *context);
+
+typedef struct {
+    RezAsyncRun run;
+    void *context;
+} RezAsyncTask;
+
+typedef struct {
+    RezAsyncTask tasks[REZ_ASYNC_MAX];
+    uint32_t head;
+    uint32_t count;
+} RezAsyncQueue;
+
+[[maybe_unused]] static bool rez_async_enqueue(
+    RezAsyncQueue *queue,
+    RezAsyncRun run,
+    void *context,
+    bool *pending
+) {
+    uint32_t index;
+    assert(queue != nullptr);
+    assert(run != nullptr);
+    assert(context != nullptr);
+    assert(pending != nullptr);
+    assert(queue->count <= REZ_ASYNC_MAX);
+    if (*pending || queue->count == REZ_ASYNC_MAX) return false;
+    index = (queue->head + queue->count) % REZ_ASYNC_MAX;
+    queue->tasks[index] = (RezAsyncTask){ .run = run, .context = context };
+    queue->count++;
+    *pending = true;
+    return true;
+}
+
+[[maybe_unused]] static uint64_t rez_async_drain(RezAsyncQueue *queue) {
+    uint64_t completed = 0;
+    assert(queue != nullptr);
+    assert(queue->count <= REZ_ASYNC_MAX);
+    while (queue->count > 0) {
+        RezAsyncTask task = queue->tasks[queue->head];
+        bool success;
+        assert(task.run != nullptr);
+        assert(task.context != nullptr);
+        queue->tasks[queue->head] = (RezAsyncTask){0};
+        queue->head = (queue->head + 1) % REZ_ASYNC_MAX;
+        queue->count--;
+        success = task.run(task.context);
+        if (success) completed++;
+    }
+    queue->head = 0;
+    return completed;
+}
 
 typedef struct {
     void *cell;

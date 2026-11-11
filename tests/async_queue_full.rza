@@ -1,0 +1,263 @@
+res x, field, 8
+med x_m, x, field
+acasc a0: x_m -> out0
+    load %r0, [x_m + 0]
+endc
+med out0_m, out0, field
+acasc a1: x_m -> out1
+    load %r0, [x_m + 0]
+endc
+med out1_m, out1, field
+acasc a2: x_m -> out2
+    load %r0, [x_m + 0]
+endc
+med out2_m, out2, field
+acasc a3: x_m -> out3
+    load %r0, [x_m + 0]
+endc
+med out3_m, out3, field
+acasc a4: x_m -> out4
+    load %r0, [x_m + 0]
+endc
+med out4_m, out4, field
+acasc a5: x_m -> out5
+    load %r0, [x_m + 0]
+endc
+med out5_m, out5, field
+acasc a6: x_m -> out6
+    load %r0, [x_m + 0]
+endc
+med out6_m, out6, field
+acasc a7: x_m -> out7
+    load %r0, [x_m + 0]
+endc
+med out7_m, out7, field
+acasc a8: x_m -> out8
+    load %r0, [x_m + 0]
+endc
+med out8_m, out8, field
+acasc a9: x_m -> out9
+    load %r0, [x_m + 0]
+endc
+med out9_m, out9, field
+acasc a10: x_m -> out10
+    load %r0, [x_m + 0]
+endc
+med out10_m, out10, field
+acasc a11: x_m -> out11
+    load %r0, [x_m + 0]
+endc
+med out11_m, out11, field
+acasc a12: x_m -> out12
+    load %r0, [x_m + 0]
+endc
+med out12_m, out12, field
+acasc a13: x_m -> out13
+    load %r0, [x_m + 0]
+endc
+med out13_m, out13, field
+acasc a14: x_m -> out14
+    load %r0, [x_m + 0]
+endc
+med out14_m, out14, field
+acasc a15: x_m -> out15
+    load %r0, [x_m + 0]
+endc
+med out15_m, out15, field
+acasc a16: x_m -> out16
+    load %r0, [x_m + 0]
+endc
+med out16_m, out16, field
+acasc a17: x_m -> out17
+    load %r0, [x_m + 0]
+endc
+med out17_m, out17, field
+acasc a18: x_m -> out18
+    load %r0, [x_m + 0]
+endc
+med out18_m, out18, field
+acasc a19: x_m -> out19
+    load %r0, [x_m + 0]
+endc
+med out19_m, out19, field
+acasc a20: x_m -> out20
+    load %r0, [x_m + 0]
+endc
+med out20_m, out20, field
+acasc a21: x_m -> out21
+    load %r0, [x_m + 0]
+endc
+med out21_m, out21, field
+acasc a22: x_m -> out22
+    load %r0, [x_m + 0]
+endc
+med out22_m, out22, field
+acasc a23: x_m -> out23
+    load %r0, [x_m + 0]
+endc
+med out23_m, out23, field
+acasc a24: x_m -> out24
+    load %r0, [x_m + 0]
+endc
+med out24_m, out24, field
+acasc a25: x_m -> out25
+    load %r0, [x_m + 0]
+endc
+med out25_m, out25, field
+acasc a26: x_m -> out26
+    load %r0, [x_m + 0]
+endc
+med out26_m, out26, field
+acasc a27: x_m -> out27
+    load %r0, [x_m + 0]
+endc
+med out27_m, out27, field
+acasc a28: x_m -> out28
+    load %r0, [x_m + 0]
+endc
+med out28_m, out28, field
+acasc a29: x_m -> out29
+    load %r0, [x_m + 0]
+endc
+med out29_m, out29, field
+acasc a30: x_m -> out30
+    load %r0, [x_m + 0]
+endc
+med out30_m, out30, field
+acasc a31: x_m -> out31
+    load %r0, [x_m + 0]
+endc
+med out31_m, out31, field
+acasc a32: x_m -> out32
+    load %r0, [x_m + 0]
+endc
+med out32_m, out32, field
+acasc a33: x_m -> out33
+    load %r0, [x_m + 0]
+endc
+med out33_m, out33, field
+acasc a34: x_m -> out34
+    load %r0, [x_m + 0]
+endc
+med out34_m, out34, field
+acasc a35: x_m -> out35
+    load %r0, [x_m + 0]
+endc
+med out35_m, out35, field
+acasc a36: x_m -> out36
+    load %r0, [x_m + 0]
+endc
+med out36_m, out36, field
+acasc a37: x_m -> out37
+    load %r0, [x_m + 0]
+endc
+med out37_m, out37, field
+acasc a38: x_m -> out38
+    load %r0, [x_m + 0]
+endc
+med out38_m, out38, field
+acasc a39: x_m -> out39
+    load %r0, [x_m + 0]
+endc
+med out39_m, out39, field
+acasc a40: x_m -> out40
+    load %r0, [x_m + 0]
+endc
+med out40_m, out40, field
+acasc a41: x_m -> out41
+    load %r0, [x_m + 0]
+endc
+med out41_m, out41, field
+acasc a42: x_m -> out42
+    load %r0, [x_m + 0]
+endc
+med out42_m, out42, field
+acasc a43: x_m -> out43
+    load %r0, [x_m + 0]
+endc
+med out43_m, out43, field
+acasc a44: x_m -> out44
+    load %r0, [x_m + 0]
+endc
+med out44_m, out44, field
+acasc a45: x_m -> out45
+    load %r0, [x_m + 0]
+endc
+med out45_m, out45, field
+acasc a46: x_m -> out46
+    load %r0, [x_m + 0]
+endc
+med out46_m, out46, field
+acasc a47: x_m -> out47
+    load %r0, [x_m + 0]
+endc
+med out47_m, out47, field
+acasc a48: x_m -> out48
+    load %r0, [x_m + 0]
+endc
+med out48_m, out48, field
+acasc a49: x_m -> out49
+    load %r0, [x_m + 0]
+endc
+med out49_m, out49, field
+acasc a50: x_m -> out50
+    load %r0, [x_m + 0]
+endc
+med out50_m, out50, field
+acasc a51: x_m -> out51
+    load %r0, [x_m + 0]
+endc
+med out51_m, out51, field
+acasc a52: x_m -> out52
+    load %r0, [x_m + 0]
+endc
+med out52_m, out52, field
+acasc a53: x_m -> out53
+    load %r0, [x_m + 0]
+endc
+med out53_m, out53, field
+acasc a54: x_m -> out54
+    load %r0, [x_m + 0]
+endc
+med out54_m, out54, field
+acasc a55: x_m -> out55
+    load %r0, [x_m + 0]
+endc
+med out55_m, out55, field
+acasc a56: x_m -> out56
+    load %r0, [x_m + 0]
+endc
+med out56_m, out56, field
+acasc a57: x_m -> out57
+    load %r0, [x_m + 0]
+endc
+med out57_m, out57, field
+acasc a58: x_m -> out58
+    load %r0, [x_m + 0]
+endc
+med out58_m, out58, field
+acasc a59: x_m -> out59
+    load %r0, [x_m + 0]
+endc
+med out59_m, out59, field
+acasc a60: x_m -> out60
+    load %r0, [x_m + 0]
+endc
+med out60_m, out60, field
+acasc a61: x_m -> out61
+    load %r0, [x_m + 0]
+endc
+med out61_m, out61, field
+acasc a62: x_m -> out62
+    load %r0, [x_m + 0]
+endc
+med out62_m, out62, field
+acasc a63: x_m -> out63
+    load %r0, [x_m + 0]
+endc
+med out63_m, out63, field
+acasc overflow: x_m -> overflow_out
+    load %r0, [x_m + 0]
+endc
+await %r0
+ret

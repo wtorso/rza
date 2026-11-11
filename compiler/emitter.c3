@@ -122,6 +122,7 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
                 *rd |= 1u << ins.a;
                 *wr |= 1u << ins.a;
             case Op.PRINT: *rd |= 1u << ins.a;
+            case Op.AWAIT: *wr |= 1u << ins.a;
             case Op.BRZ:   *rd |= 1u << ins.a;
             case Op.BRNZ:  *rd |= 1u << ins.a;
             default: break;
@@ -371,6 +372,79 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
     }
 }
 
+fn void emit_clear_meds(Output* out, int ind, int cell) {
+    for (int i = 0; i < cells[cell].med_count; i++) {
+        int mi = cells[cell].med_idxs[i];
+        if (meds[mi].scope != 0) continue;
+        pad(out, ind);
+        out.appendf("%s = (RezCellMed){0};\n", meds[mi].cname);
+    }
+}
+
+fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
+    Cascade* ca = &cascades[ins.a];
+    pad(out, ind);
+    out.appendf("if (ac_pending_%d) {\n", ca.seq);
+    pad(out, ind + 1);
+    out.appendf("fprintf(stderr, \"FAULT line %d: async task %s already pending\\n\");\n",
+                ca.line, ca.name);
+    pad(out, ind + 1);
+    out.append_string("exit(1);\n");
+    pad(out, ind);
+    out.append_string("}\n");
+    for (int i = 0; i < ca.med_count; i++) {
+        int mi = ca.med_idxs[i];
+        pad(out, ind);
+        out.appendf("if (!rez_deref_cell(%s)) {\n", meds[mi].cname);
+        pad(out, ind + 1);
+        out.appendf("fprintf(stderr, \"ABORT line %d: cascade %s: "
+                    "dead mediator %s\\n\");\n", ca.line, ca.name, meds[mi].name);
+        pad(out, ind + 1);
+        out.appendf("goto casc_end_%d;\n", ca.seq);
+        pad(out, ind);
+        out.append_string("}\n");
+    }
+    pad(out, ind);
+    out.appendf("%s = rez_cell_z(%s, 8);\n",
+                cells[ca.out_cell].cname, fexpr(ca.out_frame));
+    pad(out, ind);
+    out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
+    pad(out, ind + 1);
+    out.appendf("fprintf(stderr, \"FAULT line %d: arena overflow (out %s)\\n\");\n",
+                ca.line, cells[ca.out_cell].name);
+    pad(out, ind + 1);
+    out.append_string("exit(1);\n");
+    pad(out, ind);
+    out.append_string("}\n");
+    emit_clear_meds(out, ind, ca.out_cell);
+    uint rd, wr;
+    scan_regs(ins.func, &rd, &wr);
+    pad(out, ind);
+    out.appendf("memset(ac_state_%d.regs, 0, sizeof(ac_state_%d.regs));\n",
+                ca.seq, ca.seq);
+    for (int r = 0; r < 16; r++) {
+        if ((rd | wr) & (1u << r)) {
+            pad(out, ind);
+            out.appendf("ac_state_%d.regs[%d] = r%d;\n", ca.seq, r, r);
+        }
+    }
+    for (int i = 0; i < ca.med_count; i++) {
+        int mi = ca.med_idxs[i];
+        pad(out, ind);
+        out.appendf("ac_state_%d.meds[%d] = %s;\n",
+                    ca.seq, i, meds[mi].cname);
+    }
+    pad(out, ind);
+    out.appendf("if (!rez_async_enqueue(&g_async, ac_run_%d, "
+                "&ac_state_%d, &ac_pending_%d)) {\n", ca.seq, ca.seq, ca.seq);
+    pad(out, ind + 1);
+    out.appendf("fprintf(stderr, \"FAULT line %d: async queue full\\n\");\n", ca.line);
+    pad(out, ind + 1);
+    out.append_string("exit(1);\n");
+    pad(out, ind);
+    out.append_string("}\n");
+}
+
 fn void emit_casc_start(Output* out, int ind, Instr* ins) {
     Cascade* ca = &cascades[ins.a];
     assert(ins.a >= 0);
@@ -391,6 +465,10 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
     pad(out, ind);
     out.append_string("{\n");
     ind++;
+    if (ca.is_async) {
+        emit_acasc_enqueue(out, ind, ins);
+        return;
+    }
     for (int i = 0; i < ca.med_count; i++) {
         int mi = ca.med_idxs[i];
         assert(mi >= 0);
@@ -428,6 +506,116 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
     emit_hoisted_meds(out, ind, ca.out_cell);
 }
 
+fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
+    for (sz i = 0; i < instrs.len(); i++) {
+        Instr* ins = &instrs[i];
+        if (ins.block != ca.block || ins.op == Op.ENDC) continue;
+        switch (ins.op) {
+            case Op.LABEL: emit_label(out, ind, ins);
+            case Op.LOAD: emit_load(out, ind, ins, true);
+            case Op.STORE: emit_store(out, ind, ins, true);
+            case Op.MOV:
+                pad(out, ind);
+                if (ins.flag) { out.appendf("r%d = %d;\n", ins.a, ins.b); }
+                else { out.appendf("r%d = r%d;\n", ins.a, ins.b); }
+            case Op.ALU3: emit_alu3(out, ind, ins);
+            case Op.ALU1:
+                pad(out, ind);
+                out.appendf("r%d = %s(r%d, 1);\n", ins.a,
+                            ins.flag ? "rez_i64_add" : "rez_i64_sub", ins.a);
+            case Op.PRINT:
+                pad(out, ind);
+                out.appendf("printf(\"%%lld\\n\", (long long)r%d);\n", ins.a);
+            case Op.JMP:
+                pad(out, ind);
+                out.appendf("goto %s;\n", label_cname(ins.block, ins.s1));
+            case Op.BRZ:
+                pad(out, ind);
+                out.appendf("if (r%d == 0) goto %s;\n", ins.a, label_cname(ins.block, ins.s1));
+            case Op.BRNZ:
+                pad(out, ind);
+                out.appendf("if (r%d != 0) goto %s;\n", ins.a, label_cname(ins.block, ins.s1));
+            default: break;
+        }
+    }
+}
+
+fn void emit_async_publish(Output* out, int ind, int cell) {
+    for (int i = 0; i < cells[cell].med_count; i++) {
+        int mi = cells[cell].med_idxs[i];
+        pad(out, ind);
+        out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
+                    meds[mi].cname, fexpr(meds[mi].owner),
+                    fexpr(cells[cell].home), cells[cell].cname, cells[cell].size);
+    }
+}
+
+fn uint scan_casc_regs(Cascade* ca) {
+    uint mask = 0;
+    for (sz i = 0; i < instrs.len(); i++) {
+        Instr* ins = &instrs[i];
+        if (ins.block != ca.block) continue;
+        switch (ins.op) {
+            case Op.LOAD:
+                mask |= 1u << ins.a;
+                if (ins.c >= 0) mask |= 1u << ins.c;
+            case Op.STORE:
+                mask |= 1u << ins.a;
+                if (ins.c >= 0) mask |= 1u << ins.c;
+            case Op.MOV:
+                mask |= 1u << ins.a;
+                if (!ins.flag) mask |= 1u << ins.b;
+            case Op.ALU3:
+                mask |= 1u << ins.a;
+                mask |= 1u << ins.b;
+                if (!ins.flag) mask |= 1u << ins.c;
+            case Op.ALU1: case Op.PRINT: case Op.BRZ: case Op.BRNZ:
+                mask |= 1u << ins.a;
+            default: break;
+        }
+    }
+    return mask;
+}
+
+fn void emit_async_callback(Output* out, int ci) {
+    Cascade* ca = &cascades[ci];
+    out.appendf("typedef struct { RezCellMed meds[%d]; int64_t regs[16]; } AcState_%d;\n",
+                ca.med_count, ca.seq);
+    out.appendf("static AcState_%d ac_state_%d;\n", ca.seq, ca.seq);
+    out.appendf("static bool ac_pending_%d;\n", ca.seq);
+    out.appendf("static bool ac_run_%d(void *context) {\n", ca.seq);
+    out.append_string("    (void)context;\n");
+    uint mask = scan_casc_regs(ca);
+    for (int r = 0; r < 16; r++) {
+        if (mask & (1u << r)) {
+            out.appendf("    int64_t r%d = ac_state_%d.regs[%d];\n", r, ca.seq, r);
+        }
+    }
+    for (int i = 0; i < ca.med_count; i++) {
+        int mi = ca.med_idxs[i];
+        out.appendf("    void *p_%s = rez_deref_cell(ac_state_%d.meds[%d]);\n",
+                    meds[mi].name, ca.seq, i);
+        out.appendf("    if (!p_%s) {\n", meds[mi].name);
+        out.appendf("        fprintf(stderr, \"ABORT line %d: cascade %s: "
+                    "dead mediator %s\\n\");\n", ca.line, ca.name, meds[mi].name);
+        out.appendf("        ac_pending_%d = false;\n", ca.seq);
+        out.append_string("        return false;\n");
+        out.append_string("    }\n");
+    }
+    emit_casc_instructions(out, 1, ca);
+    out.appendf("    ac_pending_%d = false;\n", ca.seq);
+    emit_async_publish(out, 1, ca.out_cell);
+    out.append_string("    return true;\n");
+    out.append_string("}\n\n");
+}
+
+fn void emit_async_callbacks(Output* out) {
+    for (sz i = 0; i < cascades.len(); i++) {
+        if (cascades[i].is_async) emit_async_callback(out, (int)i);
+    }
+}
+
+
 fn void emit_casc_end(Output* out, int ind, Instr* ins) {
     Cascade* ca = &cascades[ins.a];
     assert(ins.a >= 0);
@@ -444,12 +632,32 @@ fn void emit_casc_end(Output* out, int ind, Instr* ins) {
     out.append_string("}\n");
 }
 
+fn void emit_call(Output* out, int ind, Instr* ins) {
+    pad(out, ind);
+    if (g_lib_mode) { out.appendf("rza_%s();\n", procs[ins.x].name); }
+    else { out.appendf("%s();\n", procs[ins.x].cname); }
+}
+
+fn void emit_await(Output* out, int ind, Instr* ins) {
+    pad(out, ind);
+    out.appendf("r%d = (int64_t)rez_async_drain(&g_async);\n", ins.a);
+}
+
+fn bool is_async_block(int block) {
+    if (block < 0 || block >= (int)blocks.len()) return false;
+    if (blocks[block].kind != 2) return false;
+    int ci = blocks[block].aux - 1;
+    assert(ci >= 0);
+    assert(ci < (int)cascades.len());
+    return cascades[ci].is_async;
+}
+
 fn void emit_body(Output* out, int func) {
     int ind = 1;
     assert(func <= (int)procs.len());
     for (sz i = 0; i < instrs.len(); i++) {
         Instr* ins = &instrs[i];
-        if (ins.func != func) continue;
+        if (ins.func != func || is_async_block(ins.block)) continue;
         assert(ins.line > 0);
         assert(ins.block < (int)blocks.len());
         bool in_casc = blocks[ins.block].kind == 2;
@@ -496,13 +704,8 @@ fn void emit_body(Output* out, int func) {
                 pad(out, ind);
                 out.appendf("if (r%d != 0) goto %s;\n",
                             ins.a, label_cname(ins.block, ins.s1));
-            case Op.CALL:
-                pad(out, ind);
-                if (g_lib_mode) {
-                    out.appendf("rza_%s();\n", procs[ins.x].name);
-                } else {
-                    out.appendf("%s();\n", procs[ins.x].cname);
-                }
+            case Op.CALL: emit_call(out, ind, ins);
+            case Op.AWAIT: emit_await(out, ind, ins);
             case Op.RET:
                 if (ins.func == 0) {
                     pad(out, ind);
@@ -542,6 +745,7 @@ fn void emit_proc(Output* out, int pi) {
                 frames[p.frame].cname, frames[p.frame].cname,
                 frames[p.frame].cap, p.line, p.name);
     emit_body(out, pi + 1);
+    out.append_string("    (void)rez_async_drain(&g_async);\n");
     emit_writeonly_silence(out, 1, rd, wr);
     emit_decay_subtree(out, 1, p.frame);
     out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
@@ -563,6 +767,7 @@ fn void emit_main(Output* out) {
                 "        exit(1);\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
+    out.append_string("    (void)rez_async_drain(&g_async);\n");
     emit_writeonly_silence(out, 1, rd, wr);
     bool last_ret = false;
     for (sz i = instrs.len(); i > 0; i--) {
@@ -590,6 +795,7 @@ fn void emit_boot(Output* out) {
                 "        exit(1);\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
+    out.append_string("    (void)rez_async_drain(&g_async);\n");
     emit_writeonly_silence(out, 1, rd, wr);
     out.append_string("}\n");
 }
@@ -613,17 +819,20 @@ fn void emit_host_api(Output* out) {
         assert(meds[i].name.len > 0);
         assert(meds[i].gen > 0);
         out.appendf("RezCellMed rza_med_%s(void) {\n", meds[i].name);
-        out.appendf("    if (!%s.cell) {\n", meds[i].cname);
-        out.appendf("        %s = rez_issue_cell(\n", meds[i].cname);
-        out.appendf("            %s, %s, %s, %d\n",
-                    fexpr(cells[ci].owner), fexpr(cells[ci].home),
-                    cells[ci].cname, cells[ci].size);
-        out.appendf("        );\n");
-        out.append_string("    }\n");
+        if (!cells[ci].async_out) {
+            out.appendf("    if (!%s.cell) {\n", meds[i].cname);
+            out.appendf("        %s = rez_issue_cell(\n", meds[i].cname);
+            out.appendf("            %s, %s, %s, %d\n",
+                        fexpr(cells[ci].owner), fexpr(cells[ci].home),
+                        cells[ci].cname, cells[ci].size);
+            out.appendf("        );\n");
+            out.append_string("    }\n");
+        }
         out.appendf("    return %s;\n", meds[i].cname);
         out.append_string("}\n");
     }
     out.append_string("uint32_t rza_rez3ext_abi(void) { return REZ3EXT_ABI; }\n");
+    out.append_string("uint64_t rza_await(void) { return rez_async_drain(&g_async); }\n");
     out.append_string("void *rza_arena_alloc(RezCavity *cavity, uint64_t size) "
                       "{ return rez_cell_z(cavity, size); }\n");
     out.append_string("void *rza_deref_cell(RezCellMed mediator) "
@@ -726,6 +935,8 @@ fn String emit() {
     out.append_string("#include <stdlib.h>\n");
     out.append_string("#include \"rez3ext.h\"\n\n");
     emit_static_storage(&out);
+    out.append_string("RezAsyncQueue g_async;\n\n");
+    emit_async_callbacks(&out);
     for (sz i = 0; i < procs.len(); i++) {
         if (g_lib_mode) {
             out.appendf("void rza_%s(void);\n", procs[i].name);

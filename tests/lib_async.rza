@@ -1,0 +1,11 @@
+res x, field, 8
+med x_m, x, field
+proc bump:
+    acasc update: x_m -> out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    med out_m, out, field
+    ret
+ret

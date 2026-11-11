@@ -63,6 +63,7 @@ struct Cell {
     int    size;
     String cname;
     int    scope;
+    bool   async_out;
     int[CELL_MED_MAX] med_idxs;
     int    med_count;
 }
@@ -106,7 +107,7 @@ struct LabelDef { String name; int line; int block; bool referenced; }
 enum Op : char {
     CAV, RES, MED, RAISE, DECAY, PROBE, CASC, ENDC,
     LOAD, STORE, MOV, ALU3, ALU1, PRINT,
-    LABEL, JMP, BRZ, BRNZ, CALL, RET
+    LABEL, JMP, BRZ, BRNZ, CALL, AWAIT, RET
 }
 
 struct Instr {

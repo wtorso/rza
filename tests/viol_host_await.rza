@@ -1,0 +1,3 @@
+proc await:
+    ret
+ret

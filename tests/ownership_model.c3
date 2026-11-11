@@ -68,6 +68,7 @@ fn void own_global(OwnModel* model) {
         "    inc %r0\n"
         "    store [global_m + 0], %r0\n"
         "endc\n"
+        "await %r0\n"
         "load %r0, [global_m + 0]\n"
         "print %r0\n");
     model.expected.appendf("%d\n", model.global_value + 1);

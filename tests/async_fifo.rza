@@ -1,0 +1,27 @@
+res a, field, 8
+med a_m, a, field
+res b, field, 8
+med b_m, b, field
+mov %r0, 1
+store [a_m + 0], %r0
+mov %r0, 2
+store [b_m + 0], %r0
+acasc first: a_m -> first_out
+    load %r0, [a_m + 0]
+    inc %r0
+    store [a_m + 0], %r0
+endc
+acasc second: b_m -> second_out
+    load %r0, [b_m + 0]
+    add %r0, %r0, 3
+    store [b_m + 0], %r0
+endc
+mov %r1, 99
+await %r2
+print %r2                  ; 2: обе задачи выполнены FIFO
+load %r3, [a_m + 0]
+print %r3                  ; 2: first сделал 1 + 1
+load %r4, [b_m + 0]
+print %r4                  ; 5: second сделал 2 + 3
+print %r1                  ; 99: регистры caller не изменились
+ret

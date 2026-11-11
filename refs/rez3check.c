@@ -340,7 +340,7 @@ static void check_casc_link(char *name, char *token, bool async) {
         return;
     }
     if (async) {
-        int32_t frame_index = cells[links[link_index].cell].frame;
+        int32_t frame_index = cells[links[link_index].cell].home;
         if (frame_index != 0) report("I3", "async cascade holds non-root link", name, token);
         return;
     }
@@ -588,6 +588,13 @@ static void check_line(char *line) {
     if (strcmp(command, "read") == 0) {
         if (!operands_valid(tokens, count, 1)) malformed();
         else op_read(tokens[1]);
+        return;
+    }
+    if (strcmp(command, "await") == 0) {
+        if (!operands_valid(tokens, count, 1) || tokens[1][0] != '%' ||
+            tokens[1][1] != 'r' || !isdigit((unsigned char)tokens[1][2])) {
+            malformed();
+        }
         return;
     }
     warnx("unknown op", command);

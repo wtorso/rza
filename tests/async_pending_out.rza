@@ -1,0 +1,13 @@
+res x, field, 8
+med x_m, x, field
+mov %r0, 5
+store [x_m + 0], %r0
+acasc bump: x_m -> out
+    load %r0, [x_m + 0]
+    inc %r0
+    store [x_m + 0], %r0
+endc
+med out_m, out, field
+probe out_m                  ; DEAD: OUT ещё не опубликован
+load %r0, [out_m + 0]        ; FAULT line 12: обращение до await
+ret

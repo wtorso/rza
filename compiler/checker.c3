@@ -238,7 +238,7 @@ fn int find_proc(String name) {
 // Имена host API уникальны и проверяются до генерации C (SPEC §11).
 fn bool host_name_bad(String name, int line) {
     if (name == "boot" || name == "arena_alloc" || name == "deref_cell" ||
-        name == "rez3ext_abi" ||
+        name == "rez3ext_abi" || name == "await" ||
         name.starts_with("frame_") || name.starts_with("med_")) {
         viol(line, "STRUCT", cat({"procedure name ", name,
              " collides with lib host API (SPEC 11)"}));
@@ -748,6 +748,16 @@ fn void op_print(String rest, int line) {
     add_instr({ .op = Op.PRINT, .line = line, .a = r });
 }
 
+fn void op_await(String rest, int line) {
+    assert(line > 0);
+    assert(rest.len <= SOURCE_BYTES_MAX);
+    String[1] buf;
+    if (!split_ops_exact(rest, 1, line, "await", &buf)) return;
+    int r = parse_reg(buf[0], line);
+    if (r < 0) return;
+    add_instr({ .op = Op.AWAIT, .line = line, .a = r });
+}
+
 fn void op_jmp(String rest, int line) {
     assert(line > 0);
     assert(rest.len <= SOURCE_BYTES_MAX);
@@ -887,7 +897,8 @@ fn void add_casc_input(String tok, int line, String name, bool is_async,
     med_names[*count] = meds[mdi].name;
     (*count)++;
     if (is_async) {
-        if (!frames[cells[meds[mdi].cell].owner].is_field) {
+        if (!frames[cells[meds[mdi].cell].owner].is_field ||
+            !frames[cells[meds[mdi].cell].home].is_field) {
             viol(line, "I3", cat({"async cascade holds non-root link ", name, " ", tok}));
         }
     } else if (!med_alive(mdi)) {
@@ -910,7 +921,8 @@ fn int open_casc_out(String outname, String outfname, bool is_async,
     }
     if (at_capacity(cells.len(), line, "cells")) return -1;
     Cell oc = { .name = outname, .owner = *out_frame, .home = *out_frame,
-                .size = 8, .cname = cname_for("c_", outname), .scope = 0 };
+                .size = 8, .cname = cname_for("c_", outname), .scope = 0,
+                .async_out = is_async };
     cells.push(oc);
     cell_map.set(outname, (int)cells.len() - 1);
     frames[*out_frame].outs += 1;
@@ -1011,6 +1023,7 @@ fn void parse_instr(String line, int n, bool in_casc) {
     else if (op == "inc") { op_alu1(rest, n, true); }
     else if (op == "dec") { op_alu1(rest, n, false); }
     else if (op == "print") { op_print(rest, n); }
+    else if (op == "await") { op_await(rest, n); }
     else if (op == "jmp") { op_jmp(rest, n); }
     else if (op == "brz") { op_br(rest, n, true); }
     else if (op == "brnz") { op_br(rest, n, false); }

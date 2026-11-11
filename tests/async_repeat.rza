@@ -1,0 +1,13 @@
+res x, field, 8
+med x_m, x, field
+mov %r1, 2
+loop:
+acasc bump: x_m -> out
+    load %r0, [x_m + 0]
+    inc %r0
+    store [x_m + 0], %r0
+endc
+dec %r1
+brnz %r1, loop
+await %r0
+ret
