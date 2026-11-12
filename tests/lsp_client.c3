@@ -99,7 +99,7 @@ fn sz? read_lsp_stdout(Process* child) {
             if (error == win32::ERROR_HANDLE_EOF) return 0;
             return TEST_ERROR~;
         }
-        if (!win32::getOverlappedResult(handle, &overlapped, &count, 0)) {
+        if (!win32::getOverlappedResult(handle, &overlapped, &count, 1)) {
             error = win32::getLastError();
             if (error == win32::ERROR_IO_INCOMPLETE) return 0;
             if (error == win32::ERROR_HANDLE_EOF) return 0;
