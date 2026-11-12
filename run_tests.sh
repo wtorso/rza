@@ -18,10 +18,18 @@ if [ -z "${CFLAGS:-}" ]; then
     CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
 fi
 # LNK4217 относится только к clang_rt.ubsan_standalone.lib, не к RZA objects.
+# LLVM runtime должен предшествовать несовместимой MSVC UBSan library.
 LDFLAGS="${LDFLAGS:-}"
 if [ "${OS:-}" = "Windows_NT" ]; then
     case "$CC" in
-        *clang*) LDFLAGS+=" -Wl,/ignore:4217" ;;
+        *clang*)
+            clang_resource_dir=$(cygpath -m -s "$($CC -print-resource-dir)")
+            LDFLAGS="-L$clang_resource_dir/lib/windows $LDFLAGS"
+            case "$LDFLAGS" in
+                *"/ignore:4217"*) ;;
+                *) LDFLAGS+=" -Wl,/ignore:4217" ;;
+            esac
+            ;;
     esac
 fi
 export CC CFLAGS LDFLAGS

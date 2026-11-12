@@ -86,9 +86,10 @@ jobs:
           where.exe clang
           clang --version
           clang -print-resource-dir
+          export LDFLAGS="-L$(cygpath -m -s "$(clang -print-resource-dir)")/lib/windows -Wl,/ignore:4217"
           clang -v -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
-            build/hello.c -o build/hello.exe
+            $LDFLAGS build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
       - name: Full suite
         shell: bash
