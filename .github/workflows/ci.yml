@@ -57,7 +57,7 @@ jobs:
           bash build_compiler.sh
           mkdir --parents build
           ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
-          "$CC" -std=c23 -pedantic -Wall -Wextra -Werror \
+          $CC -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
@@ -177,7 +177,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22.14.0
-          cache: false
       - name: Build compiler
         shell: bash
         run: bash build_compiler.sh
