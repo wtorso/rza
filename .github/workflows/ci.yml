@@ -83,7 +83,10 @@ jobs:
           bash build_compiler.sh
           mkdir --parents build
           ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
-          clang -std=c23 -pedantic -Wall -Wextra -Werror \
+          where.exe clang
+          clang --version
+          clang -print-resource-dir
+          clang -v -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
