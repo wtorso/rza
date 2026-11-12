@@ -7,6 +7,7 @@ import std::io;
 import std::io::file;
 import std::net::os;
 import std::os::process;
+import std::os::win32;
 import std::thread;
 import std::time;
 

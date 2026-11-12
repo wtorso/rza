@@ -21,9 +21,9 @@ extern fn Win32_BOOL get_process_memory_info(Win32_HANDLE process,
 
 fn ulong? process_memory_bytes(Process* child) {
     ProcessMemoryCounters counters;
-    counters.cb = ProcessMemoryCounters.size;
+    counters.cb = (Win32_DWORD)ProcessMemoryCounters::size;
     if (!get_process_memory_info(child.hProcess, &counters, counters.cb)) {
         return TEST_ERROR~;
     }
-    return counters.pagefile_usage;
+    return (ulong)counters.pagefile_usage;
 }

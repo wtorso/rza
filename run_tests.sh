@@ -39,8 +39,6 @@ if [ "${OS:-}" = "Windows_NT" ]; then
     esac
 fi
 export CC CFLAGS LDFLAGS
-DIFF_OPTIONS="--strip-trailing-cr"
-export DIFF_OPTIONS
 BUILD=".test-build-$$"
 rm --recursive --force "$BUILD"
 mkdir --parents "$BUILD"
@@ -92,6 +90,12 @@ echo "== build rez3asm.exe (c3c) =="
 bash build_compiler.sh
 TR="./rez3asm.exe"
 
+compare_text() {
+    local expected=$1 actual=$2
+    tr --delete '\r' <"$expected" >"$BUILD/expected.lf"
+    diff --unified "$BUILD/expected.lf" "$actual"
+}
+
 # легальная программа: транслируется, компилируется без warnings,
 # stdout совпадает с tests/$1.expected
 run_good() {
@@ -116,9 +120,9 @@ run_good() {
         return
     fi
     tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
-    if ! diff --unified "$dir/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+    if ! compare_text "$dir/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
-        diff --unified "$dir/$t.expected" "$BUILD/$t.out.lf"
+        compare_text "$dir/$t.expected" "$BUILD/$t.out.lf"
         return
     fi
     ok "$t"
@@ -149,9 +153,9 @@ run_dead() {
     fi
     if [ -f "tests/$t.expected" ]; then
         tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
-        if ! diff --unified "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+        if ! compare_text "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
             bad "$t" "stdout mismatch before fault"
-            diff --unified "tests/$t.expected" "$BUILD/$t.out.lf"
+            compare_text "tests/$t.expected" "$BUILD/$t.out.lf"
             return
         fi
     fi
@@ -183,9 +187,9 @@ run_abort() {
         return
     fi
     tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
-    if ! diff --unified "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+    if ! compare_text "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
-        diff --unified "tests/$t.expected" "$BUILD/$t.out.lf"
+        compare_text "tests/$t.expected" "$BUILD/$t.out.lf"
         return
     fi
     if ! grep --quiet "$want" "$BUILD/$t.runerr"; then
@@ -211,9 +215,9 @@ run_viol() {
     fi
     if [ -n "$expected" ]; then
         tr --delete '\r' <"$BUILD/$t.err" >"$BUILD/$t.err.lf"
-        if ! diff --unified "$expected" "$BUILD/$t.err.lf" >/dev/null 2>&1; then
+        if ! compare_text "$expected" "$BUILD/$t.err.lf" >/dev/null 2>&1; then
             bad "$t" "stderr mismatch"
-            diff --unified "$expected" "$BUILD/$t.err.lf"
+            compare_text "$expected" "$BUILD/$t.err.lf"
             return
         fi
     fi
@@ -311,9 +315,9 @@ run_lib() {
         return
     fi
     tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
-    if ! diff --unified "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
+    if ! compare_text "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
-        diff --unified "tests/$t.expected" "$BUILD/$t.out.lf"
+        compare_text "tests/$t.expected" "$BUILD/$t.out.lf"
         return
     fi
     ok "$t"
@@ -368,7 +372,7 @@ run_shop() {
         return
     fi
     tr --delete '\r' <"$BUILD/shop.out" >"$BUILD/shop.out.lf"
-    if ! diff --unified tests/shop.expected "$BUILD/shop.out.lf"; then
+    if ! compare_text tests/shop.expected "$BUILD/shop.out.lf"; then
         bad shop "stdout mismatch"
         return
     fi
