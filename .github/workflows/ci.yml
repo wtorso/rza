@@ -77,26 +77,33 @@ jobs:
           test -n "$c3c_dir"
           printf '%s\n' "$c3c_dir" >> "$GITHUB_PATH"
           "$c3c_dir/c3c.exe" --version
+      - name: Install Zig 0.16.0
+        shell: bash
+        run: |
+          curl.exe -fL https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip \
+            -o build/toolchain/zig.zip
+          printf '%s  %s\n' \
+            '68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e' \
+            build/toolchain/zig.zip | sha256sum --check
+          unzip -q build/toolchain/zig.zip -d build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-windows-0.16.0" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-windows-0.16.0/zig.exe" version
       - name: Quickstart
         shell: bash
         run: |
           bash build_compiler.sh
           mkdir --parents build
           ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
-          where.exe clang-cl
-          clang-cl --version
-          clang-cl -v -Xclang -std=c23 -Xclang -pedantic -Wall -Wextra -Werror \
+          where.exe zig
+          zig version
+          zig cc -v -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
       - name: Full suite
         shell: bash
         env:
-          CC: clang-cl
-          CFLAGS: >-
-            -Xclang -std=c23 -Xclang -pedantic -Wall -Wextra -Werror
-            -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I .
-          LDFLAGS: /link /ignore:4217
+          CC: zig cc
         run: bash run_tests.sh
       - name: Hygiene
         shell: bash
