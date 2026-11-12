@@ -1,0 +1,6 @@
+VIOLATION line 6 [STRUCT]: typed cell requires field selector in load
+VIOLATION line 7 [STRUCT]: unknown layout field missing
+VIOLATION line 8 [STRUCT]: opcode does not match layout field key
+VIOLATION line 9 [STRUCT]: opcode does not match layout field value
+VIOLATION line 10 [STRUCT]: field access requires typed cell
+VIOLATION line 11 [STRUCT]: bad memory operand [entries_m + 0].key.extra (want [med + off] or [med + index].field)

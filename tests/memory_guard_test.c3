@@ -89,6 +89,8 @@ fn void allocation_guard_list_reset() @test {
     assert(list_guard.release_count == 0);
     list_guard.deinit();
     frames.free();
+    layouts.free();
+    layout_fields.free();
     cells.free();
     meds.free();
     procs.free();
@@ -98,5 +100,5 @@ fn void allocation_guard_list_reset() @test {
     instrs.free();
     lsp_diags.free();
     g_state_inited = false;
-    assert(list_guard.release_count == 9);
+    assert(list_guard.release_count == 11);
 }

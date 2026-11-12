@@ -21,6 +21,11 @@ const String ARTIFACT_SOURCE = "cav main, field\n"
     "decay main\n"
     "ret\n";
 
+const String TYPED_ARTIFACT_SOURCE = "layout Entry: key:i64, value:i64\n"
+    "res entries, field, Entry[2]\nmed entries_m, entries, field\n"
+    "mov %r0, 1\nstore [entries_m + %r0].value, %r0\n"
+    "load %r1, [entries_m + 0].key\nprint %r1\nret\n";
+
 fn String? emit_artifact(String source, String output) {
     String[] command = { "./rez3asm.exe", source, "--emit-c", "-o", output };
     ProcessResult result = run_simple(command)!;
@@ -74,6 +79,13 @@ fn int? check_paths_and_indexed() {
         temp_path("first-path/out.c"))!).str_view();
     String second = emit_artifact(two, temp_path("second-path/out.c"))!;
     if (!expect(first == second, "same bytes differ across paths")) return 1;
+    write_file(one, TYPED_ARTIFACT_SOURCE)!;
+    write_file(two, TYPED_ARTIFACT_SOURCE)!;
+    String typed_first = emit_artifact(one, temp_path("typed-first.c"))!;
+    String typed_second = emit_artifact(two, temp_path("typed-second.c"))!;
+    if (!expect(typed_first == typed_second &&
+            typed_first.starts_with(source_prefix(TYPED_ARTIFACT_SOURCE)),
+            "typed artifact paths or hash")) return 1;
     char[] indexed = read_file("tests/indexed.rza", artifact_source_buf[..])!;
     String first_c = dstring::temp(emit_artifact("tests/indexed.rza",
         temp_path("indexed-first.c"))!).str_view();

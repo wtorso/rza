@@ -17,8 +17,6 @@ jobs:
         cc: [gcc, clang]
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Install C3 0.8.5_1
         shell: bash
         run: |
@@ -65,8 +63,6 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Install C3 0.8.5_1
         shell: bash
         run: |

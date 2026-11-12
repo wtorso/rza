@@ -1,0 +1,6 @@
+layout Entry: key:i64, value:i64
+res entries, field, Entry[2]
+med entries_m, entries, field
+mov %r0, -9223372036854775808
+load %r1, [entries_m + %r0].key
+ret

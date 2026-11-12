@@ -13,6 +13,8 @@ fn void prepare_checker(String source) {
 fn void free_checker() {
     list_guard.deinit();
     frames.free();
+    layouts.free();
+    layout_fields.free();
     cells.free();
     meds.free();
     procs.free();

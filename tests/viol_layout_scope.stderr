@@ -1,0 +1,3 @@
+VIOLATION line 2 [STRUCT]: layout declaration must be top-level
+VIOLATION line 7 [STRUCT]: op layout not allowed in cascade body (data instructions only)
+VIOLATION line 10 [STRUCT]: code after top-level ret

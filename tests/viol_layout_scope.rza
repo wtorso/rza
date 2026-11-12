@@ -1,0 +1,10 @@
+proc p:
+    layout Inside: key:i64
+ret
+res raw, field, 8
+med raw_m, raw, field
+casc c: raw_m -> out[field]
+    layout InCascade: key:i64
+endc
+ret
+layout AfterRet: key:i64

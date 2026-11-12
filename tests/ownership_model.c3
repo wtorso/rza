@@ -80,13 +80,16 @@ fn OwnershipCase own_valid(int seed) {
     model.source = dstring::temp();
     model.expected = dstring::temp();
     model.tmp_value = rng.below(49) + 1;
+    bool typed = seed % 2 == 0;
+    if (typed) model.source.append("layout Value: value:i64\n");
     model.source.append("cav main, field\n"
         "res counter, main, 8\n"
         "med counter_m, counter, main\n"
-        "cav child, main\n"
-        "res tmp, child, 8\n"
-        "med tmp_m, tmp, child\n");
-    model.source.appendf("mov %%r0, %d\nstore [tmp_m + 0], %%r0\n", model.tmp_value);
+        "cav child, main\n");
+    model.source.append(typed ? "res tmp, child, Value\n" : "res tmp, child, 8\n");
+    model.source.append("med tmp_m, tmp, child\n");
+    model.source.appendf("mov %%r0, %d\n", model.tmp_value);
+    model.source.appendf("store [tmp_m + 0]%s, %%r0\n", typed ? ".value" : "");
     model.raised = rng.below(2) == 1;
     if (model.raised) {
         model.source.append("raise tmp, main\nmed lifted_m, tmp, main\n");
@@ -94,7 +97,8 @@ fn OwnershipCase own_valid(int seed) {
     String lifted = model.raised ? "lifted_m" : "tmp_m";
     model.source.appendf("casc addup: counter_m,%s -> sum[main]\n", lifted);
     model.source.append("    load %r0, [counter_m + 0]\n");
-    model.source.appendf("    load %%r1, [%s + 0]\n", lifted);
+    model.source.appendf("    load %%r1, [%s + 0]%s\n", lifted,
+        typed ? ".value" : "");
     model.source.append("    add %r2, %r0, %r1\n"
         "    store [counter_m + 0], %r2\n"
         "endc\n");

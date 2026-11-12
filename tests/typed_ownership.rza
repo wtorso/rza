@@ -1,0 +1,46 @@
+layout Value: value:i64
+cav main, field
+cav child, main
+res temp, child, Value
+med temp_m, temp, child
+mov %r0, 10
+store [temp_m + 0].value, %r0
+raise temp, main
+med lifted_m, temp, main
+proc bump:
+    load %r0, [lifted_m + 0].value
+    inc %r0
+    store [lifted_m + 0].value, %r0
+ret
+call bump
+casc combine: temp_m,lifted_m -> sync_out[main]
+    load %r0, [temp_m + 0].value
+    load %r1, [lifted_m + 0].value
+    add %r2, %r0, %r1
+    store [lifted_m + 0].value, %r2
+endc
+load %r0, [temp_m + 0].value
+print %r0                 ; (10 + 1) * 2 = 22 through aliased mediators
+res global, field, Value
+med global_m, global, field
+mov %r0, 5
+store [global_m + %r7].value, %r0
+acasc abump: global_m -> async_out
+    load %r0, [global_m + %r7].value
+    inc %r0
+    store [global_m + %r7].value, %r0
+endc
+await %r0
+print %r0                 ; one successful async task
+load %r0, [global_m + %r7].value
+print %r0                 ; 5 + 1 = 6 through dynamic index 0 in %r7
+mov %r1, 2
+blocked_loop:
+casc blocked: temp_m -> blocked_out[main]
+    load %r0, [temp_m + 0].value
+    print %r0             ; only the first live pass prints 22
+endc
+decay child
+dec %r1
+brnz %r1, blocked_loop
+ret

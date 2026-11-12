@@ -16,6 +16,7 @@
       "sources": [
         "rez3asm.c3",
         "compiler/model.c3",
+        "compiler/layout.c3",
         "compiler/checker.c3",
         "compiler/emitter.c3",
         "lsp_server.c3",

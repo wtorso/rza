@@ -190,12 +190,58 @@ fn void emit_decay_subtree(Output* out, int ind, int f) {
     }
 }
 
+fn Cell* validated_access_cell(Instr* ins) {
+    assert(ins.x >= 0 && ins.x < (int)meds.len());
+    Cell* cell = &cells[meds[ins.x].cell];
+    if (ins.y < 0) {
+        assert(cell.layout == -1);
+        assert(ins.y == -1);
+        return cell;
+    }
+    assert(cell.layout >= 0 && cell.layout < (int)layouts.len());
+    Layout layout = layouts[cell.layout];
+    assert(ins.y >= layout.first_field);
+    assert(ins.y < layout.first_field + layout.field_count);
+    assert(ins.y < (int)layout_fields.len());
+    bool byte_field = layout_fields[ins.y].scalar_type == ScalarType.U8;
+    assert(ins.flag == byte_field);
+    return cell;
+}
+
+fn void append_access_offset(DString* out, Instr* ins) {
+    Cell* cell = validated_access_cell(ins);
+    if (cell.layout < 0) {
+        if (ins.c >= 0) { out.appendf("r%d", ins.c); }
+        else { out.appendf("%d", ins.b); }
+        return;
+    }
+    int stride = layouts[cell.layout].size_bytes;
+    int field_offset = layout_fields[ins.y].offset_bytes;
+    assert(stride > 0 && cell.element_count > 0);
+    if (ins.c >= 0) {
+        out.appendf("(uint64_t)r%d * %d + %d", ins.c, stride, field_offset);
+    } else {
+        assert(ins.b >= 0 && ins.b < cell.element_count);
+        long offset = (long)ins.b * stride + field_offset;
+        int width = ins.flag ? 1 : 8;
+        assert(offset >= 0 && offset + width <= cell.size);
+        out.appendf("%d", offset);
+    }
+    assert(out.len() < OFFSET_STRING_BYTES);
+}
+
 fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
     if (ins.c < 0) return;
-    int width = ins.flag ? 1 : 8;
+    Cell* cell = validated_access_cell(ins);
     pad(out, ind);
-    out.appendf("if (!rez_cell_bounds(%s, r%d, %d)) {\n",
-                meds[ins.x].cname, ins.c, width);
+    if (cell.layout >= 0) {
+        out.appendf("if (r%d < 0 || (uint64_t)r%d >= %d) {\n",
+                    ins.c, ins.c, cell.element_count);
+    } else {
+        int width = ins.flag ? 1 : 8;
+        out.appendf("if (!rez_cell_bounds(%s, r%d, %d)) {\n",
+                    meds[ins.x].cname, ins.c, width);
+    }
     pad(out, ind + 1);
     out.appendf("fprintf(stderr, \"FAULT line %d: out of bounds %s\\n\");\n",
                 ins.line, meds[ins.x].name);
@@ -209,8 +255,7 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     DString* oex = load_offset_scratch.acquire(OFFSET_STRING_BYTES);
     assert(oex != null);
     defer assert(load_offset_scratch.release(oex));
-    if (ins.c >= 0) { oex.appendf("r%d", ins.c); }
-    else { oex.appendf("%d", ins.b); }
+    append_access_offset(oex, ins);
     String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";
     if (!in_casc) {
         pad(out, ind);
@@ -237,8 +282,7 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     DString* sex = store_offset_scratch.acquire(OFFSET_STRING_BYTES);
     assert(sex != null);
     defer assert(store_offset_scratch.release(sex));
-    if (ins.c >= 0) { sex.appendf("r%d", ins.c); }
-    else { sex.appendf("%d", ins.b); }
+    append_access_offset(sex, ins);
     String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";
     if (!in_casc) {
         pad(out, ind);

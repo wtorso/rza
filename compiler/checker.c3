@@ -12,6 +12,8 @@ import std::hash::sha256;
 fn void reset_state() {
     if (!g_state_inited) {
         frames.init(list_mem, NODE_MAX);
+        layouts.init(list_mem, LAYOUT_MAX);
+        layout_fields.init(list_mem, LAYOUT_FIELDS_TOTAL_MAX);
         cells.init(list_mem, NODE_MAX);
         meds.init(list_mem, NODE_MAX);
         procs.init(list_mem, NODE_MAX);
@@ -23,6 +25,7 @@ fn void reset_state() {
         g_state_inited = true;
     }
     frames.clear();
+    reset_layout_state();
     cells.clear();
     meds.clear();
     procs.clear();
@@ -459,8 +462,9 @@ fn void op_res(String rest, int line) {
     String fname = buf[1];
     String ssize = buf[2];
     if (!check_name(name, line)) return;
-    // Неверный размер — violation, не молчаливый 0.
     int size = -1;
+    int layout = -1;
+    int element_count = 0;
     if (is_int(ssize)) {
         int? sv = ssize.to_int();
         if (catch sv) {
@@ -469,9 +473,12 @@ fn void op_res(String rest, int line) {
             return;
         }
         size = sv;
-    }
-    if (size <= 0) {
-        viol(line, "STRUCT", cat({"bad size ", ssize, " (want positive int)"}));
+        if (size <= 0) {
+            viol(line, "STRUCT", cat({"bad size ", ssize,
+                                      " (want positive int)"}));
+            return;
+        }
+    } else if (!parse_layout_use(ssize, line, &layout, &element_count, &size)) {
         return;
     }
     int f = find_frame(fname, cur_proc);
@@ -481,7 +488,7 @@ fn void op_res(String rest, int line) {
     if (!frames[f].alive) {
         viol(line, "I1", cat({"cell in dead frame ", name, " ", fname})); return;
     }
-    if (size > 2147483632) {
+    if (size > CELL_SIZE_BYTES_MAX) {
         viol(line, "STRUCT", "aligned cell size out of i32 range");
         return;
     }
@@ -491,10 +498,10 @@ fn void op_res(String rest, int line) {
         return;
     }
     if (!check_dup(name, line, 0)) return;
-    // Ячейки глобальны (scope 0).
     if (at_capacity(cells.len(), line, "cells")) return;
     Cell cc = { .name = name, .owner = f, .home = f, .size = size,
-                .cname = cname_for("c_", name), .scope = 0 };
+                .cname = cname_for("c_", name), .scope = 0,
+                .layout = layout, .element_count = element_count };
     cells.push(cc);
     cell_map.set(name, (int)cells.len() - 1);
     frames[f].res_bytes += aligned;
@@ -613,76 +620,97 @@ fn void op_probe(String rest, int line) {
 }
 
 // --- память через медиатор -------------------------------------------------------
-// разбор "[med + off]"; при ошибке violation записано, возврат false
-fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg) {
+// разбор "[med + off]" или "[med + index].field"
+fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg,
+                  String* field_name) {
     String t = tok.trim();
+    *off = 0;
     *off_reg = -1;
-    bool bad = false;
-    if (t.len < 5 || t[0] != '[' || t[t.len - 1] != ']') {
-        bad = true;
-    } else {
-        String inner = t[1..t.len - 2];
-        sz? pi = inner.index_of_char('+');
-        if (catch pi) {
-            bad = true;
-        } else {
-            *mname = inner[:pi].trim();
-            String os = inner[pi + 1..].trim();
-            if (!is_name(*mname)) {
-                bad = true;
-            } else if (is_int(os)) {
-                // Смещение вне i32 — violation, не молчаливый wrap.
-                int? v = os.to_int();
-                if (catch v) {
-                    viol(line, "STRUCT",
-                         cat({"mem offset out of i32 range: ", os}));
+    *field_name = "";
+    bool bad = t.len < 5 || t[0] != '[';
+    sz? close = t.index_of_char(']');
+    if (catch close) {
+        viol(line, "STRUCT", cat({"bad memory operand ", tok,
+                                  " (want [med + off] or [med + index].field)"}));
+        return false;
+    }
+    if (!bad) {
+        String suffix = t[close + 1..].trim();
+        if (suffix.len > 0) {
+            if (suffix[0] != '.' || !is_name(suffix[1..])) { bad = true; }
+            else { *field_name = suffix[1..]; }
+        }
+    }
+    if (!bad) {
+        String inner = t[1..close - 1];
+        sz? plus = inner.index_of_char('+');
+        if (catch plus) { bad = true; }
+        else {
+            *mname = inner[:plus].trim();
+            String offset = inner[plus + 1..].trim();
+            if (!is_name(*mname)) { bad = true; }
+            else if (is_int(offset)) {
+                int? value = offset.to_int();
+                if (catch value) {
+                    viol(line, "STRUCT", cat({"mem offset out of i32 range: ", offset}));
                     return false;
                 }
-                *off = v;
-            } else if (os.len > 0 && os[0] == '%') {
-                int r = parse_reg(os, line);    // AUDIT-4: [med + %rN]
-                if (r < 0) { bad = true; } else { *off_reg = r; }
-            } else {
-                bad = true;
-            }
+                *off = value;
+            } else if (offset.len > 0 && offset[0] == '%') {
+                int reg = parse_reg(offset, line);
+                if (reg < 0) { bad = true; } else { *off_reg = reg; }
+            } else { bad = true; }
         }
     }
     if (bad) {
         viol(line, "STRUCT", cat({"bad memory operand ", tok,
-                                  " (want [med + off])"}));
+                                  " (want [med + off] or [med + index].field)"}));
         return false;
     }
     return true;
 }
 
+fn bool cascade_input_ok(String mname) {
+    if (cur_casc < 0) return true;
+    foreach (name : cascades[cur_casc].med_names[:cascades[cur_casc].med_count]) {
+        if (name == mname) return true;
+    }
+    return false;
+}
+
 // разрешение медиатора для load/store; -1 = ошибка (violation записано)
-fn int resolve_mem_med(String tok, int line, String opname, int* off, int* off_reg) {
+fn int resolve_mem_med(String tok, int line, String opname, int* off, int* off_reg,
+                       int* field_index) {
     String mname;
-    if (!parse_mem(tok, line, &mname, off, off_reg)) return -1;
+    String field_name;
+    *field_index = -1;
+    if (!parse_mem(tok, line, &mname, off, off_reg, &field_name)) return -1;
     int mi = find_med(mname, cur_proc);
     if (mi == -2) { scope_viol(line, "mediator", mname); return -1; }
     if (mi < 0) {
         viol(line, "STRUCT", cat({opname, " via unknown mediator ", mname}));
         return -1;
     }
-    int width = (opname == "loadb" || opname == "storeb") ? 1 : 8;
-    int size = cells[meds[mi].cell].size;
-    if (*off_reg < 0 && (*off < 0 || *off > size || width > size - *off)) {
-        viol(line, "STRUCT", cat({opname, " out of bounds via ", mname}));
-        return -1;
-    }
-    if (cur_casc >= 0) {
-        bool ok = false;
-        foreach (mn : cascades[cur_casc].med_names[:cascades[cur_casc].med_count]) {
-            if (mn == mname) { ok = true; break; }
+    int ci = meds[mi].cell;
+    if (cells[ci].layout >= 0) {
+        if (!check_typed_access(ci, field_name, opname, *off, *off_reg, line,
+                field_index)) return -1;
+    } else {
+        if (field_name.len > 0) {
+            viol(line, "STRUCT", "field access requires typed cell");
+            return -1;
         }
-        if (!ok) {
-            viol(line, "STRUCT",
-                 cat({"cascade body addresses non-input mediator ", mname}));
+        int width = opname == "loadb" || opname == "storeb" ? 1 : 8;
+        int size = cells[ci].size;
+        if (*off_reg < 0 && (*off < 0 || *off > size || width > size - *off)) {
+            viol(line, "STRUCT", cat({opname, " out of bounds via ", mname}));
             return -1;
         }
     }
-    // AUDIT-1/#3: статически мёртвый медиатор — НЕ violation (runtime-fault)
+    if (!cascade_input_ok(mname)) {
+        viol(line, "STRUCT", cat({"cascade body addresses non-input mediator ", mname}));
+        return -1;
+    }
     return mi;
 }
 
@@ -692,38 +720,38 @@ fn void op_load2(String rest, int line, bool is_byte) {
     int dst = parse_reg(buf[0], line);
     int off = 0;
     int off_reg = -1;
-    int mi = resolve_mem_med(buf[1], line, is_byte ? "loadb" : "load", &off, &off_reg);
+    int field = -1;
+    int mi = resolve_mem_med(buf[1], line, is_byte ? "loadb" : "load",
+        &off, &off_reg, &field);
     if (dst < 0 || mi < 0) return;
-    add_instr({ .op = Op.LOAD, .line = line, .a = dst, .x = mi, .b = off,
-                .c = off_reg, .flag = is_byte });
+    add_instr({ .op = Op.LOAD, .line = line, .a = dst, .x = mi, .y = field,
+                .b = off, .c = off_reg, .flag = is_byte });
+}
+
+fn void op_store2(String rest, int line, bool is_byte) {
+    String[2] buf;
+    if (!split_ops_exact(rest, 2, line, is_byte ? "storeb" : "store", &buf)) return;
+    int off = 0;
+    int off_reg = -1;
+    int field = -1;
+    int mi = resolve_mem_med(buf[0], line, is_byte ? "storeb" : "store",
+        &off, &off_reg, &field);
+    int src = parse_reg(buf[1], line);
+    if (mi < 0 || src < 0) return;
+    add_instr({ .op = Op.STORE, .line = line, .a = src, .x = mi, .y = field,
+                .b = off, .c = off_reg, .flag = is_byte });
 }
 
 fn void op_store(String rest, int line) {
     assert(line > 0);
     assert(rest.len <= SOURCE_BYTES_MAX);
-    String[2] buf;
-    if (!split_ops_exact(rest, 2, line, "store", &buf)) return;
-    int off = 0;
-    int off_reg = -1;
-    int mi = resolve_mem_med(buf[0], line, "store", &off, &off_reg);
-    int src = parse_reg(buf[1], line);
-    if (mi < 0 || src < 0) return;
-    add_instr({ .op = Op.STORE, .line = line, .a = src, .x = mi, .b = off,
-                .c = off_reg, .flag = false });
+    op_store2(rest, line, false);
 }
 
 fn void op_storeb(String rest, int line) {
     assert(line > 0);
     assert(rest.len <= SOURCE_BYTES_MAX);
-    String[2] buf;
-    if (!split_ops_exact(rest, 2, line, "storeb", &buf)) return;
-    int off = 0;
-    int off_reg = -1;
-    int mi = resolve_mem_med(buf[0], line, "storeb", &off, &off_reg);
-    int src = parse_reg(buf[1], line);
-    if (mi < 0 || src < 0) return;
-    add_instr({ .op = Op.STORE, .line = line, .a = src, .x = mi, .b = off,
-                .c = off_reg, .flag = true });
+    op_store2(rest, line, true);
 }
 
 // --- данные и поток ----------------------------------------------------------------
@@ -960,7 +988,7 @@ fn int open_casc_out(String outname, String outfname, bool is_async,
     if (at_capacity(cells.len(), line, "cells")) return -1;
     Cell oc = { .name = outname, .owner = *out_frame, .home = *out_frame,
                 .size = 8, .cname = cname_for("c_", outname), .scope = 0,
-                .async_out = is_async };
+                .async_out = is_async, .layout = -1, .element_count = 0 };
     cells.push(oc);
     cell_map.set(outname, (int)cells.len() - 1);
     frames[*out_frame].outs += 1;
@@ -1040,6 +1068,7 @@ fn void parse_instr(String line, int n, bool in_casc) {
         return;
     }
     if (op == "cav") { op_cav(rest, n); }
+    else if (op == "layout") { op_layout(rest, n); }
     else if (op == "res") { op_res(rest, n); }
     else if (op == "med") { op_med(rest, n); }
     else if (op == "raise") { op_raise(rest, n); }

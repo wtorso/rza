@@ -1,0 +1,4 @@
+VIOLATION line 6 [STRUCT]: load element index out of bounds
+VIOLATION line 7 [STRUCT]: load element index out of bounds
+VIOLATION line 8 [STRUCT]: load element index out of bounds
+VIOLATION line 9 [STRUCT]: mem offset out of i32 range: 2147483648

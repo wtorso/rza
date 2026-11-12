@@ -193,19 +193,52 @@ run_abort() {
     ok "$t"
 }
 
-# незаконная программа: транспайлер exit 1, stderr содержит [$2]
+# незаконная программа: exit 1, stderr содержит [$2]; $3 — полный golden (опционально)
 run_viol() {
-    local t=$1 rule=$2
-    if $TR "tests/$t.rza" >"$BUILD/$t.out" \
-            2>"$BUILD/$t.err"; then
-        bad "$t" "transpiler accepted invalid program (want exit 1)"
+    local t=$1 rule=$2 expected=${3:-} status
+    $TR "tests/$t.rza" >"$BUILD/$t.out" 2>"$BUILD/$t.err"
+    status=$?
+    if [ "$status" -ne 1 ]; then
+        bad "$t" "transpiler exit $status (want exit 1)"
+        cat "$BUILD/$t.err"
         return
     fi
     if ! grep --quiet "\[$rule\]" "$BUILD/$t.err"; then
         bad "$t" "no [$rule] in stderr"; cat "$BUILD/$t.err"
         return
     fi
+    if [ -n "$expected" ]; then
+        tr --delete '\r' <"$BUILD/$t.err" >"$BUILD/$t.err.lf"
+        if ! diff --unified "$expected" "$BUILD/$t.err.lf" >/dev/null 2>&1; then
+            bad "$t" "stderr mismatch"
+            diff --unified "$expected" "$BUILD/$t.err.lf"
+            return
+        fi
+    fi
     ok "$t"
+}
+
+run_viol_contract() {
+    local pass_before=$PASS fail_before=$FAIL previous_tr=$TR
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'echo "VIOLATION line 1 [STRUCT]: fake" >&2' 'exit 2' \
+        >"$BUILD/fake-compiler"
+    chmod +x "$BUILD/fake-compiler"
+    printf '%s\n' 'VIOLATION line 1 [STRUCT]: fake' >"$BUILD/fake.expected"
+    TR="$BUILD/fake-compiler" run_viol fake_contract STRUCT "$BUILD/fake.expected" \
+        >"$BUILD/fake-contract.log" 2>&1
+    TR=$previous_tr
+    if [ "$PASS" -ne "$pass_before" ]; then
+        PASS=$pass_before
+        bad run_viol_contract "accepted compiler exit 2"
+        return
+    fi
+    if [ "$FAIL" -ne $((fail_before + 1)) ]; then
+        bad run_viol_contract "did not reject compiler exit 2"
+        return
+    fi
+    FAIL=$fail_before
+    ok run_viol_contract
 }
 
 run_c3() {
@@ -236,10 +269,11 @@ run_c3_unit() {
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
     if ! "$c3c_bin" compile-test rez3asm.c3 compiler/model.c3 \
-            compiler/checker.c3 compiler/emitter.c3 lsp_server.c3 \
+            compiler/layout.c3 compiler/checker.c3 compiler/emitter.c3 lsp_server.c3 \
             memory_guard.c3 scratch_memory.c3 tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
-            tests/harness.c3 tests/function_length.c3 tests/function_length_test.c3 \
+            tests/layout_test.c3 tests/harness.c3 tests/function_length.c3 \
+            tests/function_length_test.c3 \
             -o "$BUILD/c3_tests" >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
         return
@@ -443,6 +477,8 @@ run_build_parallel() {
     ok build_parallel
 }
 
+run_viol_contract
+
 echo "== REZ3-ASM test run (compiler: $CC) =="
 for t in fib counter back_button cascade indexed decay_subtree casc_out_med \
          mangle_label mangle_proc mangle_cav no_cells unaligned; do
@@ -452,12 +488,14 @@ run_good imm_bounds
 run_good arith_wrap
 run_good shift_guard
 run_good capacity_guard
+run_good typed_table
 run_good compare_edges
 run_good skipped_decay
 run_good cav_reuse
 run_good async_fifo
 run_good async_await_empty
 run_abort async_abort "ABORT line 11: cascade blocked: dead mediator out_m"
+run_abort typed_ownership "ABORT line 39: cascade blocked: dead mediator temp_m"
 run_good async_proc_drain
 run_good async_proc_pending
 run_good async_proc_repeat
@@ -475,7 +513,17 @@ run_good slt
 run_viol viol_i64_immediate STRUCT
 run_viol viol_i64_hex STRUCT
 run_viol viol_storeb STRUCT
+run_viol viol_layout_decl STRUCT tests/viol_layout_decl.stderr
+run_viol viol_layout_dup DUP tests/viol_layout_dup.stderr
+run_viol viol_layout_use STRUCT tests/viol_layout_use.stderr
+run_viol viol_layout_access STRUCT tests/viol_layout_access.stderr
+run_viol viol_layout_scope STRUCT tests/viol_layout_scope.stderr
+run_viol viol_layout_index STRUCT tests/viol_layout_index.stderr
 run_dead storeb_oob "FAULT line 5: out of bounds x_m"
+run_dead typed_index_negative "FAULT line 5: out of bounds entries_m"
+run_dead typed_index_min "FAULT line 5: out of bounds entries_m"
+run_dead typed_index_huge "FAULT line 5: out of bounds entries_m"
+run_dead typed_scalar_index "FAULT line 5: out of bounds entries_m"
 run_dead cav_reentry "FAULT line 3: frame allocation f"
 run_dead raise_home "FAULT line 9: dead mediator x_m"
 run_dead bounds_dynamic "FAULT line 6: out of bounds x_m"
@@ -500,7 +548,7 @@ run_reference_invalid
 run_build_parallel
 
 # примеры учебника GUIDE.md — регрессия документации (аудит #3)
-for t in hello counter2 idioms settle shop; do
+for t in hello counter2 idioms settle shop typed_layout; do
     DIR=docs/examples run_good "$t"
 done
 run_dead dead_link "FAULT line 10: dead mediator acc_m"
@@ -563,6 +611,7 @@ run_viol viol_host_prefix STRUCT
 run_viol viol_cav_proc    DUP
 run_viol viol_med_gdup    DUP
 run_lib lib_hello
+run_lib lib_typed
 run_lib_compile lib_scope
 run_lib lib_abort
 run_lib lib_raise

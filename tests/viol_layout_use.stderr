@@ -1,0 +1,6 @@
+VIOLATION line 1 [STRUCT]: unknown layout Missing
+VIOLATION line 3 [STRUCT]: bad layout element count 0
+VIOLATION line 4 [STRUCT]: bad layout element count -1
+VIOLATION line 5 [STRUCT]: typed cell size out of i32 range
+VIOLATION line 6 [STRUCT]: malformed layout use Entry[1
+VIOLATION line 7 [STRUCT]: empty layout element count

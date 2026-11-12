@@ -17,8 +17,9 @@ const int CELL_MED_MAX = 64;
 const int CASC_MED_MAX = 64;
 const int SOURCE_BYTES_MAX = 1048576;
 const int OUTPUT_BYTES_MAX = 67108864;
+const int CELL_SIZE_BYTES_MAX = 2147483632;
 const int WORK_BYTES = 134217728;
-const sz OFFSET_STRING_BYTES = 32;
+const sz OFFSET_STRING_BYTES = 96;
 
 char[WORK_BYTES] work_storage;
 ArenaAllocator work_arena;
@@ -56,6 +57,22 @@ struct Frame {
     bool   is_procframe;  // рамка процедуры (by value, &f_P_x)
 }
 
+enum ScalarType : char { U8, I64 }
+
+struct LayoutField {
+    String name;
+    ScalarType scalar_type;
+    int offset_bytes;
+}
+
+struct Layout {
+    String name;
+    int first_field;
+    int field_count;
+    int size_bytes;
+    int alignment_bytes;
+}
+
 struct Cell {
     String name;
     int    owner;         // текущий владелец после raise
@@ -64,6 +81,8 @@ struct Cell {
     String cname;
     int    scope;
     bool   async_out;
+    int    layout;        // -1 = raw bytes
+    int    element_count; // 0 = raw bytes
     int[CELL_MED_MAX] med_idxs;
     int    med_count;
 }
@@ -172,6 +191,8 @@ fn void NameMap.set(NameMap* map, String key, int value) {
 
 // --- глобальное состояние ------------------------------------------------------
 List{Frame}   frames;
+List{Layout}  layouts;
+List{LayoutField} layout_fields;
 List{Cell}    cells;
 List{Med}     meds;
 List{Proc}    procs;
@@ -180,6 +201,7 @@ List{Block}   blocks;
 List{LabelDef} labels;
 List{Instr}   instrs;
 NameMap frame_map;
+NameMap layout_map;
 NameMap cell_map;
 NameMap med_map;
 NameMap proc_map;

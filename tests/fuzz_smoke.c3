@@ -14,6 +14,11 @@ const String FUZZ_SEED = "cav main, field\n"
     "decay main\n"
     "ret\n";
 
+const String LAYOUT_FUZZ_SEED = "layout Entry: key:i64, value:i64\n"
+    "res x, field, Entry[2]\nmed x_m, x, field\n"
+    "mov %r0, 42\nmov %r1, 1\nstore [x_m + %r1].value, %r0\n"
+    "load %r2, [x_m + 0].key\nprint %r2\nret\n";
+
 struct Rng {
     ulong state;
 }
@@ -62,23 +67,26 @@ fn int? check_fuzz(String text, bool emit, String diagnostic,
 }
 
 fn int? run_mutations(Rng* rng) {
-    String alphabet = "[]%,:+-x09\n";
-    for (int case_index = 0; case_index < 80; case_index++) {
-        DString text = dstring::temp(FUZZ_SEED);
-        int changes = rng.below(7) + 1;
-        for (int i = 0; i < changes; i++) {
-            sz pos = (sz)rng.below((int)text.len() + 1);
-            if (rng.below(2) == 1) {
-                String current = text.str_view();
-                DString changed = dstring::temp(current[:pos]);
-                changed.append_char(alphabet[rng.below((int)alphabet.len)]);
-                changed.append(current[pos..]);
-                text = changed;
-            } else if (text.len() > 0 && pos < text.len()) {
-                text.delete(pos);
+    String alphabet = "[]%,:+-x09.\n";
+    String[] seeds = { FUZZ_SEED, LAYOUT_FUZZ_SEED };
+    foreach (seed : seeds) {
+        for (int case_index = 0; case_index < 80; case_index++) {
+            DString text = dstring::temp(seed);
+            int changes = rng.below(7) + 1;
+            for (int i = 0; i < changes; i++) {
+                sz pos = (sz)rng.below((int)text.len() + 1);
+                if (rng.below(2) == 1) {
+                    String current = text.str_view();
+                    DString changed = dstring::temp(current[:pos]);
+                    changed.append_char(alphabet[rng.below((int)alphabet.len)]);
+                    changed.append(current[pos..]);
+                    text = changed;
+                } else if (text.len() > 0 && pos < text.len()) {
+                    text.delete(pos);
+                }
             }
+            if (check_fuzz(text.str_view(), false, "", false, 0)! != 0) return 1;
         }
-        if (check_fuzz(text.str_view(), false, "", false, 0)! != 0) return 1;
     }
     return 0;
 }
@@ -91,6 +99,9 @@ fn int? run_token_cases(Rng* rng) {
         "endc", "ret", "decay main", "jmp nowhere", "label:", "mov %r0, 1",
         "add %r1, %r0, 2", "loadb %r0, [x_m + 1]", "raise x, field",
         "cav", "", "; comment", "out[field]junk", "%r99", "2147483648",
+        "layout Entry: key:i64, value:i64", "res entries, field, Entry[2]",
+        "load %r0, [entries_m + 0].key", "store [entries_m + %r1].value, %r0",
+        "layout Entry: key:u32", "Entry[0]",
     };
     for (int case_index = 0; case_index < 80; case_index++) {
         DString text = dstring::temp();
@@ -152,6 +163,6 @@ fn int? fuzz_run() {
     if (run_mutations(&rng)! != 0) return 1;
     if (run_token_cases(&rng)! != 0) return 1;
     if (run_capacity_cases()! != 0) return 1;
-    io::printn("FUZZ OK (165 cases)");
+    io::printn("FUZZ OK (245 cases)");
     return 0;
 }

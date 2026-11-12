@@ -13,6 +13,12 @@ const String BAD_TEXT = "cav a\n";
 const String GOOD_TEXT = "cav m, field\ndecay m\nret\n";
 const String CASCADE_TEXT = "cav m, field\nres x, m, 8\nmed x_m, x, m\n"
     "casc c: x_m -> out[m]\n load %r0, [x_m + 0]\nendc\ndecay m\nret\n";
+const String LAYOUT_TEXT = "layout Value: value:i64\nres x, field, Value[2]\n"
+    "med x_m, x, field\nmov %r0, 7\nmov %r1, 1\n"
+    "store [x_m + %r1].value, %r0\nload %r0, [x_m + 0].value\nprint %r0\nret\n";
+const String LAYOUT_BAD_TEXT = "layout Value: value:i64\nres x, field, Value[2]\n"
+    "med x_m, x, field\nmov %r0, 7\nmov %r1, 1\n"
+    "store [x_m + %r1].value, %r0\nload %r0, [x_m + 0].missing\nprint %r0\nret\n";
 const ulong MEMORY_GROWTH_MAX = 512 * 1024;
 
 fn void json_string(DString* out, String text) {
@@ -124,9 +130,32 @@ fn int? document_open_checks(Process* child) {
     return 0;
 }
 
+fn int? layout_document_checks(Process* child) {
+    Object* response = lsp_call_json(child, change_message(LAYOUT_TEXT, 2))!;
+    if (!expect(json_diagnostics(response)!.len() == 0, "valid layout document")) {
+        return 1;
+    }
+    response = lsp_call_json(child, change_message(LAYOUT_BAD_TEXT, 2))!;
+    Object* diagnostics = json_diagnostics(response)!;
+    if (!expect(diagnostics.len() == 1, "layout diagnostic count")) return 1;
+    Object* diagnostic = diagnostics.get_at(0);
+    Object* start = diagnostic.get("range")!.get("start")!;
+    Object* line = start.get("line")!;
+    String message = diagnostic.get_string("message") ?? "";
+    if (!expect((diagnostic.get_string("code") ?? "") == "STRUCT" &&
+            line.is_int() && line.i == 6 && message == "unknown layout field missing",
+            "layout field diagnostic")) return 1;
+    response = lsp_call_json(child, change_message(LAYOUT_TEXT, 2))!;
+    if (!expect(json_diagnostics(response)!.len() == 0, "layout diagnostic reset")) {
+        return 1;
+    }
+    return 0;
+}
+
 fn int? churn(Process* child, int count) {
     for (int i = 0; i < count; i++) {
-        Object* response = lsp_call_json(child, change_message(CASCADE_TEXT, 2))!;
+        String text = i % 2 == 0 ? LAYOUT_TEXT : CASCADE_TEXT;
+        Object* response = lsp_call_json(child, change_message(text, 2))!;
         Object* params = response.get("params")!;
         if (!expect((params.get_string("uri") ?? "") == GOOD_URI,
                 "memory churn response")) return 1;
@@ -135,6 +164,7 @@ fn int? churn(Process* child, int count) {
 }
 
 fn int? memory_checks(Process* child) {
+    if (layout_document_checks(child)! != 0) return 1;
     if (churn(child, 32)! != 0) return 1;
     ulong before = process_memory_bytes(child)!;
     if (churn(child, 2000)! != 0) return 1;
