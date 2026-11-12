@@ -1,0 +1,154 @@
+; shop.rza — объекты и действия GUIDE.md §15.
+; Cart: id@0, count@8, total@16, status@24; status 0=open, 1=closed.
+; Order: cart_id@0, count@8, total@16, status@24; 0=not placed, 1=placed.
+; result: 0=initial, 1=applied, 2=empty cart, 3=closed cart.
+cav  session, field
+res  cart, session, 32
+res  order, session, 32
+res  result, session, 8
+res  price, field, 8
+med  cart_m, cart, session
+med  order_m, order, session
+med  result_m, result, session
+med  price_m, price, field
+
+mov  %r0, 7
+store [cart_m + 0], %r0       ; Cart id = 7; остальные поля zero-initialized
+
+proc add_item:
+    load  %r0, [cart_m + 24]
+    brnz  %r0, add_closed
+    load  %r1, [cart_m + 8]
+    inc   %r1
+    store [cart_m + 8], %r1
+    load  %r2, [cart_m + 16]
+    load  %r3, [price_m + 0]
+    add   %r4, %r2, %r3
+    store [cart_m + 16], %r4
+    mov   %r5, 1
+    store [result_m + 0], %r5
+    jmp   add_done
+add_closed:
+    mov   %r5, 3
+    store [result_m + 0], %r5
+add_done:
+    ret
+
+proc checkout:
+    casc place_order: cart_m,order_m,result_m -> checkout_out[checkout]
+        load  %r0, [cart_m + 24]
+        brnz  %r0, checkout_closed
+        load  %r1, [cart_m + 8]
+        brz   %r1, checkout_empty
+        load  %r2, [cart_m + 0]
+        store [order_m + 0], %r2
+        store [order_m + 8], %r1
+        load  %r3, [cart_m + 16]
+        store [order_m + 16], %r3
+        mov   %r4, 1
+        store [order_m + 24], %r4
+        store [cart_m + 24], %r4
+        store [result_m + 0], %r4
+        jmp   checkout_done
+checkout_empty:
+        mov   %r4, 2
+        store [result_m + 0], %r4
+        jmp   checkout_done
+checkout_closed:
+        mov   %r4, 3
+        store [result_m + 0], %r4
+checkout_done:
+    endc
+    ret
+
+call checkout
+load %r0, [result_m + 0]
+print %r0                       ; 2: открытая пустая корзина не оформляется
+load %r1, [cart_m + 0]
+print %r1                       ; 7: reject сохранил исходный Cart id
+load %r2, [cart_m + 8]
+print %r2                       ; 0: reject оставил пустой Cart count
+load %r3, [cart_m + 16]
+print %r3                       ; 0: reject оставил нулевой Cart total
+load %r4, [cart_m + 24]
+print %r4                       ; 0: reject оставил Cart открытым
+load %r5, [order_m + 0]
+print %r5                       ; 0: empty checkout не записал cart_id
+load %r6, [order_m + 8]
+print %r6                       ; 0: empty checkout не записал Order count
+load %r7, [order_m + 16]
+print %r7                       ; 0: empty checkout не записал Order total
+load %r1, [order_m + 24]
+print %r1                       ; 0: rejected checkout не создал placed Order
+
+mov %r0, 10
+store [price_m + 0], %r0
+call add_item
+mov %r0, 20
+store [price_m + 0], %r0
+call add_item
+mov %r0, 30
+store [price_m + 0], %r0
+call add_item
+load %r0, [cart_m + 8]
+print %r0                       ; 3: три успешных add_item по одному товару
+load %r1, [cart_m + 16]
+print %r1                       ; 60 = 10 + 20 + 30
+
+call checkout
+load %r0, [result_m + 0]
+print %r0                       ; 1: открытая непустая корзина оформлена
+load %r1, [order_m + 0]
+print %r1                       ; 7: Order сохранил business link на Cart id
+load %r2, [order_m + 8]
+print %r2                       ; 3: checkout скопировал три товара в Order
+load %r3, [order_m + 16]
+print %r3                       ; 60: checkout скопировал сумму 10 + 20 + 30
+load %r4, [cart_m + 24]
+print %r4                       ; 1: успешный checkout закрыл Cart
+
+call checkout
+load %r0, [result_m + 0]
+print %r0                       ; 3: повторный checkout отклонён, Cart закрыт
+load %r1, [cart_m + 0]
+print %r1                       ; 7: duplicate checkout сохранил Cart id
+load %r2, [cart_m + 8]
+print %r2                       ; 3: duplicate checkout сохранил Cart count
+load %r3, [cart_m + 16]
+print %r3                       ; 60: duplicate checkout сохранил Cart total
+load %r4, [cart_m + 24]
+print %r4                       ; 1: duplicate checkout не переоткрыл Cart
+load %r5, [order_m + 0]
+print %r5                       ; 7: duplicate checkout сохранил cart_id
+load %r6, [order_m + 8]
+print %r6                       ; 3: duplicate checkout сохранил Order count
+load %r7, [order_m + 16]
+print %r7                       ; 60: duplicate checkout сохранил Order total
+load %r1, [order_m + 24]
+print %r1                       ; 1: duplicate checkout сохранил placed Order
+
+mov %r0, 40
+store [price_m + 0], %r0
+call add_item
+load %r0, [result_m + 0]
+print %r0                       ; 3: add_item после закрытия отклонён
+load %r1, [cart_m + 0]
+print %r1                       ; 7: rejected add_item сохранил Cart id
+load %r2, [cart_m + 8]
+print %r2                       ; 3: rejected add_item не изменил count
+load %r3, [cart_m + 16]
+print %r3                       ; 60: rejected add_item не добавил 40
+load %r4, [cart_m + 24]
+print %r4                       ; 1: rejected add_item не переоткрыл Cart
+load %r5, [order_m + 0]
+print %r5                       ; 7: rejected add_item сохранил cart_id
+load %r6, [order_m + 8]
+print %r6                       ; 3: rejected add_item сохранил Order count
+load %r7, [order_m + 16]
+print %r7                       ; 60: rejected add_item сохранил Order total
+load %r1, [order_m + 24]
+print %r1                       ; 1: rejected add_item сохранил placed Order
+
+decay session
+probe cart_m                    ; DEAD: decay session завершил lifetime Cart
+ret

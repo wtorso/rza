@@ -56,7 +56,7 @@ jobs:
         run: |
           bash build_compiler.sh
           mkdir --parents build
-          ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
+          ./rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
           $CC -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
             build/hello.c -o build/hello.exe
@@ -117,7 +117,7 @@ jobs:
         run: |
           bash build_compiler.sh
           mkdir --parents build
-          ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
+          ./rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
           zig version
           zig cc -v -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \

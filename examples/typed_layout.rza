@@ -1,0 +1,34 @@
+layout Entry: key:i64, value:i64
+layout Pair: tag:u8, value:i64
+res entries, field, Entry[2]
+res pair, field, Pair[2]
+med entries_m, entries, field
+med pair_m, pair, field
+mov %r0, 11
+store [entries_m + 0].key, %r0
+mov %r0, 7
+store [entries_m + 0].value, %r0
+mov %r0, 22
+store [entries_m + 1].key, %r0
+mov %r0, 5
+mov %r1, 1
+store [entries_m + %r1].value, %r0
+load %r0, [entries_m + 0].key
+load %r1, [entries_m + 0].value
+mul %r2, %r0, %r1
+load %r0, [entries_m + 1].key
+mov %r1, 1
+load %r1, [entries_m + %r1].value
+mul %r3, %r0, %r1
+add %r2, %r2, %r3
+print %r2                 ; 11 * 7 + 22 * 5 = 187
+mov %r1, 1
+mov %r0, -7
+store [pair_m + %r1].value, %r0
+mov %r0, 300
+storeb [pair_m + %r1].tag, %r0
+loadb %r1, [pair_m + 1].tag
+print %r1                 ; 300 mod 256 = 44, value stays -7
+load %r1, [pair_m + 1].value
+print %r1
+ret

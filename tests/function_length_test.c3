@@ -97,7 +97,7 @@ fn void function_length_source_path_filter() @test {
     assert(source_path_allowed("tests/runtime_safety.c"));
     assert(!source_path_allowed("out/bad.c3"));
     assert(!source_path_allowed("build/bad.c3"));
-    assert(!source_path_allowed("docs/GUIDE.md"));
+    assert(!source_path_allowed("README.md"));
     assert(!source_path_allowed("tests/old.py"));
 }
 

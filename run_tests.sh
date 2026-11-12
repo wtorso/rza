@@ -555,7 +555,7 @@ run_build_parallel
 
 # примеры учебника GUIDE.md — регрессия документации (аудит #3)
 for t in hello counter2 idioms settle shop typed_layout; do
-    DIR=docs/examples run_good "$t"
+    DIR=examples run_good "$t"
 done
 run_dead dead_link "FAULT line 10: dead mediator acc_m"
 run_dead ret_dead "FAULT line 8: dead mediator x_m"
