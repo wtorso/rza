@@ -30,6 +30,7 @@
         "tests/runner.c3",
         "tests/harness.c3",
         "tests/function_length.c3",
+        "tests/source_style.c3",
         "tests/deterministic_artifacts.c3",
         "tests/tiny_budgets.c3",
         "tests/fuzz_smoke.c3",

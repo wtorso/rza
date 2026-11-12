@@ -8,6 +8,7 @@ fn int main(String[] args) {
         return 2;
     }
     if (args[1] == "function-style") return function_style_main(args[2..]);
+    if (args[1] == "line-style") return source_line_style_main(args[2..]);
     if (args[1] == "artifacts") return artifacts_main();
     if (args[1] == "budgets") return budgets_main();
     if (args[1] == "fuzz") return fuzz_main();

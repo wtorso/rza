@@ -39,6 +39,8 @@ if [ "${OS:-}" = "Windows_NT" ]; then
     esac
 fi
 export CC CFLAGS LDFLAGS
+DIFF_OPTIONS="--strip-trailing-cr"
+export DIFF_OPTIONS
 BUILD=".test-build-$$"
 rm --recursive --force "$BUILD"
 mkdir --parents "$BUILD"
@@ -49,28 +51,13 @@ ok()  { PASS=$((PASS+1)); echo "PASS $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL $1 -- $2"; }
 
 run_style() {
-    local status
-    if ! : >"$BUILD/style.out"; then
-        bad style "cannot write style output"
-        return
-    fi
-    git grep --untracked --line-number --perl-regexp '(*UTF).{101}' -- \
-        '*.c3' '*.c' '*.h' '*.sh' '*.md' '*.rza' '*.expected' \
-        '.gitignore' '.gitmodules' 'LICENSE' >"$BUILD/style.out" 2>&1
-    status=$?
-    if [ "$status" -eq 0 ]; then
+    if ! "$BUILD/rza_tests.exe" line-style >"$BUILD/style.out" 2>&1; then
         bad style "lines longer than 100"
-        cat "$BUILD/style.out"
-        return
-    fi
-    if [ "$status" -ne 1 ]; then
-        bad style "git grep failed"
         cat "$BUILD/style.out"
         return
     fi
     ok style
 }
-run_style
 
 run_function_style() {
     local c3c_bin="c3c"
@@ -78,7 +65,7 @@ run_function_style() {
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
     if ! "$c3c_bin" compile tests/runner.c3 tests/harness.c3 \
-            tests/function_length.c3 tests/deterministic_artifacts.c3 \
+            tests/function_length.c3 tests/source_style.c3 tests/deterministic_artifacts.c3 \
             tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
             tests/ownership_fuzz.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
             tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_memory_posix.c3 \
@@ -99,6 +86,7 @@ run_function_style() {
     ok function_style
 }
 run_function_style
+run_style
 
 echo "== build rez3asm.exe (c3c) =="
 bash build_compiler.sh
@@ -287,7 +275,7 @@ run_c3_unit() {
             memory_guard.c3 scratch_memory.c3 tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
             tests/layout_test.c3 tests/harness.c3 tests/function_length.c3 \
-            tests/function_length_test.c3 \
+            tests/source_style.c3 tests/source_style_test.c3 tests/function_length_test.c3 \
             -o "$BUILD/c3_tests" >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
         return

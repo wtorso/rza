@@ -1,6 +1,7 @@
 module rza_tests @feat(WIN32) @link("psapi");
 
 import std::os::process;
+import std::os::win32;
 
 struct ProcessMemoryCounters {
     Win32_DWORD cb;
