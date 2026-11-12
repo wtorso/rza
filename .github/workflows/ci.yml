@@ -94,7 +94,6 @@ jobs:
           bash build_compiler.sh
           mkdir --parents build
           ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
-          where.exe zig
           zig version
           zig cc -v -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
