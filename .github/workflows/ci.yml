@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -83,14 +83,11 @@ jobs:
           bash build_compiler.sh
           mkdir --parents build
           ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
-          where.exe clang
-          clang --version
-          clang -print-resource-dir
-          export LDFLAGS="-L$(cygpath -m -s "$(clang -print-resource-dir)")/lib/windows \
-            -Wl,/ignore:4217"
-          clang -v -std=c23 -pedantic -Wall -Wextra -Werror \
+          where.exe clang-cl
+          clang-cl --version
+          clang-cl -v -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
-            $LDFLAGS build/hello.c -o build/hello.exe
+            build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
       - name: Full suite
         shell: bash
