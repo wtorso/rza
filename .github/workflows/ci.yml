@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: rza-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -11,10 +14,15 @@ concurrency:
 jobs:
   linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        cc: [gcc, clang]
+        include:
+          - cc: gcc
+          - cc: clang
+          - cc: zig cc
+            rust_cc: clang
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
@@ -29,13 +37,27 @@ jobs:
           tar -xzf build/toolchain/c3.tar.gz -C build/toolchain
           printf '%s\n' "$PWD/build/toolchain/c3" >> "$GITHUB_PATH"
           "$PWD/build/toolchain/c3/c3c" --version
+      - name: Install Zig 0.16.0
+        if: matrix.cc == 'zig cc'
+        shell: bash
+        run: |
+          curl -fL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz \
+            -o build/toolchain/zig.tar.xz
+          printf '%s  %s\n' \
+            '70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00' \
+            build/toolchain/zig.tar.xz | sha256sum --check
+          tar -xJf build/toolchain/zig.tar.xz -C build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-linux-0.16.0/zig" version
       - name: Quickstart
         shell: bash
+        env:
+          CC: ${{ matrix.cc }}
         run: |
           bash build_compiler.sh
           mkdir --parents build
           ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
-          "${{ matrix.cc }}" -std=c23 -pedantic -Wall -Wextra -Werror \
+          "$CC" -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
@@ -43,6 +65,7 @@ jobs:
         shell: bash
         env:
           CC: ${{ matrix.cc }}
+          RUST_CC: ${{ matrix.rust_cc }}
         run: bash run_tests.sh
       - name: Hygiene
         shell: bash
@@ -61,6 +84,7 @@ jobs:
           fi
   windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
@@ -150,15 +174,19 @@ jobs:
           printf '%s\n' "$PWD/build/toolchain/c3" >> "$GITHUB_PATH"
           "$PWD/build/toolchain/c3/c3c" --version
       - name: Install Node 22.14.0
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.14.0
+          cache: false
       - name: Build compiler
         shell: bash
         run: bash build_compiler.sh
       - name: Install extension dependencies
         shell: bash
         run: npm ci --prefix editors/vscode
+      - name: Audit production dependencies
+        shell: bash
+        run: npm audit --omit=dev --prefix editors/vscode
       - name: Unit tests
         shell: bash
         run: npm test --prefix editors/vscode

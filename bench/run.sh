@@ -9,9 +9,10 @@ fi
 BUILD=${RZA_BENCH_BUILD:-build/bench}
 CC=${CC:-cc}
 RUSTC=${RUSTC:-rustc}
+RUST_CC=${RUST_CC:-$CC}
 CFLAGS="-std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I ."
 LDFLAGS=${LDFLAGS:-}
-export CC CFLAGS LDFLAGS RUSTC
+export CC CFLAGS LDFLAGS RUSTC RUST_CC
 REPEATS=${RZA_BENCH_COMPILE_REPEATS:-20}
 SAMPLES=${RZA_BENCH_SAMPLES:-11}
 BATCH=${RZA_BENCH_BATCH:-256}
@@ -52,7 +53,7 @@ build_rust() {
     local name=$1
     $RUSTC --edition=2021 -D warnings --crate-type=staticlib -O "bench/$name.rs" \
         -o "$BUILD/lib$name.a"
-    $CC $CFLAGS $LDFLAGS bench/runtime_host.c bench/timer.c "$BUILD/lib$name.a" \
+    $RUST_CC $CFLAGS $LDFLAGS bench/runtime_host.c bench/timer.c "$BUILD/lib$name.a" \
         -lpthread -ldl -lm -o "$BUILD/${name}_rust"
 }
 
@@ -75,6 +76,8 @@ RESULTS="$BUILD/results.txt"
     fi
     printf 'cc=%s\n' "$CC"
     $CC --version | sed -n '1p'
+    printf 'rust_link_cc=%s\n' "$RUST_CC"
+    $RUST_CC --version | sed -n '1p'
     printf 'c3c=%s\n' "$(command -v c3c || true)"
     c3c --version
     $RUSTC --version
@@ -114,7 +117,7 @@ for name in crc32c table; do
             -o $BUILD/${name}_c"
     measure "compile_${name}_rust" bash -c \
         "$RUSTC --edition=2021 -D warnings --crate-type=staticlib -O bench/$name.rs \
-            -o $BUILD/lib$name.a && $CC $CFLAGS $LDFLAGS bench/runtime_host.c \
+            -o $BUILD/lib$name.a && $RUST_CC $CFLAGS $LDFLAGS bench/runtime_host.c \
             bench/timer.c $BUILD/lib$name.a -lpthread -ldl -lm -o $BUILD/${name}_rust"
     measure "backend_${name}_rza" $CC $CFLAGS $LDFLAGS "$BUILD/$name.rza.c" \
         "bench/$host" bench/runtime_host.c bench/timer.c \

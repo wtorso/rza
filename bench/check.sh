@@ -11,6 +11,7 @@ CC=${CC:-cc}
 CFLAGS=${CFLAGS:--std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I .}
 LDFLAGS=${LDFLAGS:-}
 RUSTC=${RUSTC:-rustc}
+RUST_CC=${RUST_CC:-$CC}
 mkdir --parents "$BUILD"
 
 build_rza() {
@@ -30,7 +31,7 @@ build_rust() {
     local name=$1
     $RUSTC --edition=2021 --crate-type=staticlib -D warnings -O "bench/$name.rs" \
         -o "$BUILD/lib$name.a"
-    $CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/lib$name.a" \
+    $RUST_CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/lib$name.a" \
         -lpthread -ldl -lm -o "$BUILD/${name}_rust"
 }
 
@@ -72,7 +73,7 @@ $CC $CFLAGS $LDFLAGS "$BUILD/table_full.c" bench/bench_check.c \
     -o "$BUILD/table_full_c"
 $RUSTC --edition=2021 -D warnings --crate-type=staticlib -O "$BUILD/table_full.rs" \
     -o "$BUILD/libtable_full.a"
-$CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/libtable_full.a" \
+$RUST_CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/libtable_full.a" \
     -lpthread -ldl -lm -o "$BUILD/table_full_rust"
 for name in table_full_rza table_full_c table_full_rust; do
     check_output "$name" table_full
