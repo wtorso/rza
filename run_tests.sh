@@ -22,6 +22,12 @@ fi
 LDFLAGS="${LDFLAGS:-}"
 if [ "${OS:-}" = "Windows_NT" ]; then
     case "$CC" in
+        *clang-cl*)
+            case "$LDFLAGS" in
+                *"/ignore:4217"*) ;;
+                *) LDFLAGS+=" /link /ignore:4217" ;;
+            esac
+            ;;
         *clang*)
             clang_resource_dir=$(cygpath -m -s "$($CC -print-resource-dir)")
             LDFLAGS="-L$clang_resource_dir/lib/windows $LDFLAGS"

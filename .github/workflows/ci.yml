@@ -85,14 +85,18 @@ jobs:
           ./rez3asm.exe docs/examples/hello.rza --emit-c -o build/hello.c
           where.exe clang-cl
           clang-cl --version
-          clang-cl -v -std=c23 -pedantic -Wall -Wextra -Werror \
+          clang-cl -v -Xclang -std=c23 -Xclang -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
       - name: Full suite
         shell: bash
         env:
-          CC: clang
+          CC: clang-cl
+          CFLAGS: >-
+            -Xclang -std=c23 -Xclang -pedantic -Wall -Wextra -Werror
+            -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I .
+          LDFLAGS: /link /ignore:4217
         run: bash run_tests.sh
       - name: Hygiene
         shell: bash
