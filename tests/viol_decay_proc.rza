@@ -1,4 +1,4 @@
-; DECAY: рамку процедуры разрушает ret, явный decay запрещён (SPEC §6)
+; DECAY: рамку процедуры разрушает ret, явный decay запрещён (SPEC procedures)
 proc p:
     decay p        ; VIOLATION [DECAY]: leave of procedure frame (use ret)
     ret

@@ -1,4 +1,4 @@
-; STRUCT: boot, arena_alloc, deref_cell зарезервированы host API (SPEC §11).
+; STRUCT: boot, arena_alloc, deref_cell зарезервированы host API (SPEC host ABI).
 proc boot:                 ; VIOLATION [STRUCT]: collides with host API
     ret
 ret

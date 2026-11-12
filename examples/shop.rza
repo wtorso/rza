@@ -1,4 +1,4 @@
-; shop.rza — объекты и действия GUIDE.md §15.
+; shop.rza — объекты и действия: корзина и заказ.
 ; Cart: id@0, count@8, total@16, status@24; status 0=open, 1=closed.
 ; Order: cart_id@0, count@8, total@16, status@24; 0=not placed, 1=placed.
 ; result: 0=initial, 1=applied, 2=empty cart, 3=closed cart.

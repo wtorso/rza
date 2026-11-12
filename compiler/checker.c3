@@ -268,13 +268,13 @@ fn int find_proc(String name) {
     return proc_map.get(name) ?? -1;
 }
 
-// Имена host API уникальны и проверяются до генерации C (SPEC §11).
+// Имена host API уникальны и проверяются до генерации C (SPEC host ABI).
 fn bool host_name_bad(String name, int line) {
     if (name == "boot" || name == "arena_alloc" || name == "deref_cell" ||
         name == "rez3ext_abi" || name == "await" ||
         name.starts_with("frame_") || name.starts_with("med_")) {
         viol(line, "STRUCT", cat({"procedure name ", name,
-             " collides with lib host API (SPEC 11)"}));
+             " collides with lib host API (SPEC host ABI)"}));
         return true;
     }
     return false;
@@ -537,7 +537,7 @@ fn void op_med(String rest, int line) {
     // Host API экспортирует каждый медиатор: имя глобально уникально.
     if (med_map.has_key(name)) {
         viol(line, "DUP", cat({"duplicate mediator ", name,
-             " (host API exports every mediator, SPEC 11)"}));
+             " (host API exports every mediator, SPEC host ABI)"}));
         return;
     }
     if (at_capacity(meds.len(), line, "mediators")) return;

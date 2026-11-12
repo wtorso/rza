@@ -1,4 +1,4 @@
-; hello.rza — первый пример GUIDE.md §4: счётчик в field-ячейке.
+; hello.rza — счётчик в field-ячейке: 41 = 41 + 0.
 res  acc, field, 8          ; ячейка 8 байт (один i64) в корневой рамке
 med  acc_m, acc, field      ; проход к ней выдаёт field (владелец)
 

@@ -1,4 +1,4 @@
-; settle.rza — каскад GUIDE.md §10: атомарный батч над двумя ячейками.
+; settle.rza — атомарный каскад над двумя ячейками.
 cav  session, field
 res  hp, session, 16
 res  pos, session, 8

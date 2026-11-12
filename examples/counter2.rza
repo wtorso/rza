@@ -1,4 +1,4 @@
-; counter2.rza — пример GUIDE.md §9: proc, вызванный дважды; ячейка
+; counter2.rza — proc вызывается дважды; ячейка
 ; бессмертна (field), медиатор выдан field; proc видит field-медиаторы.
 res  counter, field, 8
 med  counter_m, counter, field

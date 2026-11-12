@@ -553,7 +553,7 @@ run_reference
 run_reference_invalid
 run_build_parallel
 
-# примеры учебника GUIDE.md — регрессия документации (аудит #3)
+# примеры с независимо вычисленным ожидаемым выводом
 for t in hello counter2 idioms settle shop typed_layout; do
     DIR=examples run_good "$t"
 done

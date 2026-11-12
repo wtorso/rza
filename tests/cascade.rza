@@ -43,7 +43,7 @@ res  lifted, tmp, 8
 raise lifted, main
 med  lifted_m, lifted, main
 mov  %r6, 77
-store [lifted_m + 0], %r6   ; память физически в tmp — tmp ещё жив (SPEC 9)
+store [lifted_m + 0], %r6   ; память физически в tmp — tmp ещё жив (SPEC boundaries)
 load  %r7, [lifted_m + 0]
 print %r7                  ; 77 — константа, записанная в lifted после raise
 decay tmp

@@ -415,7 +415,7 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
         case Op.RAISE:
             pad(out, ind);
             out.appendf("/* raise %s -> %s (line %d): static-only, "
-                        "no code (SPEC 9) */\n",
+                        "no code (SPEC boundaries) */\n",
                         cells[ins.x].name, frames[ins.y].name, ins.line);
         case Op.DECAY:
             emit_decay_subtree(out, ind, ins.x);
