@@ -56,8 +56,8 @@ dump table_rza rza_table
 dump table_c table_step
 dump table_rust table_step
 
-$CC -std=c23 -O2 -I refs -I . -c bench/safety/null_check.c -o "$ASM/null_default.o"
-$CC -std=c23 -O2 -fno-delete-null-pointer-checks -I refs -I . \
+$CC -std=c23 -O2 -I include/rza -I . -c bench/safety/null_check.c -o "$ASM/null_default.o"
+$CC -std=c23 -O2 -fno-delete-null-pointer-checks -I include/rza -I . \
     -c bench/safety/null_check.c -o "$ASM/null_hardened.o"
 objdump --disassemble=tun_poll_guard "$ASM/null_default.o" >"$ASM/null_default.asm"
 objdump --disassemble=tun_poll_guard "$ASM/null_hardened.o" >"$ASM/null_hardened.asm"

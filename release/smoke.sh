@@ -53,7 +53,7 @@ diff --unified "$root/tests/cli_help.expected" "$work/help.out"
 test ! -s "$work/help.err"
 "$compiler" "$root/examples/hello.rza" --emit-c -o "$work/hello.c"
 ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror \
-    -I "$root/refs" "$work/hello.c" -o "$executable"
+    -I "$root/include/rza" "$work/hello.c" -o "$executable"
 test "$("$executable")" = 41
 RZA_COMPILER="$compiler" bash "$root/tests/install_smoke.sh"
 printf 'RELEASE_SMOKE OK package=%s output=41\n' "$package"

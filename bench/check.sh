@@ -8,13 +8,13 @@ if [ "$#" -ne 1 ]; then
 fi
 BUILD=$1
 CC=${CC:-cc}
-CFLAGS=${CFLAGS:--std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I .}
+CFLAGS=${CFLAGS:--std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I .}
 LDFLAGS=${LDFLAGS:-}
 RUSTC=${RUSTC:-rustc}
 RUST_CC=${RUST_CC:-$CC}
 if [ -z "${RZA_COMPILER:-}" ]; then
-    RZA_COMPILER="./rez3asm"
-    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./rez3asm.exe"; fi
+    RZA_COMPILER="./build/bin/rez3asm"
+    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./build/bin/rez3asm.exe"; fi
 fi
 mkdir --parents "$BUILD"
 

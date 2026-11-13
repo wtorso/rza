@@ -75,11 +75,11 @@ mkdir --parents "$root"
 stage_sources "$root"
 write_release "$root" "$version" "$target" "$commit" "$dirty"
 
-compiler="rez3asm"
-if [ "${OS:-}" = "Windows_NT" ]; then compiler="rez3asm.exe"; fi
+compiler="build/bin/rez3asm"
+if [ "${OS:-}" = "Windows_NT" ]; then compiler="build/bin/rez3asm.exe"; fi
 RZA_RELEASE=1 bash build_compiler.sh >"$out/build.log" 2>&1
-cp -p "$compiler" "$root/$compiler"
-chmod 0755 "$root/$compiler"
+cp -p "$compiler" "$root/${compiler##*/}"
+chmod 0755 "$root/${compiler##*/}"
 chmod -R u=rwX,go=rX "$root"
 tar --sort=name --format=ustar --owner=0 --group=0 --numeric-owner \
     --mtime="@0" -cf "$out/$package.tar" -C "$stage" "$package"

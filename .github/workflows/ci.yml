@@ -56,9 +56,9 @@ jobs:
         run: |
           bash build_compiler.sh
           mkdir --parents build
-          ./rez3asm examples/hello.rza --emit-c -o build/hello.c
+          ./build/bin/rez3asm examples/hello.rza --emit-c -o build/hello.c
           $CC -std=c23 -pedantic -Wall -Wextra -Werror \
-            -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
+            -fsanitize=undefined -fno-sanitize-recover=undefined -I include/rza -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
       - name: Full suite
@@ -126,10 +126,10 @@ jobs:
         run: |
           bash build_compiler.sh
           mkdir --parents build
-          ./rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
+          ./build/bin/rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
           zig version
           zig cc -v -std=c23 -pedantic -Wall -Wextra -Werror \
-            -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
+            -fsanitize=undefined -fno-sanitize-recover=undefined -I include/rza -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
       - name: Full suite

@@ -22,13 +22,14 @@ if [ -n "${RZA_COMPILER:-}" ]; then
     fi
 else
     bash build_compiler.sh
-    RZA_COMPILER="./$compiler_name"
+    RZA_COMPILER="./build/bin/$compiler_name"
 fi
 
 install -d "${DESTDIR}${PREFIX}/bin" \
     "${DESTDIR}${PREFIX}/include/rza" \
     "${DESTDIR}${PREFIX}/share/doc/rza"
 install -m 0755 "$RZA_COMPILER" "${DESTDIR}${PREFIX}/bin/$compiler_name"
-install -m 0644 refs/rez3.h refs/rez3ext.h "${DESTDIR}${PREFIX}/include/rza"
+install -m 0644 include/rza/rez3.h include/rza/rez3ext.h \
+    "${DESTDIR}${PREFIX}/include/rza"
 install -m 0644 LICENSE "${DESTDIR}${PREFIX}/share/doc/rza/LICENSE"
 printf 'RZA installed in %s\n' "${DESTDIR}${PREFIX}"

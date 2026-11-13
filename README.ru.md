@@ -37,14 +37,14 @@ cd rza
 bash build_compiler.sh
 ```
 
-Скрипт записывает компилятор в корень репозитория: `./rez3asm` на POSIX и
-`rez3asm.exe` на Windows.
+Скрипт записывает компилятор в `./build/bin/rez3asm` на POSIX и
+`./build/bin/rez3asm.exe` на Windows.
 Соберите и запустите готовый standalone-пример:
 
 ```sh
 mkdir -p build
-./rez3asm examples/hello.rza --emit-c -o build/hello.c
-${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
+./build/bin/rez3asm examples/hello.rza --emit-c -o build/hello.c
+${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I . \
   build/hello.c -o build/hello
 ./build/hello
 ```
@@ -58,7 +58,7 @@ ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
 ### Проверка без генерации C
 
 ```sh
-./rez3asm examples/hello.rza
+./build/bin/rez3asm examples/hello.rza
 ```
 
 Для корректной программы компилятор ничего не выводит и завершается со статусом 0.
@@ -184,16 +184,16 @@ ret
 `load`/`store`, для `u8` — `loadb`/`storeb`. Raw-ячейки используют byte offsets и
 не имеют селектора поля.
 
-[Полный typed-пример](examples/typed_layout.rza) показывает массивы, padding и
-усечение байтов.
+[Пример ring buffer](examples/ring_buffer.rza) показывает typed-состояние,
+массив записей и арифметику индексов с фиксированной ёмкостью.
 
 ## Встраивание в C
 
 Сгенерируйте библиотеку и скомпонуйте её с готовым host:
 
 ```sh
-./rez3asm examples/shop.rza --emit-lib -o build/shop.c
-${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
+./build/bin/rez3asm examples/shop.rza --emit-lib -o build/shop.c
+${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I . \
   build/shop.c examples/shop_host.c -o build/shop_host
 ./build/shop_host
 ```
@@ -210,12 +210,10 @@ shop. Его вывод совпадает с `examples/shop.expected` и зак
 
 ## Примеры и редакторы
 
-- [hello](examples/hello.rza): ячейки, медиаторы, арифметика и вывод.
-- [counter2](examples/counter2.rza): вызовы процедур и общая field-память.
-- [idioms](examples/idioms.rza): сравнения и переходы без CPU flags.
-- [settle](examples/settle.rza): синхронный каскад над двумя ячейками.
-- [shop](examples/shop.rza): более длинный пример изменений состояния.
-- [typed_layout](examples/typed_layout.rza): typed-записи и byte-поля.
+- [hello](examples/hello.rza): минимальная запускаемая программа.
+- [ring_buffer](examples/ring_buffer.rza): ограниченный FIFO с typed-состоянием,
+  отклонением операций при empty/full и wraparound.
+- [shop](examples/shop.rza): переходы состояний и встраивание в C host.
 
 Там, где применимо, рядом с примером находится `.expected` с ожидаемым выводом.
 [Расширение VS Code](https://github.com/wtorso/rza-vscode) подсвечивает синтаксис и
@@ -257,7 +255,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=156 FAIL=0` на POSIX и `PASS=155 FAIL=0` на Windows.
+Ожидаемый результат: `PASS=153 FAIL=0` на POSIX и `PASS=152 FAIL=0` на Windows.
 На Windows не запускаются только специфичные для Linux проверки исходников
 benchmark; на Linux для них также нужен `rustc`.
 
@@ -276,15 +274,16 @@ Release workflow поддерживает ручной dry run и публика
 
 ## Структура репозитория
 
-- `compiler/`: модель языка, layouts, checker и C23 emitter.
-- `rez3asm.c3`, `lsp_server.c3`: CLI и языковой сервер.
-- `memory_guard.c3`, `scratch_memory.c3`: ограничения памяти и ownership компилятора.
+- `src/`: CLI, языковой сервер, модель языка, layouts, checker, C23 emitter и
+  memory helpers компилятора.
+- `include/rza/`: публичные headers fixed-storage C23 runtime.
+- `build/bin/`: игнорируемый результат сборки native compiler.
 - `install.sh`: установка native compiler и headers через `PREFIX` и `DESTDIR`.
 - `release/`: воспроизводимая упаковка, smoke-проверки и release notes.
-- `examples/`: runnable примеры и ожидаемый вывод.
+- `examples/`: небольшой набор практических примеров и ожидаемый вывод.
 - `tests/`: positive, negative, runtime, ABI, LSP, fuzz и style проверки.
+- `tests/reference/`: эталонный C23 checker и статическая reference-программа.
 - `bench/`: сравниваемые workloads, timing и disassembly checks.
-- `refs/`: общее fixed-storage C23 runtime и reference tools.
 - `editors/vscode`: расширение VS Code как отдельный submodule.
 
 ## Лицензия

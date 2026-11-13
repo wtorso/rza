@@ -16,16 +16,18 @@ case "${RZA_RELEASE:-0}" in
         ;;
     *) echo "FATAL: RZA_RELEASE must be 0 or 1" >&2; exit 2 ;;
 esac
-TARGET="rez3asm"
-if [ "${OS:-}" = "Windows_NT" ]; then TARGET="rez3asm.exe"; fi
-NEW="rez3asm.$$.new"
-OLD="rez3asm.$$.old"
+BIN_DIR="build/bin"
+mkdir --parents "$BIN_DIR"
+TARGET="$BIN_DIR/rez3asm"
+if [ "${OS:-}" = "Windows_NT" ]; then TARGET="$BIN_DIR/rez3asm.exe"; fi
+NEW="$BIN_DIR/rez3asm.$$.new"
+OLD="$BIN_DIR/rez3asm.$$.old"
 trap 'rm --force "$NEW" "$NEW.exe" "$NEW.pdb" "$OLD.exe" "$OLD.pdb" \
     2>/dev/null || true' EXIT
 
-if ! $C3C compile rez3asm.c3 compiler/model.c3 compiler/layout.c3 \
-        compiler/checker.c3 compiler/emitter.c3 lsp_server.c3 memory_guard.c3 \
-        scratch_memory.c3 -o "$NEW" "${RELEASE_FLAGS[@]}" \
+if ! $C3C compile src/rez3asm.c3 src/compiler/model.c3 src/compiler/layout.c3 \
+        src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp_server.c3 \
+        src/memory_guard.c3 src/scratch_memory.c3 -o "$NEW" "${RELEASE_FLAGS[@]}" \
         --validation=obnoxious \
         --warn-deadcode=error \
         --warn-recursivecontracts=error \
@@ -50,10 +52,10 @@ if ! mv --force "$NEW.exe" "$TARGET" 2>/dev/null; then
         || { echo "FATAL: cannot replace $TARGET" >&2; exit 2; }
 fi
 if [ -f "$NEW.pdb" ]; then
-    if ! mv --force "$NEW.pdb" rez3asm.pdb; then
-        echo "FATAL: cannot replace rez3asm.pdb" >&2
+    if ! mv --force "$NEW.pdb" "$BIN_DIR/rez3asm.pdb"; then
+        echo "FATAL: cannot replace $BIN_DIR/rez3asm.pdb" >&2
         exit 2
     fi
 else
-    rm --force rez3asm.pdb
+    rm --force "$BIN_DIR/rez3asm.pdb"
 fi

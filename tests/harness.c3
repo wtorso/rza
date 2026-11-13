@@ -19,9 +19,9 @@ char[PROCESS_OUTPUT_BYTES_MAX] process_stderr_buf;
 
 fn String compiler_path() {
     $if env::WIN32:
-        return "./rez3asm.exe";
+        return "./build/bin/rez3asm.exe";
     $else
-        return "./rez3asm";
+        return "./build/bin/rez3asm";
     $endif
 }
 
@@ -111,7 +111,7 @@ fn ProcessResult? compile_c(String generated, String executable) {
     String cc = env_or("CC", "zig cc");
     String cflags = env_or("CFLAGS",
         "-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
-        "-fno-sanitize-recover=undefined -I refs -I .");
+        "-fno-sanitize-recover=undefined -I include/rza -I .");
     command.push_all(cc.tsplit(" ", skip_empty: true));
     command.push_all(cflags.tsplit(" ", skip_empty: true));
     command.push_all(env_or("LDFLAGS", "").tsplit(" ", skip_empty: true));

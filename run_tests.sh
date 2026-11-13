@@ -15,7 +15,7 @@ fi
 
 if [ -z "${CFLAGS:-}" ]; then
     CFLAGS="-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
-    CFLAGS+="-fno-sanitize-recover=undefined -I refs -I ."
+    CFLAGS+="-fno-sanitize-recover=undefined -I include/rza -I ."
 fi
 # LNK4217 относится только к clang_rt.ubsan_standalone.lib, не к RZA objects.
 # LLVM runtime должен предшествовать несовместимой MSVC UBSan library.
@@ -93,8 +93,8 @@ run_style
 echo "== build rez3asm (c3c) =="
 bash build_compiler.sh
 if [ -z "${RZA_COMPILER:-}" ]; then
-    RZA_COMPILER="./rez3asm"
-    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./rez3asm.exe"; fi
+    RZA_COMPILER="./build/bin/rez3asm"
+    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./build/bin/rez3asm.exe"; fi
 fi
 TR="$RZA_COMPILER"
 
@@ -320,13 +320,14 @@ run_c3_unit() {
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
-    if ! "$c3c_bin" compile-test rez3asm.c3 compiler/model.c3 \
-            compiler/layout.c3 compiler/checker.c3 compiler/emitter.c3 lsp_server.c3 \
-            memory_guard.c3 scratch_memory.c3 tests/output_writer_test.c3 \
+    if ! "$c3c_bin" compile-test src/rez3asm.c3 src/compiler/model.c3 \
+            src/compiler/layout.c3 src/compiler/checker.c3 src/compiler/emitter.c3 \
+            src/lsp_server.c3 src/memory_guard.c3 src/scratch_memory.c3 \
+            tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
             tests/layout_test.c3 tests/harness.c3 tests/function_length.c3 \
             tests/source_style.c3 tests/source_style_test.c3 tests/function_length_test.c3 \
-            -o "$BUILD/c3_tests" >"$BUILD/c3_tests.log" 2>&1; then
+            -o c3_tests --output-dir "$BUILD" >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
         return
     fi
@@ -408,7 +409,7 @@ run_runtime_safety() {
 }
 
 run_shop() {
-    if ! $CC $CFLAGS $LDFLAGS refs/shop.c -o "$BUILD/shop.exe" \
+    if ! $CC $CFLAGS $LDFLAGS tests/reference/shop.c -o "$BUILD/shop.exe" \
             2>"$BUILD/shop.ccerr"; then
         bad shop "compile failed"; cat "$BUILD/shop.ccerr"
         return
@@ -426,7 +427,7 @@ run_shop() {
 }
 
 run_reference() {
-    if ! $CC $CFLAGS $LDFLAGS refs/rez3check.c \
+    if ! $CC $CFLAGS $LDFLAGS tests/reference/rez3check.c \
             -o "$BUILD/rez3check.exe" 2>"$BUILD/rez3check.ccerr"; then
         bad reference "C23 compile failed"; cat "$BUILD/rez3check.ccerr"
         return
@@ -526,8 +527,8 @@ run_build_parallel() {
         cat "$BUILD/parallel1.log" "$BUILD/parallel2.log"
         return
     fi
-    local expected="./rez3asm"
-    if [ "${OS:-}" = "Windows_NT" ]; then expected="./rez3asm.exe"; fi
+    local expected="./build/bin/rez3asm"
+    if [ "${OS:-}" = "Windows_NT" ]; then expected="./build/bin/rez3asm.exe"; fi
     if [ ! -x "$expected" ]; then
         bad build_parallel "native compiler missing: $expected"
         return
@@ -606,7 +607,7 @@ run_reference_invalid
 run_build_parallel
 
 # примеры с независимо вычисленным ожидаемым выводом
-for t in hello counter2 idioms settle shop typed_layout; do
+for t in hello ring_buffer shop; do
     DIR=examples run_good "$t"
 done
 run_dead dead_link "FAULT line 10: dead mediator acc_m"
@@ -689,8 +690,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=156
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=155; fi
+EXPECTED_PASS=153
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=152; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

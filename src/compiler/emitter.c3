@@ -1,4 +1,4 @@
-// REZ3-ASM (.rza) -> C23. C3 0.8.5_1; shared runtime is in refs/.
+// REZ3-ASM (.rza) -> C23. C3 0.8.5_1; shared runtime is in include/rza/.
 // CLI: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]
 //      rez3asm --lsp
 // Ownership invariants use one pass; labels are resolved in a second pass.

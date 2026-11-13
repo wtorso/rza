@@ -37,14 +37,14 @@ cd rza
 bash build_compiler.sh
 ```
 
-The build script writes `./rez3asm` on POSIX and `rez3asm.exe` on Windows in the
-repository root.
+The build script writes `./build/bin/rez3asm` on POSIX and
+`./build/bin/rez3asm.exe` on Windows.
 Compile and run the included standalone example:
 
 ```sh
 mkdir -p build
-./rez3asm examples/hello.rza --emit-c -o build/hello.c
-${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
+./build/bin/rez3asm examples/hello.rza --emit-c -o build/hello.c
+${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I . \
   build/hello.c -o build/hello
 ./build/hello
 ```
@@ -58,7 +58,7 @@ Expected output:
 ### Validate without generating C
 
 ```sh
-./rez3asm examples/hello.rza
+./build/bin/rez3asm examples/hello.rza
 ```
 
 A valid program produces no output and exits with status 0. Invalid input prints
@@ -183,16 +183,16 @@ compiler calculates the record stride and field offsets. Use `load`/`store` for
 `i64` fields and `loadb`/`storeb` for `u8` fields. Raw cells instead use byte
 offsets and have no field selector.
 
-See [the complete typed example](examples/typed_layout.rza) for arrays, padding,
-and byte truncation.
+See [the ring buffer example](examples/ring_buffer.rza) for typed state, an array
+of records, and fixed-capacity index arithmetic.
 
 ## Embedding in C
 
 Generate a library and link it with the included host:
 
 ```sh
-./rez3asm examples/shop.rza --emit-lib -o build/shop.c
-${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
+./build/bin/rez3asm examples/shop.rza --emit-lib -o build/shop.c
+${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I . \
   build/shop.c examples/shop_host.c -o build/shop_host
 ./build/shop_host
 ```
@@ -209,12 +209,10 @@ host remains responsible for its own pointers, offsets, and object lifetimes.
 
 ## Examples and editors
 
-- [hello](examples/hello.rza): cells, mediators, arithmetic, and output.
-- [counter2](examples/counter2.rza): procedure calls and shared field storage.
-- [idioms](examples/idioms.rza): comparisons and branches without CPU flags.
-- [settle](examples/settle.rza): a synchronous cascade over two cells.
-- [shop](examples/shop.rza): a longer state-transition example.
-- [typed_layout](examples/typed_layout.rza): typed records and byte fields.
+- [hello](examples/hello.rza): the smallest runnable program.
+- [ring_buffer](examples/ring_buffer.rza): a bounded FIFO with typed state and
+  full/empty rejection, including wraparound.
+- [shop](examples/shop.rza): state transitions and embedding in a C host.
 
 Each example has an adjacent `.expected` file where its output is applicable.
 The [VS Code extension](https://github.com/wtorso/rza-vscode) provides syntax
@@ -256,7 +254,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=156 FAIL=0` on POSIX and `PASS=155 FAIL=0` on Windows.
+Expected results are `PASS=153 FAIL=0` on POSIX and `PASS=152 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 
@@ -275,15 +273,16 @@ The Release workflow supports manual dry runs and publication from version tags.
 
 ## Repository layout
 
-- `compiler/`: language model, layouts, checker, and C23 emitter.
-- `rez3asm.c3`, `lsp_server.c3`: CLI and language server.
-- `memory_guard.c3`, `scratch_memory.c3`: compiler memory limits and ownership.
+- `src/`: CLI, language server, language model, layouts, checker, C23 emitter,
+  and compiler memory helpers.
+- `include/rza/`: public fixed-storage C23 runtime headers.
+- `build/bin/`: ignored native compiler output.
 - `install.sh`: native compiler/header installation with `PREFIX` and `DESTDIR`.
 - `release/`: reproducible packaging, smoke checks, and release notes.
-- `examples/`: runnable examples and expected output.
+- `examples/`: focused runnable examples and expected output.
 - `tests/`: positive, negative, runtime, ABI, LSP, fuzz, and style checks.
+- `tests/reference/`: C23 reference checker and static reference program.
 - `bench/`: comparable workloads, timing, and disassembly checks.
-- `refs/`: shared fixed-storage C23 runtime and reference tools.
 - `editors/vscode`: VS Code extension as a separate submodule.
 
 ## License

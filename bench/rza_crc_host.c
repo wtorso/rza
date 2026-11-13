@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "refs/rez3ext.h"
+#include "rez3ext.h"
 
 uint32_t rza_rez3ext_abi(void);
 void *rza_deref_cell(RezCellMed mediator);

@@ -1,0 +1,116 @@
+; status: 0 = accepted, 1 = rejected; capacity: four i64 slots.
+layout Ring: read_pos:i64, count:i64, input:i64, output:i64, status:i64
+layout Slot: value:i64
+res ring, field, Ring
+res slots, field, Slot[4]
+med ring_m, ring, field
+med slots_m, slots, field
+
+proc push:
+    load %r0, [ring_m + 0].count
+    mov %r1, 4
+    sub %r2, %r1, %r0
+    brz %r2, push_full
+    load %r2, [ring_m + 0].read_pos
+    add %r2, %r2, %r0
+    mod %r2, %r2, %r1
+    load %r3, [ring_m + 0].input
+    store [slots_m + %r2].value, %r3
+    inc %r0
+    store [ring_m + 0].count, %r0
+    mov %r3, 0
+    store [ring_m + 0].status, %r3
+    jmp push_done
+push_full:
+    mov %r3, 1
+    store [ring_m + 0].status, %r3
+push_done:
+    ret
+
+proc pop:
+    load %r0, [ring_m + 0].count
+    brz %r0, pop_empty
+    load %r1, [ring_m + 0].read_pos
+    load %r2, [slots_m + %r1].value
+    store [ring_m + 0].output, %r2
+    inc %r1
+    mov %r3, 4
+    mod %r1, %r1, %r3
+    store [ring_m + 0].read_pos, %r1
+    dec %r0
+    store [ring_m + 0].count, %r0
+    mov %r4, 0
+    store [ring_m + 0].status, %r4
+    jmp pop_done
+pop_empty:
+    mov %r4, 1
+    store [ring_m + 0].status, %r4
+pop_done:
+    ret
+
+call pop
+load %r0, [ring_m + 0].status
+print %r0
+
+mov %r0, 10
+store [ring_m + 0].input, %r0
+call push
+mov %r0, 20
+store [ring_m + 0].input, %r0
+call push
+mov %r0, 30
+store [ring_m + 0].input, %r0
+call push
+mov %r0, 40
+store [ring_m + 0].input, %r0
+call push
+load %r0, [ring_m + 0].count
+print %r0
+
+mov %r0, 50
+store [ring_m + 0].input, %r0
+call push
+load %r0, [ring_m + 0].status
+print %r0
+
+call pop
+load %r0, [ring_m + 0].output
+print %r0
+call pop
+load %r0, [ring_m + 0].output
+print %r0
+
+mov %r0, 50
+store [ring_m + 0].input, %r0
+call push
+mov %r0, 60
+store [ring_m + 0].input, %r0
+call push
+load %r0, [ring_m + 0].count
+print %r0
+
+mov %r0, 70
+store [ring_m + 0].input, %r0
+call push
+load %r0, [ring_m + 0].status
+print %r0
+
+call pop
+load %r0, [ring_m + 0].output
+print %r0
+call pop
+load %r0, [ring_m + 0].output
+print %r0
+call pop
+load %r0, [ring_m + 0].output
+print %r0
+call pop
+load %r0, [ring_m + 0].output
+print %r0
+
+call pop
+load %r0, [ring_m + 0].status
+print %r0
+load %r0, [ring_m + 0].count
+print %r0
+ret
