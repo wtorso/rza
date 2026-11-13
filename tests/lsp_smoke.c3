@@ -260,7 +260,7 @@ fn int? shutdown_checks(Process* child) {
 }
 
 fn int? run_oversize(String name, String payload, String expected) {
-    ProcessResult result = run_simple_input({"./rez3asm.exe", "--lsp"}, payload)!;
+    ProcessResult result = run_simple_input({compiler_path(), "--lsp"}, payload)!;
     if (!expect(result.status == 2 && result.stderr_text.contains(expected), name)) {
         print_result(result);
         return 1;

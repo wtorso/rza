@@ -58,8 +58,8 @@ fn int? check_static(String name, String source, String expected, bool execute) 
     String source_path = string::tformat("%s.rza", path);
     write_file(source_path, source)!;
     String generated = string::tformat("%s.c", path);
-    String[] check = { "./rez3asm.exe", source_path };
-    String[] emit = { "./rez3asm.exe", source_path, "--emit-c", "-o", generated };
+    String[] check = { compiler_path(), source_path };
+    String[] emit = { compiler_path(), source_path, "--emit-c", "-o", generated };
     ProcessResult result = run_simple(execute ? emit : check)!;
     if (expected.len == 0) {
         bool ok = result.status == 0 && result.stdout_text.len == 0 &&
@@ -119,7 +119,7 @@ fn String document_message(String uri) {
 fn int? check_id_boundaries() {
     DString id = dstring::temp();
     for (int i = 0; i < 256; i++) id.append("x");
-    ProcessResult ok = run_simple_input({"./rez3asm.exe", "--lsp"},
+    ProcessResult ok = run_simple_input({compiler_path(), "--lsp"},
         lsp_frame(initialize(string::tformat(`"%s"`, id.str_view()))))!;
     Object* message = json_framed(ok.stdout_text)!;
     Object* id_value = message.get("id")!;
@@ -127,7 +127,7 @@ fn int? check_id_boundaries() {
             id_value.s == id.str_view() && ok.stderr_text.len == 0,
             "LSP id 256")) return 1;
     id.append("x");
-    ProcessResult bad = run_simple_input({"./rez3asm.exe", "--lsp"},
+    ProcessResult bad = run_simple_input({compiler_path(), "--lsp"},
         lsp_frame(initialize(string::tformat(`"%s"`, id.str_view()))))!;
     message = json_framed(bad.stdout_text)!;
     if (!expect(bad.status == 0 && json_id_null(message) && json_error_code(message, -32600) &&
@@ -138,7 +138,7 @@ fn int? check_id_boundaries() {
 fn int? check_uri_boundaries() {
     DString uri = dstring::temp("file:///");
     for (sz i = uri.len(); i < 1024; i++) uri.append("u");
-    ProcessResult ok = run_simple_input({"./rez3asm.exe", "--lsp"},
+    ProcessResult ok = run_simple_input({compiler_path(), "--lsp"},
         lsp_frame(document_message(uri.str_view())))!;
     Object* message = json_framed(ok.stdout_text)!;
     Object* params = message.get("params")!;
@@ -150,7 +150,7 @@ fn int? check_uri_boundaries() {
         return 1;
     }
     uri.append("u");
-    ProcessResult bad = run_simple_input({"./rez3asm.exe", "--lsp"},
+    ProcessResult bad = run_simple_input({compiler_path(), "--lsp"},
         lsp_frame(document_message(uri.str_view())))!;
     if (!expect(bad.status == 2 && bad.stdout_text.len == 0 &&
             normalize_lines(bad.stderr_text) == "[rez3-lsp] URI exceeds static budget",
@@ -169,12 +169,12 @@ fn String sized_header(int size) {
 }
 
 fn int? check_header_boundaries() {
-    ProcessResult ok = run_simple_input({"./rez3asm.exe", "--lsp"},
+    ProcessResult ok = run_simple_input({compiler_path(), "--lsp"},
         sized_header(8192))!;
     Object* message = json_framed(ok.stdout_text)!;
     if (!expect(ok.status == 0 && json_id_int(message, 1) &&
             ok.stderr_text.len == 0, "LSP header 8192")) return 1;
-    ProcessResult bad = run_simple_input({"./rez3asm.exe", "--lsp"},
+    ProcessResult bad = run_simple_input({compiler_path(), "--lsp"},
         sized_header(8193))!;
     if (!expect(bad.status == 2 && bad.stdout_text.len == 0 &&
             normalize_lines(bad.stderr_text) == "[rez3-lsp] header too large",

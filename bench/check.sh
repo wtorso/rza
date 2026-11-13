@@ -12,11 +12,15 @@ CFLAGS=${CFLAGS:--std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I .}
 LDFLAGS=${LDFLAGS:-}
 RUSTC=${RUSTC:-rustc}
 RUST_CC=${RUST_CC:-$CC}
+if [ -z "${RZA_COMPILER:-}" ]; then
+    RZA_COMPILER="./rez3asm"
+    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER=""$RZA_COMPILER""; fi
+fi
 mkdir --parents "$BUILD"
 
 build_rza() {
     local name=$1 host=$2
-    ./rez3asm.exe "bench/$name.rza" --emit-lib -o "$BUILD/$name.c"
+    "$RZA_COMPILER" "bench/$name.rza" --emit-lib -o "$BUILD/$name.c"
     $CC $CFLAGS $LDFLAGS "$BUILD/$name.c" "bench/$host" bench/bench_check.c \
         -o "$BUILD/${name}_rza"
 }
@@ -66,7 +70,7 @@ sed -e '1i; Full-table variant: 1024 distinct keys; no free slot returns 0.' \
     >"$BUILD/table_full.rza"
 sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.c >"$BUILD/table_full.c"
 sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.rs >"$BUILD/table_full.rs"
-./rez3asm.exe "$BUILD/table_full.rza" --emit-lib -o "$BUILD/table_full.rza.c"
+"$RZA_COMPILER" "$BUILD/table_full.rza" --emit-lib -o "$BUILD/table_full.rza.c"
 $CC $CFLAGS $LDFLAGS "$BUILD/table_full.rza.c" bench/rza_table_host.c \
     bench/bench_check.c -o "$BUILD/table_full_rza"
 $CC $CFLAGS $LDFLAGS "$BUILD/table_full.c" bench/bench_check.c \

@@ -13,8 +13,8 @@ fn int? run_ownership_case(OwnershipCase expected, String name, bool inject) {
     String source = temp_path(name);
     write_file(source, expected.source)!;
     String generated = string::tformat("%s.c", source);
-    String[] emit = { "./rez3asm.exe", source, "--emit-c", "-o", generated };
-    String[] check = { "./rez3asm.exe", source };
+    String[] emit = { compiler_path(), source, "--emit-c", "-o", generated };
+    String[] check = { compiler_path(), source };
     ProcessResult transpiled = run_simple(expected.static_error ? check : emit)!;
     if (expected.static_error) {
         bool ok = transpiled.status == 1 && transpiled.stdout_text.len == 0 &&

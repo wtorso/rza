@@ -27,7 +27,7 @@ const String TYPED_ARTIFACT_SOURCE = "layout Entry: key:i64, value:i64\n"
     "load %r1, [entries_m + 0].key\nprint %r1\nret\n";
 
 fn String? emit_artifact(String source, String output) {
-    String[] command = { "./rez3asm.exe", source, "--emit-c", "-o", output };
+    String[] command = { compiler_path(), source, "--emit-c", "-o", output };
     ProcessResult result = run_simple(command)!;
     if (!expect(result.status == 0 && result.stdout_text.len == 0 &&
             result.stderr_text.len == 0, "artifact emit diagnostics")) {

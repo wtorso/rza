@@ -7,6 +7,8 @@ elif [ -n "${LOCALAPPDATA:-}" ] && [ -x "$LOCALAPPDATA/c3/c3c.exe" ]; then
     C3C="$LOCALAPPDATA/c3/c3c.exe"
 else echo "FATAL: no c3c" >&2; exit 2; fi
 
+TARGET="rez3asm"
+if [ "${OS:-}" = "Windows_NT" ]; then TARGET="rez3asm.exe"; fi
 NEW="rez3asm.$$.new"
 OLD="rez3asm.$$.old"
 trap 'rm --force "$NEW" "$NEW.exe" "$NEW.pdb" "$OLD.exe" "$OLD.pdb" \
@@ -31,12 +33,12 @@ if [ -f "$NEW" ] && [ ! -f "$NEW.exe" ]; then
     mv --force "$NEW" "$NEW.exe" \
         || { echo "FATAL: cannot normalize compiler output" >&2; exit 2; }
 fi
-# VS Code может держать текущий exe: сначала переименовываем его.
-if ! mv --force "$NEW.exe" rez3asm.exe 2>/dev/null; then
+# VS Code can hold the current executable, so move it aside first.
+if ! mv --force "$NEW.exe" "$TARGET" 2>/dev/null; then
     rm --force "$OLD.exe" 2>/dev/null
-    mv --force rez3asm.exe "$OLD.exe" \
-        && mv --force "$NEW.exe" rez3asm.exe \
-        || { echo "FATAL: cannot replace rez3asm.exe" >&2; exit 2; }
+    mv --force "$TARGET" "$OLD.exe" \
+        && mv --force "$NEW.exe" "$TARGET" \
+        || { echo "FATAL: cannot replace $TARGET" >&2; exit 2; }
 fi
 if [ -f "$NEW.pdb" ]; then
     if ! mv --force "$NEW.pdb" rez3asm.pdb; then

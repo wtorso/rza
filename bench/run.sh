@@ -12,7 +12,11 @@ RUSTC=${RUSTC:-rustc}
 RUST_CC=${RUST_CC:-$CC}
 CFLAGS="-std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I ."
 LDFLAGS=${LDFLAGS:-}
-export CC CFLAGS LDFLAGS RUSTC RUST_CC
+if [ -z "${RZA_COMPILER:-}" ]; then
+    RZA_COMPILER="./rez3asm"
+    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER=""$RZA_COMPILER""; fi
+fi
+export CC CFLAGS LDFLAGS RUSTC RUST_CC RZA_COMPILER
 REPEATS=${RZA_BENCH_COMPILE_REPEATS:-20}
 SAMPLES=${RZA_BENCH_SAMPLES:-11}
 BATCH=${RZA_BENCH_BATCH:-256}
@@ -38,7 +42,7 @@ bash bench/check.sh "$BUILD/check"
 
 build_rza() {
     local name=$1 host=$2
-    ./rez3asm.exe "bench/$name.rza" --emit-lib -o "$BUILD/$name.rza.c"
+    "$RZA_COMPILER" "bench/$name.rza" --emit-lib -o "$BUILD/$name.rza.c"
     $CC $CFLAGS $LDFLAGS "$BUILD/$name.rza.c" "bench/$host" \
         bench/runtime_host.c bench/timer.c -o "$BUILD/${name}_rza"
 }
@@ -110,7 +114,7 @@ measure() {
 
 for name in crc32c table; do
     if [ "$name" = crc32c ]; then host=rza_crc_host.c; else host=rza_table_host.c; fi
-    measure "transpile_${name}_rza" ./rez3asm.exe "bench/$name.rza" \
+    measure "transpile_${name}_rza" "$RZA_COMPILER" "bench/$name.rza" \
         --emit-lib -o "$BUILD/$name.rza.c"
     measure "compile_${name}_c" bash -c \
         "$CC $CFLAGS $LDFLAGS bench/$name.c bench/runtime_host.c bench/timer.c \
@@ -123,7 +127,7 @@ for name in crc32c table; do
         "bench/$host" bench/runtime_host.c bench/timer.c \
         -o "$BUILD/${name}_rza"
     measure "pipeline_${name}_rza" bash -c \
-        "./rez3asm.exe bench/$name.rza --emit-lib -o $BUILD/$name.rza.c && \
+        "\"$RZA_COMPILER\" bench/$name.rza --emit-lib -o $BUILD/$name.rza.c && \
             $CC $CFLAGS $LDFLAGS $BUILD/$name.rza.c bench/$host \
             bench/runtime_host.c bench/timer.c -o $BUILD/${name}_rza"
 done

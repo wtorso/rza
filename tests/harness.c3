@@ -17,6 +17,14 @@ const sz PROCESS_OUTPUT_BYTES_MAX = 4 * 1024 * 1024;
 char[PROCESS_OUTPUT_BYTES_MAX] process_stdout_buf;
 char[PROCESS_OUTPUT_BYTES_MAX] process_stderr_buf;
 
+fn String compiler_path() {
+    $if env::WIN32:
+        return "./rez3asm.exe";
+    $else
+        return "./rez3asm";
+    $endif
+}
+
 struct ProcessResult {
     int status;
     String stdout_text;

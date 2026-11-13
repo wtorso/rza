@@ -41,8 +41,8 @@ fn int? check_fuzz(String text, bool emit, String diagnostic,
     String path = temp_path("case.rza");
     write_file(path, text)!;
     String generated = temp_path("case.c");
-    String[] check = { "./rez3asm.exe", path };
-    String[] emit_cmd = { "./rez3asm.exe", path, "--emit-c", "-o", generated };
+    String[] check = { compiler_path(), path };
+    String[] emit_cmd = { compiler_path(), path, "--emit-c", "-o", generated };
     ProcessResult result = run_simple(emit ? emit_cmd : check)!;
     if (expect_success) {
         if (!expect(result.status == 0, "fuzz emit failed")) {

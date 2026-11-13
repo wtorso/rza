@@ -58,7 +58,7 @@ fn int? test_conflicting_length() {
     String body = initialize("1");
     String payload = string::tformat(
         "Content-Length: 0\r\nContent-Length: %d\r\n\r\n%s", body.len, body);
-    ProcessResult result = run_simple_input({"./rez3asm.exe", "--lsp"}, payload)!;
+    ProcessResult result = run_simple_input({compiler_path(), "--lsp"}, payload)!;
     if (!expect(result.status == 2 && result.stdout_text.len == 0 &&
             normalize_lines(result.stderr_text) == "[rez3-lsp] conflicting Content-Length",
             "conflicting Content-Length")) return 1;
@@ -67,28 +67,28 @@ fn int? test_conflicting_length() {
 
 fn int? test_exit_codes() {
     String exit_frame = lsp_frame(`{"jsonrpc":"2.0","method":"exit"}`);
-    ProcessResult early = run_simple_input({"./rez3asm.exe", "--lsp"}, exit_frame)!;
+    ProcessResult early = run_simple_input({compiler_path(), "--lsp"}, exit_frame)!;
     if (!expect(early.status == 1, "exit before shutdown")) return 1;
     DString normal = dstring::temp(lsp_frame(
         `{"jsonrpc":"2.0","id":1,"method":"shutdown"}`));
     normal.append(exit_frame);
-    ProcessResult done = run_simple_input({"./rez3asm.exe", "--lsp"},
+    ProcessResult done = run_simple_input({compiler_path(), "--lsp"},
         normal.str_view())!;
     Object* response = json_framed(done.stdout_text)!;
     Object* result = response.get("result")!;
     if (!expect(done.status == 0 && json_id_int(response, 1) && result.is_null() &&
             !response.has_key("error"), "shutdown and exit")) return 1;
-    ProcessResult eof = run_simple_input({"./rez3asm.exe", "--lsp"}, "")!;
+    ProcessResult eof = run_simple_input({compiler_path(), "--lsp"}, "")!;
     if (!expect(eof.status == 0, "LSP EOF")) return 1;
     return 0;
 }
 
 fn int? test_cli_failures() {
-    ProcessResult missing = run_simple({"./rez3asm.exe", "does-not-exist.rza"})!;
+    ProcessResult missing = run_simple({compiler_path(), "does-not-exist.rza"})!;
     if (!expect(missing.status == 2, "missing input")) return 1;
     String directory = temp_path("output-directory");
     path::mkdir(path::tnew(directory)!, true)!;
-    ProcessResult output = run_simple({"./rez3asm.exe", "tests/fib.rza",
+    ProcessResult output = run_simple({compiler_path(), "tests/fib.rza",
         "--emit-c", "-o", directory})!;
     if (!expect(output.status == 2, "output is directory")) return 1;
     return 0;
@@ -102,7 +102,7 @@ fn int? test_io_failure(bool stdout_failure) {
     CFile raw = libc::tmpfile();
     if (raw == null) return TEST_ERROR~;
     lsp_stderr_file = file::from_handle(raw);
-    Process child = process::spawn({"./rez3asm.exe", "--lsp"},
+    Process child = process::spawn({compiler_path(), "--lsp"},
         SpawnOptions.INHERIT_ENV, {},
         stdout_failure ? process::CAPTURE : process_file(special),
         stdout_failure ? process_file(special) : process::CAPTURE,

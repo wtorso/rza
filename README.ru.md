@@ -34,12 +34,13 @@ cd rza
 bash build_compiler.sh
 ```
 
-Скрипт записывает компилятор в корень репозитория под именем `./rez3asm.exe`.
+Скрипт записывает компилятор в корень репозитория: `./rez3asm` на POSIX и
+`rez3asm.exe` на Windows.
 Соберите и запустите готовый standalone-пример:
 
 ```sh
 mkdir -p build
-./rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
+./rez3asm examples/hello.rza --emit-c -o build/hello.c
 ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
   build/hello.c -o build/hello
 ./build/hello
@@ -54,7 +55,7 @@ ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
 ### Проверка без генерации C
 
 ```sh
-./rez3asm.exe examples/hello.rza
+./rez3asm examples/hello.rza
 ```
 
 Для корректной программы компилятор ничего не выводит и завершается со статусом 0.
@@ -140,7 +141,7 @@ ret
 Сгенерируйте библиотеку и скомпонуйте её с готовым host:
 
 ```sh
-./rez3asm.exe examples/shop.rza --emit-lib -o build/shop.c
+./rez3asm examples/shop.rza --emit-lib -o build/shop.c
 ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
   build/shop.c examples/shop_host.c -o build/shop_host
 ./build/shop_host

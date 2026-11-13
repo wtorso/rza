@@ -24,7 +24,7 @@ fn Process? lsp_start() {
     CFile raw = libc::tmpfile();
     if (raw == null) return TEST_ERROR~;
     lsp_stderr_file = file::from_handle(raw);
-    String[] command = { "./rez3asm.exe", "--lsp" };
+    String[] command = { compiler_path(), "--lsp" };
     SpawnOptions options = SpawnOptions.INHERIT_ENV;
     $if env::WIN32:
         options |= SpawnOptions.ASYNC_OUTPUT;

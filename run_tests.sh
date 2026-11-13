@@ -90,9 +90,13 @@ run_function_style() {
 run_function_style
 run_style
 
-echo "== build rez3asm.exe (c3c) =="
+echo "== build rez3asm (c3c) =="
 bash build_compiler.sh
-TR="./rez3asm.exe"
+if [ -z "${RZA_COMPILER:-}" ]; then
+    RZA_COMPILER="./rez3asm"
+    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./rez3asm.exe"; fi
+fi
+TR="$RZA_COMPILER"
 
 compare_text() {
     local expected=$1 actual=$2
@@ -520,6 +524,12 @@ run_build_parallel() {
     if [ "$status" -ne 0 ]; then
         bad build_parallel "concurrent compiler builds failed"
         cat "$BUILD/parallel1.log" "$BUILD/parallel2.log"
+        return
+    fi
+    local expected="./rez3asm"
+    if [ "${OS:-}" = "Windows_NT" ]; then expected="./rez3asm.exe"; fi
+    if [ ! -x "$expected" ]; then
+        bad build_parallel "native compiler missing: $expected"
         return
     fi
     ok build_parallel

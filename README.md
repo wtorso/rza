@@ -33,12 +33,13 @@ cd rza
 bash build_compiler.sh
 ```
 
-The build script writes the compiler as `./rez3asm.exe` in the repository root.
+The build script writes `./rez3asm` on POSIX and `rez3asm.exe` on Windows in the
+repository root.
 Compile and run the included standalone example:
 
 ```sh
 mkdir -p build
-./rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
+./rez3asm examples/hello.rza --emit-c -o build/hello.c
 ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
   build/hello.c -o build/hello
 ./build/hello
@@ -53,7 +54,7 @@ Expected output:
 ### Validate without generating C
 
 ```sh
-./rez3asm.exe examples/hello.rza
+./rez3asm examples/hello.rza
 ```
 
 A valid program produces no output and exits with status 0. Invalid input prints
@@ -140,7 +141,7 @@ and byte truncation.
 Generate a library and link it with the included host:
 
 ```sh
-./rez3asm.exe examples/shop.rza --emit-lib -o build/shop.c
+./rez3asm examples/shop.rza --emit-lib -o build/shop.c
 ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
   build/shop.c examples/shop_host.c -o build/shop_host
 ./build/shop_host
