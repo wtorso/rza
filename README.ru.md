@@ -9,20 +9,22 @@ RZA — низкоуровневый язык и промежуточное пр
 
 RZA предназначен для небольших вычислительных ядер, которым нужны фиксированные
 бюджеты памяти и определённое поведение при ошибках, а не для скрытия
-низкоуровневого программирования за высокоуровневым синтаксисом. Реализация
-тестируется на Linux и Windows, но стабильный релиз ещё не опубликован; язык и
+низкоуровневого программирования за высокоуровневым синтаксисом. Версия
+[0.1.0](https://github.com/wtorso/rza/releases/tag/v0.1.0) — prerelease; язык и
 host-интерфейсы могут меняться.
 
 ## Требования
 
-- [C3 0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1); `c3c` должен
-  находиться в `PATH`.
-- Компилятор C23: GCC, Clang или Zig.
-- Bash и стандартные командные утилиты.
-- Rust необязателен и нужен только для сравнительных программ и проверок benchmark.
+Для сборки из исходников нужны [C3
+0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1) с `c3c` в `PATH`,
+компилятор C23 (GCC, Clang или Zig), Bash и стандартные командные утилиты. Для
+запуска готового компилятора C3 не нужен, но для компиляции его C23-вывода всё ещё
+нужен C compiler. Rust необязателен и используется только для сравнительных
+программ и benchmark-проверок.
 
 Команды ниже используют POSIX-совместимый shell. CI также собирает и тестирует
-проект на Windows с Bash и Zig.
+проект на Windows с Bash и Zig. Release-пакеты пока доступны только для Linux
+x86_64 и Windows x86_64.
 
 ## Сборка и запуск
 
@@ -67,6 +69,8 @@ ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
 ```text
 rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]
 rez3asm --lsp
+rez3asm --help
+rez3asm --version
 ```
 
 - Без output-флага компилятор выполняет только проверку.
@@ -75,9 +79,54 @@ rez3asm --lsp
 - `-o` записывает C в файл и включает генерацию даже без emit-флага. Без `-o`
   сгенерированный C выводится в standard output.
 - `--lsp` запускает языковой сервер через standard input и output.
+- Отдельный `--help` выводит справку и возвращает 0; без аргументов справка
+  выводится в stderr со статусом 2. Отдельный `--version` выводит
+  `rez3asm 0.1.0` и возвращает 0.
 
-Скрипт сборки не устанавливает компилятор в `PATH`; вызывайте его по пути внутри
-checkout.
+`build_compiler.sh` создаёт компилятор, но не устанавливает его в `PATH`;
+вызывайте его по пути или используйте установщик ниже.
+
+## Установка и release-пакеты
+
+### Установка для текущего пользователя
+
+Из каталога исходников:
+
+```sh
+PREFIX="$HOME/.local" bash install.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+По умолчанию `PREFIX` равен `/usr/local`; `DESTDIR` поддерживается для staged
+установок. Установщик не вызывает sudo. Он копирует native compiler, оба runtime
+headers и лицензию. При компиляции сгенерированного C после установки добавьте
+`-I "$HOME/.local/include/rza"` к флагам C compiler.
+
+Из распакованного binary-пакета можно установить готовый компилятор без C3:
+
+```sh
+RZA_COMPILER=./rez3asm PREFIX="$HOME/.local" bash install.sh
+```
+
+### Binary-архивы
+
+Скачайте нужный архив и `SHA256SUMS` со страницы
+[релиза 0.1.0](https://github.com/wtorso/rza/releases/tag/v0.1.0), затем
+проверьте и распакуйте его. `--ignore-missing` позволяет скачать архив только
+одной платформы:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+tar -xzf rza-0.1.0-linux-x86_64.tar.gz
+cd rza-0.1.0-linux-x86_64
+./rez3asm --version
+```
+
+Архив содержит native compiler, runtime headers, исходники, тесты, benchmarks и
+примеры. Quickstart выше также работает из этого каталога. Файл `RELEASE`
+записывает версию, полный source commit, target, версию C3 и `RZA_DIRTY=0`.
+Перед публикацией архивы собираются дважды и должны совпадать байтами. Checksums
+проверяют целостность, но не являются цифровой подписью.
 
 ## Память и выполнение
 
@@ -219,13 +268,17 @@ CC="zig cc" RUST_CC=clang bash run_tests.sh
 
 `RUST_CC` выбирает linker для Rust static libraries, но не заменяет C compiler для
 сгенерированного RZA-кода. CI запускает Linux GCC/Clang/Zig, Windows Zig, а также
-unit, packaging, Extension Host и production-dependency проверки VS Code.
+unit, packaging, Extension Host и production-dependency проверки VS Code. Linux
+GCC и Windows дополнительно проверяют воспроизводимые пакеты и staged install.
+Release workflow поддерживает ручной dry run и публикацию из version tags.
 
 ## Структура репозитория
 
 - `compiler/`: модель языка, layouts, checker и C23 emitter.
 - `rez3asm.c3`, `lsp_server.c3`: CLI и языковой сервер.
 - `memory_guard.c3`, `scratch_memory.c3`: ограничения памяти и ownership компилятора.
+- `install.sh`: установка native compiler и headers через `PREFIX` и `DESTDIR`.
+- `release/`: воспроизводимая упаковка, smoke-проверки и release notes.
 - `examples/`: runnable примеры и ожидаемый вывод.
 - `tests/`: positive, negative, runtime, ABI, LSP, fuzz и style проверки.
 - `bench/`: сравниваемые workloads, timing и disassembly checks.

@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rza-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x86_64
+            rust_cc: clang
+          - os: windows-latest
+            target: windows-x86_64
+            rust_cc: ""
+    env:
+      CC: zig cc
+      RUST_CC: ${{ matrix.rust_cc }}
+      RZA_RELEASE_REQUIRE_CLEAN: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate release tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' project.json)
+          test -n "$version"
+          test "$GITHUB_REF_NAME" = "v$version"
+      - name: Install C3 on Linux
+        if: matrix.os == 'ubuntu-24.04'
+        shell: bash
+        run: |
+          mkdir --parents build/toolchain
+          curl -fL https://github.com/c3lang/c3c/releases/download/v0.8.5_1/c3-linux.tar.gz \
+            -o build/toolchain/c3.tar.gz
+          printf '%s  %s\n' \
+            '939135bc6fbe9d67bf3b19c08146b93ab10996718aafff692294ae6c0b3a3f88' \
+            build/toolchain/c3.tar.gz | sha256sum --check
+          tar -xzf build/toolchain/c3.tar.gz -C build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/c3" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/c3/c3c" --version
+      - name: Install C3 on Windows
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir --parents build/toolchain
+          curl.exe -fL https://github.com/c3lang/c3c/releases/download/v0.8.5_1/c3-windows.zip \
+            -o build/toolchain/c3.zip
+          printf '%s  %s\n' \
+            '8cfdb48d8f9f1bc0d320a3e941c98ccdb8c8c0194564b1a7dd9fd2ab24292081' \
+            build/toolchain/c3.zip | sha256sum --check
+          unzip -q build/toolchain/c3.zip -d build/toolchain
+          c3c_dir=$(dirname "$(find build/toolchain -name c3c.exe -print -quit)")
+          test -n "$c3c_dir"
+          printf '%s\n' "$c3c_dir" >> "$GITHUB_PATH"
+          "$c3c_dir/c3c.exe" --version
+      - name: Install Zig on Linux
+        if: matrix.os == 'ubuntu-24.04'
+        shell: bash
+        run: |
+          curl -fL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz \
+            -o build/toolchain/zig.tar.xz
+          printf '%s  %s\n' \
+            '70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00' \
+            build/toolchain/zig.tar.xz | sha256sum --check
+          tar -xJf build/toolchain/zig.tar.xz -C build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-linux-0.16.0/zig" version
+      - name: Install Zig on Windows
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          curl.exe -fL https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip \
+            -o build/toolchain/zig.zip
+          printf '%s  %s\n' \
+            '68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e' \
+            build/toolchain/zig.zip | sha256sum --check
+          unzip -q build/toolchain/zig.zip -d build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-windows-0.16.0" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-windows-0.16.0/zig.exe" version
+      - name: Full suite
+        shell: bash
+        run: bash run_tests.sh
+      - name: Verify reproducible package
+        shell: bash
+        run: |
+          test -z "$(git status --porcelain)"
+          bash release/verify.sh
+      - name: Upload verified archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rza-${{ matrix.target }}
+          path: build/release-verify/first/rza-0.1.0-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download verified archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rza-*
+          path: dist
+          merge-multiple: true
+      - name: Verify archives and create checksums
+        shell: bash
+        run: |
+          version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' project.json)
+          test "$GITHUB_REF_NAME" = "v$version"
+          test -f "dist/rza-$version-linux-x86_64.tar.gz"
+          test -f "dist/rza-$version-windows-x86_64.tar.gz"
+          test -f "release/notes/$GITHUB_REF_NAME.md"
+          cd dist
+          sha256sum rza-*.tar.gz > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Publish prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --prerelease \
+            --title "RZA ${GITHUB_REF_NAME#v}" \
+            --notes-file "release/notes/$GITHUB_REF_NAME.md" \
+            dist/*

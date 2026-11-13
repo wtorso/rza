@@ -56,7 +56,7 @@ jobs:
         run: |
           bash build_compiler.sh
           mkdir --parents build
-          ./rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
+          ./rez3asm examples/hello.rza --emit-c -o build/hello.c
           $CC -std=c23 -pedantic -Wall -Wextra -Werror \
             -fsanitize=undefined -fno-sanitize-recover=undefined -I refs -I . \
             build/hello.c -o build/hello.exe
@@ -67,6 +67,13 @@ jobs:
           CC: ${{ matrix.cc }}
           RUST_CC: ${{ matrix.rust_cc }}
         run: bash run_tests.sh
+      - name: Package and install smoke
+        if: matrix.cc == 'gcc'
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          RZA_RELEASE_REQUIRE_CLEAN: "1"
+        run: bash release/verify.sh
       - name: Hygiene
         shell: bash
         run: |
@@ -78,7 +85,7 @@ jobs:
             printf 'temporary test directories remain: %s\n' "${dirs[*]}" >&2
             exit 1
           fi
-          if pgrep -f '[r]ez3asm.exe --lsp'; then
+          if pgrep -f '[r]ez3asm --lsp'; then
             echo 'LSP process remains' >&2
             exit 1
           fi
@@ -128,6 +135,12 @@ jobs:
         env:
           CC: zig cc
         run: bash run_tests.sh
+      - name: Package and install smoke
+        shell: bash
+        env:
+          CC: zig cc
+          RZA_RELEASE_REQUIRE_CLEAN: "1"
+        run: bash release/verify.sh
       - name: Hygiene
         shell: bash
         run: |
@@ -200,7 +213,7 @@ jobs:
         run: |
           git diff --check
           test -z "$(git status --porcelain)"
-          if pgrep -f '[r]ez3asm.exe --lsp'; then
+          if pgrep -f '[r]ez3asm --lsp'; then
             echo 'LSP process remains' >&2
             exit 1
           fi

@@ -9,19 +9,21 @@ C23, leaving native optimization and instruction selection to the C toolchain.
 
 RZA is intended for small kernels that benefit from fixed memory budgets and
 defined fault behavior, not for hiding low-level programming behind a high-level
-syntax. The implementation is tested on Linux and Windows, but no stable release
-has been published yet; the language and host interfaces can still change.
+syntax. Version [0.1.0](https://github.com/wtorso/rza/releases/tag/v0.1.0) is a
+prerelease; the language and host interfaces can still change.
 
 ## Requirements
 
-- [C3 0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1), with `c3c`
-  available in `PATH`.
-- A C23 compiler: GCC, Clang, or Zig.
-- Bash and standard command-line tools.
-- Rust is optional and is used only for comparison programs and benchmark checks.
+Building from source requires [C3
+0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1) with `c3c` in
+`PATH`, a C23 compiler (GCC, Clang, or Zig), Bash, and standard command-line
+tools. Running a packaged compiler does not require C3, but compiling its C23
+output still requires a C compiler. Rust is optional and is used only for
+comparison programs and benchmark checks.
 
 The commands below use a POSIX-compatible shell. CI also builds and tests the
-project on Windows with Bash and Zig.
+project on Windows with Bash and Zig. Release packages are currently provided
+only for Linux x86_64 and Windows x86_64.
 
 ## Build and run
 
@@ -66,6 +68,8 @@ file I/O failures exit with status 2.
 ```text
 rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]
 rez3asm --lsp
+rez3asm --help
+rez3asm --version
 ```
 
 - With no output flag, the compiler performs validation only.
@@ -74,9 +78,53 @@ rez3asm --lsp
 - `-o` writes generated C to a file and enables generation even without an emit
   flag. Without `-o`, generated C is written to standard output.
 - `--lsp` starts the language server on standard input and output.
+- Sole `--help` prints usage and exits 0; no arguments prints it to stderr and
+  exits 2. Sole `--version` prints `rez3asm 0.1.0` and exits 0.
 
-The compiler is not installed into `PATH` by the build script; invoke it by its
-path from the checkout.
+`build_compiler.sh` creates the compiler but does not install it into `PATH`;
+invoke it by its path or use the installer below.
+
+## Install and release packages
+
+### User-local installation
+
+From a source checkout:
+
+```sh
+PREFIX="$HOME/.local" bash install.sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+`PREFIX` defaults to `/usr/local`; `DESTDIR` is available for staged installs.
+The installer never invokes sudo. It copies the native compiler, both runtime
+headers, and the license. When compiling generated C after installation, add
+`-I "$HOME/.local/include/rza"` to the C compiler flags.
+
+From an extracted binary package, avoid rebuilding with C3 by selecting its
+compiler explicitly:
+
+```sh
+RZA_COMPILER=./rez3asm PREFIX="$HOME/.local" bash install.sh
+```
+
+### Binary archives
+
+Download the desired archive and `SHA256SUMS` from the
+[0.1.0 release](https://github.com/wtorso/rza/releases/tag/v0.1.0), then verify
+and extract it. `--ignore-missing` lets you download only one platform archive:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+tar -xzf rza-0.1.0-linux-x86_64.tar.gz
+cd rza-0.1.0-linux-x86_64
+./rez3asm --version
+```
+
+The archive contains the native compiler, runtime headers, source, tests,
+benchmarks, and examples. The quickstart above also works from this directory.
+`RELEASE` records the version, full source commit, target, C3 version, and
+`RZA_DIRTY=0`. Packages are built twice and must be byte-identical before they
+can be published. Checksums verify integrity; they are not a signature.
 
 ## Memory and execution
 
@@ -220,12 +268,16 @@ CC="zig cc" RUST_CC=clang bash run_tests.sh
 `RUST_CC` selects the linker for Rust static libraries; it does not replace the
 C compiler used for generated RZA code. CI runs Linux GCC/Clang/Zig, Windows Zig,
 and VS Code unit, packaging, Extension Host, and production-dependency checks.
+Linux GCC and Windows also verify reproducible packages and staged installation.
+The Release workflow supports manual dry runs and publication from version tags.
 
 ## Repository layout
 
 - `compiler/`: language model, layouts, checker, and C23 emitter.
 - `rez3asm.c3`, `lsp_server.c3`: CLI and language server.
 - `memory_guard.c3`, `scratch_memory.c3`: compiler memory limits and ownership.
+- `install.sh`: native compiler/header installation with `PREFIX` and `DESTDIR`.
+- `release/`: reproducible packaging, smoke checks, and release notes.
 - `examples/`: runnable examples and expected output.
 - `tests/`: positive, negative, runtime, ABI, LSP, fuzz, and style checks.
 - `bench/`: comparable workloads, timing, and disassembly checks.
