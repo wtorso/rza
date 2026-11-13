@@ -106,7 +106,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: package-diagnostics-${{ matrix.target }}-${{ github.run_id }}
-          path: build/release-verify/**
+          path: |
+            build/release-verify/**
+            build/release-cross/**
           if-no-files-found: warn
           retention-days: 1
       - name: Upload verified archive
