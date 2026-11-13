@@ -1,8 +1,8 @@
-// REZ3-ASM (.rza) -> C23. C3 0.8.5, refs/rez3.h + refs/rez3ext.h.
+// REZ3-ASM (.rza) -> C23. C3 0.8.5_1; shared runtime is in refs/.
 // CLI: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]
 //      rez3asm --lsp
-// Инварианты проверяются за один проход; метки разрешаются вторым.
-// Мёртвый медиатор при load/store — runtime FAULT (SPEC §3).
+// Ownership invariants use one pass; labels are resolved in a second pass.
+// Loading or storing through a dead mediator is a runtime FAULT.
 module rez3asm;
 
 import std::io;
@@ -158,7 +158,7 @@ fn void emit_writeonly_silence(Output* out, int ind, uint rd, uint wr) {
     }
 }
 
-// Глобальный медиатор инициализируется при создании res или OUT (AUDIT-4).
+// Глобальный медиатор инициализируется при создании res или OUT.
 fn void emit_hoisted_meds(Output* out, int ind, int cell) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
@@ -414,8 +414,8 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
             out.append_string(");\n");
         case Op.RAISE:
             pad(out, ind);
-            out.appendf("/* raise %s -> %s (line %d): static-only, "
-                        "no code (SPEC boundaries) */\n",
+            out.appendf("/* raise %s -> %s (line %d): static-only; "
+                        "no runtime code */\n",
                         cells[ins.x].name, frames[ins.y].name, ins.line);
         case Op.DECAY:
             emit_decay_subtree(out, ind, ins.x);

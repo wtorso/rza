@@ -1,4 +1,4 @@
-; STRUCT: префиксы frame_/med_ зарезервированы host-геттерами (SPEC host ABI).
+; STRUCT: префиксы frame_/med_ зарезервированы функциями host API.
 proc frame_x:              ; VIOLATION [STRUCT]: collides with host API
     ret
 proc med_x_m:              ; VIOLATION [STRUCT]: collides with host API

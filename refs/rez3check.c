@@ -1,4 +1,4 @@
-/* REZ3CHECK: bounded C23 checker for RESONANCE-3 IR invariants I1-I4. */
+/* REZ3CHECK: bounded C23 checker for RZA IR invariants I1-I4. */
 #include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>

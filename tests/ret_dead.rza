@@ -1,5 +1,5 @@
-; ret разрушает рамку proc и в runtime (AUDIT-7): load по медиатору на
-; её ячейку статически легален (AUDIT-1/#3), в runtime — FAULT.
+; ret разрушает рамку proc и в runtime: load по медиатору на
+; её ячейку статически легален, в runtime — FAULT.
 proc p:
     res  x, p, 8
     ret

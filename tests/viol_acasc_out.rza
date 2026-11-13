@@ -1,4 +1,4 @@
-; STRUCT: у acasc рамка OUT не указывается (всегда field, AUDIT-1/#7)
+; STRUCT: у acasc рамка OUT не указывается; она всегда field.
 cav  main, field
 res  a, main, 8
 med  a_m, a, main

@@ -233,7 +233,7 @@ fn bool split_ops_exact(String rest, int want, int line, String opname, String[]
 }
 
 // --- скоупы ----------------------------------------------------------------------
-// возврат: >=0 индекс, -1 unknown. Рамки и ячейки — общая хроника (AUDIT-3),
+// возврат: >=0 индекс, -1 unknown. Рамки и ячейки — общая хроника,
 // SCOPE для них нет (только медиаторы, find_med)
 fn int find_frame(String name, int scope) {
     assert(name.len > 0);
@@ -268,13 +268,13 @@ fn int find_proc(String name) {
     return proc_map.get(name) ?? -1;
 }
 
-// Имена host API уникальны и проверяются до генерации C (SPEC host ABI).
+// Host API names are unique and checked before C generation.
 fn bool host_name_bad(String name, int line) {
     if (name == "boot" || name == "arena_alloc" || name == "deref_cell" ||
         name == "rez3ext_abi" || name == "await" ||
         name.starts_with("frame_") || name.starts_with("med_")) {
         viol(line, "STRUCT", cat({"procedure name ", name,
-             " collides with lib host API (SPEC host ABI)"}));
+             " collides with lib host API"}));
         return true;
     }
     return false;
@@ -536,8 +536,7 @@ fn void op_med(String rest, int line) {
     if (!check_dup(name, line, cur_proc)) return;
     // Host API экспортирует каждый медиатор: имя глобально уникально.
     if (med_map.has_key(name)) {
-        viol(line, "DUP", cat({"duplicate mediator ", name,
-             " (host API exports every mediator, SPEC host ABI)"}));
+        viol(line, "DUP", cat({"duplicate mediator ", name}));
         return;
     }
     if (at_capacity(meds.len(), line, "mediators")) return;
@@ -782,7 +781,7 @@ fn void op_alu3(String opname, String coper, String rest, int line) {
     int d = parse_reg(buf[0], line);
     int a = parse_reg(buf[1], line);
     if (d < 0 || a < 0) return;
-    // AUDIT-5: третий операнд — imm (флаг) или регистр
+    // Третий операнд — immediate (флаг) или регистр.
     if (is_int(buf[2])) {
         long value;
         if (!parse_i64(buf[2], line, &value)) return;
@@ -894,7 +893,7 @@ fn void open_proc(String name, int line) {
 fn void do_ret(int line) {
     if (cur_proc > 0) {
         add_instr({ .op = Op.RET, .line = line });
-        // Чекер и runtime разрушают рамку proc и её поддерево (AUDIT-7).
+        // Чекер и runtime разрушают рамку proc и её поддерево.
         kill(procs[(sz)(cur_proc - 1)].frame);
         cur_proc = 0;
         return;

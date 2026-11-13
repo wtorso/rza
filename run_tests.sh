@@ -613,9 +613,9 @@ run_viol viol_proc_header STRUCT
 # Переполнение смещений и коллизии host API.
 run_viol viol_mem_overflow STRUCT
 run_viol viol_host_boot   STRUCT
-run_viol viol_host_prefix STRUCT
+run_viol viol_host_prefix STRUCT tests/viol_host_prefix.stderr
 run_viol viol_cav_proc    DUP
-run_viol viol_med_gdup    DUP
+run_viol viol_med_gdup    DUP tests/viol_med_gdup.stderr
 run_lib lib_hello
 run_lib lib_typed
 run_lib_compile lib_scope

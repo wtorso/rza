@@ -1,0 +1,5 @@
+VIOLATION line 2 [STRUCT]: procedure name frame_x collides with lib host API
+VIOLATION line 4 [STRUCT]: code after top-level ret
+VIOLATION line 4 [STRUCT]: procedure name med_x_m collides with lib host API
+VIOLATION line 5 [STRUCT]: code after top-level ret
+VIOLATION line 6 [STRUCT]: code after top-level ret

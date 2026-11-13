@@ -1,5 +1,5 @@
 /*
- * RESONANCE-3 fixed-storage runtime core.
+ * RZA fixed-storage runtime core.
  * C23: no heap allocation; every arena belongs to its caller.
  */
 #ifndef REZ3_H

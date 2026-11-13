@@ -1,4 +1,4 @@
-/* RESONANCE-3 shop example using only static C23 storage. */
+/* RZA shop example using only static C23 storage. */
 #include <stdio.h>
 #include "rez3ext.h"
 

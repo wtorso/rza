@@ -1,77 +1,117 @@
 # RZA
 
-RZA — низкоуровневый язык и промежуточное представление с явным временем жизни
-памяти. Исходники `.rza` проверяются одним проходом и переводятся в C23.
-Обращения к памяти идут через проверяемые ссылки; ошибки времени жизни и границ
-имеют определённый результат вместо неопределённого поведения.
+[Русская версия](README.ru.md)
 
-## Сборка и проверка
+RZA is a low-level language and intermediate representation with explicit memory
+lifetimes, checked memory access, and assembly-like control flow. Source files
+use the `.rza` extension. The `rez3asm` compiler validates them and generates
+C23, leaving native optimization and instruction selection to the C toolchain.
 
-Нужны C3 0.8.5_1, компилятор C23 (GCC, Clang или Zig) и Bash.
+RZA is intended for small kernels that benefit from fixed memory budgets and
+defined fault behavior, not for hiding low-level programming behind a high-level
+syntax. The implementation is tested on Linux and Windows, but no stable release
+has been published yet; the language and host interfaces can still change.
+
+## Requirements
+
+- [C3 0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1), with `c3c`
+  available in `PATH`.
+- A C23 compiler: GCC, Clang, or Zig.
+- Bash and standard command-line tools.
+- Rust is optional and is used only for comparison programs and benchmark checks.
+
+The commands below use a POSIX-compatible shell. CI also builds and tests the
+project on Windows with Bash and Zig.
+
+## Build and run
+
+Clone the repository and build the compiler:
 
 ```sh
+git clone https://github.com/wtorso/rza.git
+cd rza
 bash build_compiler.sh
-bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=156 FAIL=0` на POSIX и `PASS=154 FAIL=0` на Windows.
-Другие варианты проверки:
+The build script writes the compiler as `./rez3asm.exe` in the repository root.
+Compile and run the included standalone example:
 
 ```sh
-CC=clang bash run_tests.sh
-CC="zig cc" RUST_CC=clang bash run_tests.sh
+mkdir -p build
+./rez3asm.exe examples/hello.rza --emit-c -o build/hello.c
+${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
+  build/hello.c -o build/hello
+./build/hello
 ```
 
-`RUST_CC` нужен только для компоновки Rust staticlib в benchmark; RZA и C
-используют компилятор из `CC`. CI запускает Linux GCC/Clang/Zig 0.16.0, Windows
-Zig и тесты расширения VS Code: unit, packaging, Extension Host и production audit.
+Expected output:
 
-## Пример
-
-Файл `examples/hello.rza`:
-
-```asm
-res acc, field, 8
-med acc_m, acc, field
-
-mov %r0, 0
-store [acc_m + 0], %r0
-mov %r0, 41
-load %r1, [acc_m + 0]
-add %r2, %r0, %r1
-store [acc_m + 0], %r2
-print %r2
-ret
+```text
+41
 ```
 
-Ожидаемый вывод: `41`. `res` создаёт ячейку, `med` выдаёт проверяемую ссылку,
-`load` и `store` работают только через неё. Другие программы и их ожидаемый вывод
-находятся в `examples/`; прикладной сценарий — `examples/shop.rza`.
+### Validate without generating C
 
-Компилятор `rez3asm` поддерживает проверку без генерации, `--emit-c` для
-исполняемой программы, `--emit-lib` для встраивания в host C и `--lsp` для
-диагностики в редакторе. Host ABI имеет версию 4.
+```sh
+./rez3asm.exe examples/hello.rza
+```
 
-## Основные правила
+A valid program produces no output and exits with status 0. Invalid input prints
+`VIOLATION` diagnostics and exits with status 1. Command-line usage errors and
+file I/O failures exit with status 2.
 
-- Шестнадцать регистров `%r0`–`%r15` хранят i64; флагов и сырой адресной
-  арифметики нет.
-- `field` — корневая рамка, `cav` создаёт вложенную рамку, `decay` уничтожает её
-  поддерево. Поколения не позволяют старой ссылке ожить на новой памяти.
-- `raise` меняет владельца только для статической проверки; физическая память
-  остаётся в исходной рамке.
-- `casc` проверяет входные ссылки один раз. Недействительный вход пропускает тело
-  с результатом `ABORT`.
-- `acasc` ставит работу в ограниченную cooperative FIFO. `await` выполняет её в
-  порядке постановки; выход из процедуры или программы тоже завершает очередь.
-- Процедуры получают чистые регистры; обмен значениями идёт через ячейки.
-- Постоянный выход за границы отклоняется при проверке. Динамический выход,
-  мёртвая ссылка и опасные арифметические операции дают `FAULT` с кодом 1.
+## Command-line interface
 
-Память имеет фиксированные бюджеты. После инициализации runtime не вызывает
-`malloc`, `realloc` или `free`.
+```text
+rez3asm file.rza [--emit-c | --emit-lib] [-o file.c]
+rez3asm --lsp
+```
 
-## Именованные записи
+- With no output flag, the compiler performs validation only.
+- `--emit-c` generates a standalone C program with `main`.
+- `--emit-lib` generates a C library without `main`, for use by a C host.
+- `-o` writes generated C to a file and enables generation even without an emit
+  flag. Without `-o`, generated C is written to standard output.
+- `--lsp` starts the language server on standard input and output.
+
+The compiler is not installed into `PATH` by the build script; invoke it by its
+path from the checkout.
+
+## Memory and execution
+
+Programs use sixteen signed 64-bit registers, `%r0` through `%r15`. Memory is
+organized into cells and is never addressed through a raw pointer in RZA code.
+
+- `field` is the root frame and lives for the whole program.
+- `cav name, parent` creates a frame that owns a fixed-size memory arena.
+- `res cell, frame, size` reserves a zero-initialized cell in a live frame.
+- `med ref, cell, frame` creates a checked reference called a mediator.
+  Generation checks prevent a stale mediator from referring to reused storage.
+- `decay frame` invalidates the frame and all of its descendants. Later access
+  through an affected mediator produces a runtime `FAULT`.
+- `raise cell, ancestor` changes ownership only for static checking. It does not
+  move memory or extend the lifetime of the original frame.
+- `casc ... endc` checks all input mediators before executing a block. If an
+  input is dead at runtime, the whole block is skipped with `ABORT`; its output
+  is an 8-byte cell.
+- `acasc ... endc` enqueues work in a bounded cooperative FIFO. `await` drains
+  the queue and returns the number of successful tasks. This is not OS-thread
+  parallelism or network asynchronous I/O.
+
+Procedures start with clean registers. Values are exchanged through cells, not
+parameter registers or a return register. Recursion is rejected.
+
+`add`, `sub`, `mul`, `inc`, and `dec` wrap modulo 2^64. Division by zero,
+overflowing signed division or remainder, and invalid shift counts produce
+`FAULT`. A constant out-of-bounds access is rejected during validation; a
+register-dependent out-of-bounds access is a runtime `FAULT`.
+
+The runtime uses fixed storage. After initialization it does not call `malloc`,
+`realloc`, or `free`.
+
+## Typed layouts
+
+Flat records describe field widths, alignment, and element counts:
 
 ```asm
 layout Entry: key:i64, value:i64
@@ -87,28 +127,110 @@ print %r2
 ret
 ```
 
-Здесь `%r0` — номер элемента, не смещение в байтах. Компилятор вычисляет размер
-записи, выравнивание и смещения полей. Поля `u8` используют `loadb/storeb`, поля
-`i64` — `load/store`. Typed-ячейка требует `.field`; raw-ячейка использует обычные
-byte offsets. Полный пример — `examples/typed_layout.rza`.
+The value after `+` is an element index for a typed cell, not a byte offset. The
+compiler calculates the record stride and field offsets. Use `load`/`store` for
+`i64` fields and `loadb`/`storeb` for `u8` fields. Raw cells instead use byte
+offsets and have no field selector.
 
-## Границы
+See [the complete typed example](examples/typed_layout.rza) for arrays, padding,
+and byte truncation.
 
-RZA не делает безопасным произвольный host C и не проверяет прикладную логику.
-Потоков ОС, GC, рекурсии, физического перемещения памяти и транзакционного отката
-нет. Поддерживаются только плоские записи из `u8`/`i64` и их fixed arrays;
-вложенных и packed layouts нет. SIMD/intrinsics и собственный optimizing backend
-не входят в текущую реализацию: оптимизацией занимается C23 toolchain.
+## Embedding in C
 
-## Структура
+Generate a library and link it with the included host:
 
-- `compiler/` — модель, layouts, проверка и генерация C23.
-- `rez3asm.c3`, `lsp_server.c3` — CLI и языковой сервер.
-- `memory_guard.c3`, `scratch_memory.c3` — ограничения памяти компилятора.
-- `examples/` — runnable программы и ожидаемый вывод.
-- `tests/` — положительные, отрицательные, runtime, ABI, LSP и fuzz проверки.
-- `bench/` — воспроизводимые сравнения RZA/C/Rust и машинный код.
-- `refs/` — общее C23-ядро и reference checker.
-- `editors/vscode` — расширение редактора в отдельном submodule.
+```sh
+./rez3asm.exe examples/shop.rza --emit-lib -o build/shop.c
+${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I . \
+  build/shop.c examples/shop_host.c -o build/shop_host
+./build/shop_host
+```
 
-Лицензия: `LICENSE`.
+The host exits with status 0 after `rza_boot` runs the shop program. Its output
+matches `examples/shop.expected` and ends with `DEAD` because the final `probe`
+observes the decayed cart frame. The library exports `rza_boot`, procedure entry
+points, frame and mediator accessors, `rza_deref_cell`, `rza_arena_alloc`, and
+`rza_await`.
+
+The host ABI version is 4. Rebuild all C translation units against the same
+headers and generated code. RZA checks do not make arbitrary host C safe: the
+host remains responsible for its own pointers, offsets, and object lifetimes.
+
+## Examples and editors
+
+- [hello](examples/hello.rza): cells, mediators, arithmetic, and output.
+- [counter2](examples/counter2.rza): procedure calls and shared field storage.
+- [idioms](examples/idioms.rza): comparisons and branches without CPU flags.
+- [settle](examples/settle.rza): a synchronous cascade over two cells.
+- [shop](examples/shop.rza): a longer state-transition example.
+- [typed_layout](examples/typed_layout.rza): typed records and byte fields.
+
+Each example has an adjacent `.expected` file where its output is applicable.
+The [VS Code extension](https://github.com/wtorso/rza-vscode) provides syntax
+highlighting and diagnostics through the real language server. Lightweight
+modes for [Emacs and Neovim](https://github.com/wtorso/rza-editors) provide
+syntax highlighting without requiring the compiler.
+
+## Benchmarks
+
+On Linux, with `rustc` and `objdump` installed, run:
+
+```sh
+bash bench/run.sh
+```
+
+The benchmark compares equivalent CRC32C and hash-table workloads in RZA, C, and
+Rust, records compile and runtime costs separately, and saves disassembly.
+See [the benchmark guide](bench/README.md) for toolchain selection, output files,
+and measurement limits. Results apply only to the recorded machine, toolchain,
+and workload; they do not establish a universal advantage over C or Rust.
+
+## Current limits
+
+- Only flat `u8`/`i64` records and fixed-size arrays are supported. Nested and
+  packed layouts, unions, bitfields, and a portable wire ABI are not implemented.
+- There are no OS threads, garbage collection, recursion, physical memory moves,
+  transactional rollback, or general-purpose networking primitives.
+- RZA has no direct SIMD/intrinsics or native optimizing backend. The selected
+  C23 compiler performs optimization and target-specific code generation.
+- Fixed budgets make resource limits explicit; they do not resize automatically.
+- The checker does not prove application logic correct or sanitize host C.
+
+## Verify
+
+Build and run the complete suite:
+
+```sh
+bash build_compiler.sh
+bash run_tests.sh
+```
+
+Expected results are `PASS=156 FAIL=0` on POSIX and `PASS=154 FAIL=0` on Windows.
+On Linux the full suite also requires `rustc` for equivalent benchmark-source
+checks.
+
+Other supported compiler selections are:
+
+```sh
+CC=clang bash run_tests.sh
+CC="zig cc" RUST_CC=clang bash run_tests.sh
+```
+
+`RUST_CC` selects the linker for Rust static libraries; it does not replace the
+C compiler used for generated RZA code. CI runs Linux GCC/Clang/Zig, Windows Zig,
+and VS Code unit, packaging, Extension Host, and production-dependency checks.
+
+## Repository layout
+
+- `compiler/`: language model, layouts, checker, and C23 emitter.
+- `rez3asm.c3`, `lsp_server.c3`: CLI and language server.
+- `memory_guard.c3`, `scratch_memory.c3`: compiler memory limits and ownership.
+- `examples/`: runnable examples and expected output.
+- `tests/`: positive, negative, runtime, ABI, LSP, fuzz, and style checks.
+- `bench/`: comparable workloads, timing, and disassembly checks.
+- `refs/`: shared fixed-storage C23 runtime and reference tools.
+- `editors/vscode`: VS Code extension as a separate submodule.
+
+## License
+
+RZA is available under the [MIT License](LICENSE).

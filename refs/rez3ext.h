@@ -1,4 +1,4 @@
-/* RESONANCE-3 cell mediators and defined i64 arithmetic. C23. */
+/* RZA cell mediators and defined i64 arithmetic. C23. */
 #ifndef REZ3EXT_H
 #define REZ3EXT_H
 

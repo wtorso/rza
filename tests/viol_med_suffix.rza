@@ -1,4 +1,4 @@
-; STRUCT: имя медиатора обязано кончаться на _m (дисциплина имён, SPEC §0)
+; STRUCT: имя медиатора обязано кончаться на _m (дисциплина имён)
 cav  main, field
 res  x, main, 8
 med  xm, x, main    ; VIOLATION [STRUCT]: mediator name must end with _m

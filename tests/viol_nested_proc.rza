@@ -1,4 +1,4 @@
-; STRUCT: вложенный proc запрещён (SPEC procedures)
+; STRUCT: вложенный proc запрещён
 proc p:
 proc q:           ; VIOLATION [STRUCT]: nested proc
     ret
