@@ -18,17 +18,15 @@ release_target() {
 
 stage_sources() {
     local root=$1 file
-    git checkout-index --all --prefix="$root/"
     git ls-files -z --cached --others --exclude-standard |
         while IFS= read -r -d '' file; do
-            if [ ! -f "$file" ]; then
-                if [ -f "$root/$file" ]; then rm --force "$root/$file"; fi
-                continue
-            fi
-            if ! git diff --quiet -- "$file" || ! git diff --cached --quiet -- "$file" ||
-                    [ ! -f "$root/$file" ]; then
-                mkdir --parents "$root/$(dirname "$file")"
-                cp -p "$file" "$root/$file"
+            if [ ! -f "$file" ]; then continue; fi
+            mkdir --parents "$root/$(dirname "$file")"
+            cp -p "$file" "$root/$file"
+            if git cat-file -e "HEAD:$file" 2>/dev/null &&
+                    git diff --ignore-space-at-eol --quiet -- "$file" &&
+                    git diff --cached --ignore-space-at-eol --quiet -- "$file"; then
+                git show "HEAD:$file" >"$root/$file"
             fi
         done
 }
