@@ -122,9 +122,9 @@ cd rza-0.1.0-linux-x86_64
 
 The archive contains the native compiler, runtime headers, source, tests,
 benchmarks, and examples. The quickstart above also works from this directory.
-`RELEASE` records the version, full source commit, target, C3 version, and
-`RZA_DIRTY=0`. Packages are built twice and must be byte-identical before they
-can be published. Checksums verify integrity; they are not a signature.
+`RELEASE.txt` records the version, full source commit, target, C3 version, and
+`RZA_DIRTY=0`. Packages are built in two clean checkouts and must be
+byte-identical before they can be published. Checksums verify integrity; they are not a signature.
 
 ## Memory and execution
 

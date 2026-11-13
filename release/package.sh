@@ -30,7 +30,7 @@ write_release() {
     local root=$1 version=$2 target=$3 commit=$4 dirty=$5
     printf '%s\n' "RZA_VERSION=$version" "RZA_COMMIT=$commit" \
         "RZA_TARGET=$target" "C3_VERSION=0.8.5_1" "RZA_DIRTY=$dirty" \
-        >"$root/RELEASE"
+        >"$root/RELEASE.txt"
 }
 
 version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' project.json)
@@ -72,7 +72,7 @@ write_release "$root" "$version" "$target" "$commit" "$dirty"
 
 compiler="rez3asm"
 if [ "${OS:-}" = "Windows_NT" ]; then compiler="rez3asm.exe"; fi
-bash build_compiler.sh >"$out/build.log" 2>&1
+RZA_RELEASE=1 bash build_compiler.sh >"$out/build.log" 2>&1
 cp -p "$compiler" "$root/$compiler"
 chmod 0755 "$root/$compiler"
 chmod -R u=rwX,go=rX "$root"

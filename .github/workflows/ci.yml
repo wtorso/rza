@@ -73,7 +73,9 @@ jobs:
         env:
           CC: ${{ matrix.cc }}
           RZA_RELEASE_REQUIRE_CLEAN: "1"
-        run: bash release/verify.sh
+        run: |
+          bash release/verify.sh
+          bash release/cross_check.sh
       - name: Hygiene
         shell: bash
         run: |
@@ -140,7 +142,9 @@ jobs:
         env:
           CC: zig cc
           RZA_RELEASE_REQUIRE_CLEAN: "1"
-        run: bash release/verify.sh
+        run: |
+          bash release/verify.sh
+          bash release/cross_check.sh
       - name: Hygiene
         shell: bash
         run: |

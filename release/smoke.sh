@@ -36,8 +36,8 @@ else
     test ! -e "$root/rez3asm.exe"
 fi
 test -x "$compiler"
-test "$(sed -n 's/^RZA_DIRTY=//p' "$root/RELEASE")" != ""
-dirty=$(sed -n 's/^RZA_DIRTY=//p' "$root/RELEASE")
+test "$(sed -n 's/^RZA_DIRTY=//p' "$root/RELEASE.txt")" != ""
+dirty=$(sed -n 's/^RZA_DIRTY=//p' "$root/RELEASE.txt")
 if [ "${RZA_RELEASE_REQUIRE_CLEAN:-0}" = 1 ] && [ "$dirty" != 0 ]; then
     echo "FATAL: dirty archive is not a clean release" >&2
     exit 1
@@ -45,7 +45,7 @@ fi
 printf '%s\n' "RZA_VERSION=$version" "RZA_COMMIT=$(git rev-parse HEAD)" \
     "RZA_TARGET=$target" "C3_VERSION=0.8.5_1" "RZA_DIRTY=$dirty" \
     >"$work/RELEASE.expected"
-diff --unified "$work/RELEASE.expected" "$root/RELEASE"
+diff --unified "$work/RELEASE.expected" "$root/RELEASE.txt"
 
 test "$("$compiler" --version)" = "rez3asm $version"
 "$compiler" --help >"$work/help.out" 2>"$work/help.err"
