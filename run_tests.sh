@@ -66,7 +66,8 @@ run_function_style() {
             tests/function_length.c3 tests/source_style.c3 tests/deterministic_artifacts.c3 \
             tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
             tests/ownership_fuzz.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
-            tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_memory_posix.c3 \
+            tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
+            tests/lsp_completion_smoke.c3 tests/lsp_memory_posix.c3 \
             tests/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
             >"$BUILD/function_style.out" 2>&1; then
         bad function_style "C3 test runner build failed"
@@ -322,10 +323,12 @@ run_c3_unit() {
     fi
     if ! "$c3c_bin" compile-test src/rez3asm.c3 src/compiler/model.c3 \
             src/compiler/layout.c3 src/compiler/checker.c3 src/compiler/emitter.c3 \
-            src/lsp_server.c3 src/memory_guard.c3 src/scratch_memory.c3 \
+            src/lsp_server.c3 src/lsp_navigation.c3 src/lsp_completion.c3 \
+            src/memory_guard.c3 src/scratch_memory.c3 \
             tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
-            tests/layout_test.c3 tests/harness.c3 tests/function_length.c3 \
+            tests/layout_test.c3 tests/lsp_navigation_test.c3 \
+            tests/harness.c3 tests/function_length.c3 \
             tests/source_style.c3 tests/source_style_test.c3 tests/function_length_test.c3 \
             -o c3_tests --output-dir "$BUILD" >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
