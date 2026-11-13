@@ -145,6 +145,14 @@ jobs:
         run: |
           bash release/verify.sh
           bash release/cross_check.sh
+      - name: Upload failed package diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-diagnostics-windows-${{ github.run_id }}
+          path: build/release-verify/**
+          if-no-files-found: warn
+          retention-days: 1
       - name: Hygiene
         shell: bash
         run: |
