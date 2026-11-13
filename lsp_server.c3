@@ -11,7 +11,6 @@ import std::core::dstring;
 import std::collections::object;
 import std::encoding::json;
 
-const String LSP_VERSION = "0.4.0";
 const int LSP_HEADER_MAX = 8192;
 const int LSP_BODY_MAX = 16777216;
 const int LSP_DOC_MAX = 1048576;
@@ -307,7 +306,7 @@ fn void handle_message(Object* msg) {
         case "initialize":
             lsp_respond(id,
                 `{"capabilities":{"textDocumentSync":1},`
-                +++ `"serverInfo":{"name":"rez3-lsp","version":"` +++ LSP_VERSION +++ `"}}`);
+                +++ `"serverInfo":{"name":"rez3-lsp","version":"` +++ RZA_VERSION +++ `"}}`);
         case "initialized":
             break;
         case "textDocument/didSave":

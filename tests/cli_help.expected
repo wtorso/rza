@@ -1,0 +1,21 @@
+Usage:
+  rez3asm <file.rza> [--emit-c | --emit-lib] [-o <file.c>]
+  rez3asm --lsp
+  rez3asm --help
+  rez3asm --version
+
+Modes:
+  (default)       Validate the source without generating C.
+  --emit-c        Generate a standalone C23 program with main.
+  --emit-lib      Generate a C23 library without main for a C host.
+  -o <file.c>     Write C to a file; also enables C generation.
+  --lsp           Start the LSP server on standard input and output.
+  --help          Print this help and exit.
+  --version       Print the compiler version and exit.
+
+Without -o, generated C is written to standard output.
+
+Exit status:
+  0  Success.
+  1  Source validation failed.
+  2  Command-line usage or file I/O error.

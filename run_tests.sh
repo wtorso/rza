@@ -251,6 +251,44 @@ run_viol_contract() {
     ok run_viol_contract
 }
 
+run_cli_contract() {
+    local status version
+    "$TR" --help >"$BUILD/cli_help.out" 2>"$BUILD/cli_help.err"
+    status=$?
+    if [ "$status" -ne 0 ] || ! compare_text tests/cli_help.expected \
+            "$BUILD/cli_help.out" || [ -s "$BUILD/cli_help.err" ]; then
+        bad cli_contract "--help must print exact help to stdout and exit 0"
+        return
+    fi
+    version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' project.json)
+    printf 'rez3asm %s\n' "$version" >"$BUILD/cli_version.expected"
+    "$TR" --version >"$BUILD/cli_version.out" 2>"$BUILD/cli_version.err"
+    status=$?
+    if [ "$status" -ne 0 ] || ! compare_text "$BUILD/cli_version.expected" \
+            "$BUILD/cli_version.out" || [ -s "$BUILD/cli_version.err" ]; then
+        bad cli_contract "--version must match project.json and exit 0"
+        return
+    fi
+    "$TR" >"$BUILD/cli_noargs.out" 2>"$BUILD/cli_noargs.err"
+    status=$?
+    if [ "$status" -ne 2 ] || [ -s "$BUILD/cli_noargs.out" ] || \
+            ! compare_text tests/cli_help.expected "$BUILD/cli_noargs.err"; then
+        bad cli_contract "no arguments must print help to stderr and exit 2"
+        return
+    fi
+    "$TR" --help tests/fib.rza >"$BUILD/cli_mixed.out" 2>"$BUILD/cli_mixed.err"
+    if [ "$?" -ne 2 ]; then
+        bad cli_contract "--help with an input must be a usage error"
+        return
+    fi
+    "$TR" tests/fib.rza tests/counter.rza >"$BUILD/cli_two.out" 2>"$BUILD/cli_two.err"
+    if [ "$?" -ne 2 ]; then
+        bad cli_contract "want exit 2 for two input files"
+        return
+    fi
+    ok cli_contract
+}
+
 run_c3() {
     local name=$1 command=$2
     if "$BUILD/rza_tests.exe" "$command"; then ok "$name"
@@ -627,12 +665,7 @@ run_lib lib_abort
 run_lib lib_raise
 run_lib lib_async
 run_lib lib_async_boot
-$TR tests/fib.rza tests/counter.rza >"$BUILD/cli_two.out" 2>"$BUILD/cli_two.err"
-if [ "$?" -ne 2 ]; then
-    bad cli_two_inputs "want exit 2 for two input files"
-else
-    ok cli_two_inputs
-fi
+run_cli_contract
 run_lsp_smoke
 run_ownership_fuzz
 run_fault_smoke

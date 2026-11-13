@@ -75,7 +75,7 @@ fn int? initialize_checks(Process* child) {
     if (!expect(sync.is_int() && sync.i == 1, "initialize Full sync")) return 1;
     Object* info = result.get("serverInfo")!;
     if (!expect((info.get_string("name") ?? "") == "rez3-lsp" &&
-            (info.get_string("version") ?? "") == "0.4.0", "initialize serverInfo")) {
+            (info.get_string("version") ?? "") == "0.1.0", "initialize serverInfo")) {
         return 1;
     }
     DString long_id = dstring::temp();

@@ -11,8 +11,53 @@ import std::core::dstring;
 import std::core::mem::allocators;
 import std::collections::list;
 import std::hash::sha256;
+
+const String RZA_VERSION = "0.1.0";
+const String USAGE_TEXT = "Usage:\n"
+    "  rez3asm <file.rza> [--emit-c | --emit-lib] [-o <file.c>]\n"
+    "  rez3asm --lsp\n"
+    "  rez3asm --help\n"
+    "  rez3asm --version\n"
+    "\n"
+    "Modes:\n"
+    "  (default)       Validate the source without generating C.\n"
+    "  --emit-c        Generate a standalone C23 program with main.\n"
+    "  --emit-lib      Generate a C23 library without main for a C host.\n"
+    "  -o <file.c>     Write C to a file; also enables C generation.\n"
+    "  --lsp           Start the LSP server on standard input and output.\n"
+    "  --help          Print this help and exit.\n"
+    "  --version       Print the compiler version and exit.\n"
+    "\n"
+    "Without -o, generated C is written to standard output.\n"
+    "\n"
+    "Exit status:\n"
+    "  0  Success.\n"
+    "  1  Source validation failed.\n"
+    "  2  Command-line usage or file I/O error.";
+
+fn void print_usage(bool error) {
+    if (error) {
+        io::eprintfn("%s", USAGE_TEXT);
+        return;
+    }
+    io::printfn("%s", USAGE_TEXT);
+}
+
+fn int metadata_status(String[] args) {
+    if (args.len != 2) return -1;
+    if (args[1] == "--help") {
+        print_usage(false);
+        return 0;
+    }
+    if (args[1] != "--version") return -1;
+    io::printfn("rez3asm %s", RZA_VERSION);
+    return 0;
+}
+
 fn int main(String[] args) {
     assert(args.len > 0);
+    int metadata = metadata_status(args);
+    if (metadata >= 0) return metadata;
     init_workmem();
     reset_state();
     list_guard.freeze();
@@ -49,8 +94,7 @@ fn int main(String[] args) {
         }
     }
     if (src.len == 0) {
-        io::eprintfn("usage: rez3asm file.rza [--emit-c | --emit-lib] [-o file.c] | rez3asm --lsp");
-        io::eprintfn("  -o без --emit-c/--emit-lib тоже включает эмиссию C");
+        print_usage(true);
         return 2;
     }
     char[]? data = file::load(workmem, src);
