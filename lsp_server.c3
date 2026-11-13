@@ -24,11 +24,9 @@ const int LSP_READ_CHUNK = 16384;
 const int LSP_INPUT_MAX = LSP_BODY_MAX + LSP_HEADER_MAX + LSP_READ_CHUNK;
 
 // Бинарный stdio сохраняет Content-Length на Windows.
-extern fn CInt _setmode(CInt fd, CInt mode) @feat(WIN32);
 extern fn CInt _read(CInt fd, void* buffer, CUInt size) @feat(WIN32);
 extern fn long platform_read(CInt fd, void* buffer, ulong size)
     @cname("read") @feat(!WIN32);
-const CInt LSP_O_BINARY @feat(WIN32) = 0x8000;
 
 struct LspDoc {
     bool used;
@@ -464,8 +462,8 @@ fn bool next_message(DString* inbuf) {
 
 fn int lsp_main() {
     $if env::WIN32:
-        _setmode(libc::fileno(libc::stdin()), LSP_O_BINARY);
-        _setmode(libc::fileno(libc::stdout()), LSP_O_BINARY);
+        _setmode(libc::fileno(libc::stdin()), RZA_O_BINARY);
+        _setmode(libc::fileno(libc::stdout()), RZA_O_BINARY);
     $endif
     g_lsp_mode = true;
     assert(LSP_HEADER_MAX > 0);

@@ -12,6 +12,9 @@ import std::core::mem::allocators;
 import std::collections::list;
 import std::hash::sha256;
 
+extern fn CInt _setmode(CInt fd, CInt mode) @feat(WIN32);
+const CInt RZA_O_BINARY @feat(WIN32) = 0x8000;
+
 const String RZA_VERSION = "0.1.0";
 const String USAGE_TEXT = "Usage:\n"
     "  rez3asm <file.rza> [--emit-c | --emit-lib] [-o <file.c>]\n"
@@ -35,7 +38,16 @@ const String USAGE_TEXT = "Usage:\n"
     "  1  Source validation failed.\n"
     "  2  Command-line usage or file I/O error.";
 
+fn void metadata_binary_mode(bool error) {
+    $if env::WIN32:
+        CInt fd = error ? 2 : 1;
+        CInt result = _setmode(fd, RZA_O_BINARY);
+        assert(result != -1);
+    $endif
+}
+
 fn void print_usage(bool error) {
+    metadata_binary_mode(error);
     if (error) {
         io::eprintfn("%s", USAGE_TEXT);
         return;
@@ -50,6 +62,7 @@ fn int metadata_status(String[] args) {
         return 0;
     }
     if (args[1] != "--version") return -1;
+    metadata_binary_mode(false);
     io::printfn("rez3asm %s", RZA_VERSION);
     return 0;
 }

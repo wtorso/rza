@@ -53,7 +53,7 @@ if command -v c3c >/dev/null 2>&1; then C3C="c3c"
 elif [ -n "${LOCALAPPDATA:-}" ] && [ -x "$LOCALAPPDATA/c3/c3c.exe" ]; then
     C3C="$LOCALAPPDATA/c3/c3c.exe"
 else echo "FATAL: no c3c" >&2; exit 2; fi
-c3_version=$($C3C --version | sed -n 's/^C3 Compiler Version:[[:space:]]*//p')
+c3_version=$($C3C --version | tr -d '\r' | sed -n 's/^C3 Compiler Version:[[:space:]]*//p')
 if [ "$c3_version" != "0.8.5_1" ]; then
     echo "FATAL: C3 0.8.5_1 is required, found $c3_version" >&2
     exit 2

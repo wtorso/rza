@@ -14,7 +14,7 @@ RUSTC=${RUSTC:-rustc}
 RUST_CC=${RUST_CC:-$CC}
 if [ -z "${RZA_COMPILER:-}" ]; then
     RZA_COMPILER="./rez3asm"
-    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER=""$RZA_COMPILER""; fi
+    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./rez3asm.exe"; fi
 fi
 mkdir --parents "$BUILD"
 

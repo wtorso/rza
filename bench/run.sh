@@ -14,7 +14,7 @@ CFLAGS="-std=c23 -O2 -pedantic -Wall -Wextra -Werror -I refs -I ."
 LDFLAGS=${LDFLAGS:-}
 if [ -z "${RZA_COMPILER:-}" ]; then
     RZA_COMPILER="./rez3asm"
-    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER=""$RZA_COMPILER""; fi
+    if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./rez3asm.exe"; fi
 fi
 export CC CFLAGS LDFLAGS RUSTC RUST_CC RZA_COMPILER
 REPEATS=${RZA_BENCH_COMPILE_REPEATS:-20}
