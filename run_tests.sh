@@ -73,8 +73,12 @@ run_function_style() {
         cat "$BUILD/function_style.out"
         return
     fi
-    if [ -f "$BUILD/rza_tests" ]; then
-        mv "$BUILD/rza_tests" "$BUILD/rza_tests.exe" || return
+    if [ -f "$BUILD/rza_tests" ] &&
+            [ ! "$BUILD/rza_tests" -ef "$BUILD/rza_tests.exe" ]; then
+        if ! mv --force "$BUILD/rza_tests" "$BUILD/rza_tests.exe"; then
+            bad function_style "cannot normalize C3 test runner"
+            return
+        fi
     fi
     if ! "$BUILD/rza_tests.exe" function-style >>"$BUILD/function_style.out" 2>&1; then
         bad function_style "function length or scanner error"
@@ -641,4 +645,11 @@ fi
 run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
-[ "$FAIL" -eq 0 ]
+if [ "$FAIL" -ne 0 ]; then exit 1; fi
+EXPECTED_PASS=156
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=155; fi
+if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
+    echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
+    exit 1
+fi
+exit 0
