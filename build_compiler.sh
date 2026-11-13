@@ -12,7 +12,7 @@ case "${RZA_RELEASE:-0}" in
     0) ;;
     1)
         RELEASE_FLAGS=(-g0)
-        if [ "${OS:-}" = "Windows_NT" ]; then RELEASE_FLAGS+=(-z /Brepro); fi
+        if [ "${OS:-}" = "Windows_NT" ]; then RELEASE_FLAGS+=(-z -Brepro); fi
         ;;
     *) echo "FATAL: RZA_RELEASE must be 0 or 1" >&2; exit 2 ;;
 esac
