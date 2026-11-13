@@ -23,7 +23,9 @@ comparison programs and benchmark checks.
 
 The commands below use a POSIX-compatible shell. CI also builds and tests the
 project on Windows with Bash and Zig. Release packages are currently provided
-only for Linux x86_64 and Windows x86_64.
+only for Linux x86_64 and Windows x86_64. The Windows binary uses the dynamic
+Microsoft C runtime (`VCRUNTIME140.dll`) and `dbghelp.dll`; static CRT is not
+included.
 
 ## Build and run
 

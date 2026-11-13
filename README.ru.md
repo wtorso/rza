@@ -24,7 +24,8 @@ host-интерфейсы могут меняться.
 
 Команды ниже используют POSIX-совместимый shell. CI также собирает и тестирует
 проект на Windows с Bash и Zig. Release-пакеты пока доступны только для Linux
-x86_64 и Windows x86_64.
+x86_64 и Windows x86_64. Windows-бинарь использует динамический Microsoft C
+runtime (`VCRUNTIME140.dll`) и `dbghelp.dll`; static CRT не входит в пакет.
 
 ## Сборка и запуск
 
