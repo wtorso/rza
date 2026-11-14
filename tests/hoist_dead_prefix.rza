@@ -1,0 +1,9 @@
+cav tmp, field
+res x, tmp, 8
+med x_m, x, tmp
+decay tmp
+proc work:
+    load %r0, [x_m + 0]
+    ret
+call work
+ret

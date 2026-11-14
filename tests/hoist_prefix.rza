@@ -1,0 +1,12 @@
+res x, field, 16
+med x_m, x, field
+mov %r0, 42
+store [x_m + 0], %r0
+proc work:
+    load %r1, [x_m + 0]
+    store [x_m + 8], %r1
+    load %r2, [x_m + 8]
+    print %r2
+    ret
+call work
+ret

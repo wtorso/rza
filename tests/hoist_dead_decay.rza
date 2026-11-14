@@ -1,0 +1,13 @@
+cav tmp, field
+res x, tmp, 8
+med x_m, x, tmp
+mov %r0, 42
+store [x_m + 0], %r0
+proc work:
+    load %r0, [x_m + 0]
+    print %r0
+    decay tmp
+    load %r1, [x_m + 0]
+    ret
+call work
+ret

@@ -277,7 +277,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=170 FAIL=0` на POSIX и `PASS=169 FAIL=0` на Windows.
+Ожидаемый результат: `PASS=175 FAIL=0` на POSIX и `PASS=174 FAIL=0` на Windows.
 На Windows не запускаются только специфичные для Linux проверки исходников
 benchmark; на Linux для них также нужен `rustc`.
 

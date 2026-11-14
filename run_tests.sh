@@ -553,6 +553,9 @@ run_good ushr
 run_good checked_arith
 run_good crc32c_u64
 run_good crc32c_name_collision
+run_good hoist_prefix
+run_good hoist_dead_branch
+run_good hoist_call
 run_good capacity_guard
 run_good typed_table
 run_good compare_edges
@@ -631,6 +634,8 @@ for t in hello ring_buffer shop; do
 done
 run_dead dead_link "FAULT line 10: dead mediator acc_m"
 run_dead ret_dead "FAULT line 8: dead mediator x_m"
+run_dead hoist_dead_prefix "FAULT line 6: dead mediator x_m"
+run_dead hoist_dead_decay "FAULT line 10: dead mediator x_m"
 run_good raise_old_med
 run_viol viol_raise_home_casc I3
 run_viol viol_casc_missing_frame STRUCT
@@ -710,8 +715,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=170
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=169; fi
+EXPECTED_PASS=175
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=174; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

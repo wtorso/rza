@@ -1,0 +1,14 @@
+cav tmp, field
+res x, tmp, 8
+med x_m, x, tmp
+decay tmp
+proc work:
+    mov %r0, 0
+    brz %r0, skip
+    load %r1, [x_m + 0]
+skip:
+    mov %r1, 7
+    print %r1
+    ret
+call work
+ret

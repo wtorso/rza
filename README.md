@@ -276,7 +276,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=170 FAIL=0` on POSIX and `PASS=169 FAIL=0` on Windows.
+Expected results are `PASS=175 FAIL=0` on POSIX and `PASS=174 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 

@@ -14,6 +14,8 @@ import std::hash::sha256;
 const long ARENA_FRAME_MAX = 16777216;
 const long ARENA_TOTAL_MAX = 67108864;
 bool emit_crc_direct = false;
+bool[NODE_MAX] hoist_med;
+bool[NODE_MAX] hoist_ready;
 struct Output {
     DString text;
     sz max_bytes;
@@ -256,13 +258,27 @@ fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
     out.append_string("}\n");
 }
 
+fn void emit_hoist_guard(Output* out, int ind, Instr* ins) {
+    String name = meds[ins.x].name;
+    pad(out, ind);
+    out.appendf("void *p_%s = rez_deref_cell(%s);\n", name, meds[ins.x].cname);
+    pad(out, ind);
+    out.appendf("if (!p_%s) { fprintf(stderr, \"FAULT line %d: "
+                "dead mediator %s\\n\"); exit(1); }\n", name, ins.line, name);
+}
+
 fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     DString* oex = load_offset_scratch.acquire(OFFSET_STRING_BYTES);
     assert(oex != null);
     defer assert(load_offset_scratch.release(oex));
     append_access_offset(oex, ins);
-    String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";
-    if (!in_casc) {
+    bool hoisted = !in_casc && hoist_med[ins.x];
+    String ptr = in_casc || hoisted ? cat({"p_", meds[ins.x].name}) : "p";
+    if (hoisted && !hoist_ready[ins.x]) {
+        emit_hoist_guard(out, ind, ins);
+        hoist_ready[ins.x] = true;
+    }
+    if (!in_casc && !hoisted) {
         pad(out, ind);
         out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
         pad(out, ind);
@@ -280,7 +296,7 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
         out.appendf("memcpy(&r%d, (char*)%s + %s, 8);",
                     ins.a, ptr, oex.str_view());
     }
-    out.append_string(in_casc ? "\n" : " }\n");
+    out.append_string(in_casc || hoisted ? "\n" : " }\n");
 }
 
 fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
@@ -288,8 +304,13 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     assert(sex != null);
     defer assert(store_offset_scratch.release(sex));
     append_access_offset(sex, ins);
-    String ptr = in_casc ? cat({"p_", meds[ins.x].name}) : "p";
-    if (!in_casc) {
+    bool hoisted = !in_casc && hoist_med[ins.x];
+    String ptr = in_casc || hoisted ? cat({"p_", meds[ins.x].name}) : "p";
+    if (hoisted && !hoist_ready[ins.x]) {
+        emit_hoist_guard(out, ind, ins);
+        hoist_ready[ins.x] = true;
+    }
+    if (!in_casc && !hoisted) {
         pad(out, ind);
         out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
         pad(out, ind);
@@ -307,7 +328,7 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
         out.appendf("memcpy((char*)%s + %s, &r%d, 8);",
                     ptr, sex.str_view(), ins.a);
     }
-    out.append_string(in_casc ? "\n" : " }\n");
+    out.append_string(in_casc || hoisted ? "\n" : " }\n");
 }
 
 fn void emit_checked_arith(Output* out, int ind, Instr* ins, String helper, String rhs) {
@@ -741,9 +762,46 @@ fn bool is_async_block(int block) {
     return cascades[ci].is_async;
 }
 
+fn void hoist_reset() {
+    for (sz i = 0; i < meds.len(); i++) {
+        hoist_med[i] = false;
+        hoist_ready[i] = false;
+    }
+}
+
+fn bool hoist_allowed(Op op) {
+    switch (op) {
+        case Op.LOAD: case Op.STORE: case Op.MOV: case Op.ALU3: case Op.ALU1:
+        case Op.PRINT: case Op.LABEL: case Op.JMP: case Op.BRZ: case Op.BRNZ:
+        case Op.RET: case Op.RAISE: case Op.PROBE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+fn void proc_hoist_prepare(int pi) {
+    hoist_reset();
+    for (sz i = 0; i < instrs.len(); i++) {
+        if (instrs[i].func == pi + 1 && !hoist_allowed(instrs[i].op)) return;
+    }
+    bool prefix = true;
+    for (sz i = 0; i < instrs.len(); i++) {
+        Instr* ins = &instrs[i];
+        if (ins.func != pi + 1) continue;
+        if (ins.op == Op.JMP || ins.op == Op.BRZ || ins.op == Op.BRNZ) prefix = false;
+        if (prefix && (ins.op == Op.LOAD || ins.op == Op.STORE)) hoist_med[ins.x] = true;
+    }
+}
+
 fn void emit_body(Output* out, int func) {
     int ind = 1;
-    assert(func <= (int)procs.len());
+    assert(func >= 0 && func <= (int)procs.len());
+    if (func == 0) {
+        hoist_reset();
+    } else {
+        proc_hoist_prepare(func - 1);
+    }
     for (sz i = 0; i < instrs.len(); i++) {
         Instr* ins = &instrs[i];
         if (ins.func != func || is_async_block(ins.block)) continue;

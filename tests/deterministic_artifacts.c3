@@ -102,6 +102,30 @@ fn int? check_paths_and_indexed() {
     return 0;
 }
 
+fn int text_count(String text, String needle) {
+    assert(needle.len > 0);
+    int count = 0;
+    String rest = text;
+    while (rest.len > 0) {
+        sz? found = rest.index_of(needle);
+        if (catch found) break;
+        count++;
+        rest = rest[found + needle.len..];
+    }
+    return count;
+}
+
+fn int? check_prefix_hoist_artifact() {
+    String generated = emit_artifact("tests/hoist_prefix.rza",
+        temp_path("hoist-prefix.c"))!;
+    if (!expect(text_count(generated, "rez_deref_cell(m_x_m)") == 2,
+            "prefix mediator is checked once per procedure")) return 1;
+    generated = emit_artifact("tests/hoist_call.rza", temp_path("hoist-call.c"))!;
+    if (!expect(text_count(generated, "rez_deref_cell(m_x_m)") == 3,
+            "call disables mediator hoisting")) return 1;
+    return 0;
+}
+
 fn int? check_crc_dispatch_artifact() {
     String generated = emit_artifact("bench/crc32c_hw.rza",
         temp_path("crc-dispatch.c"))!;
@@ -128,6 +152,7 @@ fn int? artifacts_run() {
     if (check_repeat_and_change()! != 0) return 1;
     if (check_paths_and_indexed()! != 0) return 1;
     if (check_crc_dispatch_artifact()! != 0) return 1;
+    if (check_prefix_hoist_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }
