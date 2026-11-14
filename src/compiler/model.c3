@@ -102,6 +102,7 @@ struct Med {
 	int name_column;
 	int cell; // индекс Cell
 	int owner; // владелец на момент объявления медиатора
+	int issuer; // рамка, выдавшая медиатор
 	uint gen;
 	uint home_gen;
 	String cname;

@@ -617,6 +617,7 @@ fn void op_med(String rest, int line) {
 		.name_column = source_column(name),
 		.cell = ci,
 		.owner = cells[ci].owner,
+		.issuer = is,
 		.gen = frames[cells[ci].owner].gen,
 		.home_gen = frames[cells[ci].home].gen,
 		.cname = cname_for("m_", name),

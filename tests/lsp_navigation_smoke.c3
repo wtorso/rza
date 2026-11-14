@@ -107,10 +107,40 @@ fn int? navigation_document_switch_checks(Process* child) {
 	return 0;
 }
 
+const String ISSUER_HOVER_TEXT = "cav local, field\n"
+	"res x, local, 8\n"
+	"med x_m, x, field\n"
+	"decay local\n"
+	"ret\n";
+
+fn int? navigation_hover_metadata_checks(Process* child) {
+	Object* response = lsp_call_json(child, change_message(ISSUER_HOVER_TEXT, 3))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "issuer hover document")) return 1;
+	response = position_call(child, "textDocument/hover", 99, GOOD_URI, 2, 5)!;
+	if (!expect(hover_markdown(response)
+		.contains("issuer frame `field`"), "mediator issuer hover")) return 1;
+	DString name = dstring::temp();
+	for (int i = 0; i < 300; i++) name.append_char('A');
+	DString text = dstring::temp();
+	text.appendf("layout %s: value:i64\n", name.str_view());
+	text.appendf("res x, field, %s\n", name.str_view());
+	text.append_string("med x_m, x, field\nret\n");
+	response = lsp_call_json(child, change_message(text.str_view(), 4))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "long layout document")) return 1;
+	response = position_call(child, "textDocument/hover", 100, GOOD_URI, 1, 5)!;
+	String markdown = hover_markdown(response);
+	bool clipped    = markdown.contains(
+		name.str_view()[:256]
+	) && !markdown.contains(name.str_view());
+	if (!expect(clipped, "cell summary clips layout name")) return 1;
+	return 0;
+}
+
 fn int? navigation_checks(Process* child) {
 	if (navigation_hover_definition_checks(child)! != 0) return 1;
 	if (navigation_document_switch_checks(child)! != 0) return 1;
 	if (navigation_regression_checks(child)! != 0) return 1;
+	if (navigation_hover_metadata_checks(child)! != 0) return 1;
 	return 0;
 }
 

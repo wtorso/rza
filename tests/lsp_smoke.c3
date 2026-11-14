@@ -86,6 +86,17 @@ fn int? initialize_checks(Process* child) {
 	Object*? definition = capabilities.get("definitionProvider");
 	if (catch definition) return 1;
 	if (!expect(definition.is_bool() && definition.b, "initialize definition")) return 1;
+	Object* references = capabilities.get("referencesProvider") ?? null;
+	if (!expect(
+		references != null && references.is_bool() && references.b,
+		"initialize references"
+	)) return 1;
+	Object* rename_options = capabilities.get("renameProvider") ?? null;
+	Object* prepare        = rename_options == null ? null
+		: rename_options.get("prepareProvider") ?? null;
+	if (!expect(prepare != null && prepare.is_bool() && prepare.b, "initialize prepare rename")) {
+		return 1;
+	}
 	Object*? completion = capabilities.get("completionProvider");
 	if (catch completion) return 1;
 	Object*? resolve = completion.get("resolveProvider");
@@ -397,6 +408,7 @@ fn int? lsp_run() {
 	if (document_open_checks(&child)! != 0) return 1;
 	if (navigation_checks(&child)! != 0) return 1;
 	if (completion_checks(&child)! != 0) return 1;
+	if (references_checks(&child)! != 0) return 1;
 	if (memory_checks(&child)! != 0) return 1;
 	if (malformed_change_checks(&child)! != 0) return 1;
 	if (close_reopen_checks(&child)! != 0) return 1;

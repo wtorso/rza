@@ -216,10 +216,14 @@ host remains responsible for its own pointers, offsets, and object lifetimes.
 
 Each example has an adjacent `.expected` file where its output is applicable.
 The [VS Code extension](https://github.com/wtorso/rza-vscode) provides syntax
-highlighting, diagnostics, hover, same-document definitions, and context-aware
-completion through the real language server. Lightweight
-modes for [Emacs and Neovim](https://github.com/wtorso/rza-editors) provide
-syntax highlighting without requiring the compiler.
+highlighting, diagnostics, hover, definitions, references, and context-aware
+completion through the real language server. Rename supports layouts, fields,
+frames, cells, mediators, and procedures, uses versioned edits, and is returned
+only when the renamed program passes the checker. Since each `.rza` file is a
+self-contained program, navigation and rename stay within the current document;
+labels are not included. Lightweight modes for
+[Emacs and Neovim](https://github.com/wtorso/rza-editors) provide syntax
+highlighting without requiring the compiler.
 
 ## Benchmarks
 

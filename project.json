@@ -22,6 +22,7 @@
         "src/lsp_server.c3",
         "src/lsp_navigation.c3",
         "src/lsp_completion.c3",
+        "src/lsp_references.c3",
         "src/memory_guard.c3",
         "src/scratch_memory.c3"
       ]
@@ -44,6 +45,7 @@
         "tests/lsp_smoke.c3",
         "tests/lsp_navigation_smoke.c3",
         "tests/lsp_completion_smoke.c3",
+        "tests/lsp_references_smoke.c3",
         "tests/lsp_memory_posix.c3",
         "tests/lsp_memory_win32.c3"
       ]

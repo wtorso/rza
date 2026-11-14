@@ -67,8 +67,8 @@ run_function_style() {
             tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
             tests/ownership_fuzz.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
             tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
-            tests/lsp_completion_smoke.c3 tests/lsp_memory_posix.c3 \
-            tests/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
+            tests/lsp_completion_smoke.c3 tests/lsp_references_smoke.c3 \
+            tests/lsp_memory_posix.c3 tests/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
             >"$BUILD/function_style.out" 2>&1; then
         bad function_style "C3 test runner build failed"
         cat "$BUILD/function_style.out"
@@ -324,7 +324,7 @@ run_c3_unit() {
     if ! "$c3c_bin" compile-test src/rez3asm.c3 src/compiler/model.c3 \
             src/compiler/layout.c3 src/compiler/checker.c3 src/compiler/emitter.c3 \
             src/lsp_server.c3 src/lsp_navigation.c3 src/lsp_completion.c3 \
-            src/memory_guard.c3 src/scratch_memory.c3 \
+            src/lsp_references.c3 src/memory_guard.c3 src/scratch_memory.c3 \
             tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
             tests/layout_test.c3 tests/lsp_navigation_test.c3 \

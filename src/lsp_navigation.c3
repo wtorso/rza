@@ -261,10 +261,26 @@ fn CompletionContext nav_declaration_context(NavPosition* pos) {
 		if (op == "layout" && commas == 0) return CompletionContext.LAYOUT;
 	}
 	if (op == "casc" || op == "acasc") {
-		for (int i = end; i + 1 < relative; i++) {
-			if (line[i] == '-' && line[i + 1] == '>') return CompletionContext.CELL;
+		int colon = -1;
+		for (int i = end; i < (int)line.len; i++) {
+			if (line[i] == ';') break;
+			if (line[i] == '-' && i + 1 < (int)line.len && line[i + 1] == '>') break;
+			if (line[i] == ':') {
+				colon = i;
+				break;
+			}
 		}
-		return CompletionContext.MED;
+		if (colon >= 0 && relative <= colon) return CompletionContext.NONE;
+		int arrow = -1;
+		for (int i = end; i + 1 < relative; i++) {
+			if (line[i] == '-' && line[i + 1] == '>') arrow = i;
+		}
+		if (arrow < 0) return CompletionContext.MED;
+		for (int i = arrow + 2; i < relative; i++) {
+			if (line[i] == ']') return CompletionContext.CELL;
+			if (line[i] == '[') return CompletionContext.FRAME;
+		}
+		return CompletionContext.CELL;
 	}
 	bool allow_field = true;
 	return completion_context(pos, &allow_field);
@@ -310,7 +326,7 @@ fn void nav_append_cell_summary(DString* out, int ci) {
 	if (li >= 0) {
 		out.appendf(
 			"layout `%s[%d]`; %d bytes.",
-			layouts[li].name,
+			clip_utf8(layouts[li].name, NAV_NAME_MAX),
 			cells[ci].element_count,
 			cells[ci].size
 		);
@@ -354,11 +370,13 @@ fn String nav_hover_text(NavSymbol symbol) {
 		out.appendf("res %s\n```\n", clip_utf8(cells[symbol.index].name, NAV_NAME_MAX));
 		nav_append_cell_summary(&out, symbol.index);
 	} else if (symbol.kind == NavKind.MED) {
-		int ci = meds[symbol.index].cell;
+		int ci     = meds[symbol.index].cell;
+		int issuer = meds[symbol.index].issuer;
 		out.appendf(
-			"med %s\n```\nmediator for cell `%s`; ",
+			"med %s\n```\nmediator for cell `%s`; issuer frame `%s`; ",
 			clip_utf8(meds[symbol.index].name, NAV_NAME_MAX),
-			clip_utf8(cells[ci].name, NAV_NAME_MAX)
+			clip_utf8(cells[ci].name, NAV_NAME_MAX),
+			clip_utf8(frames[issuer].name, NAV_NAME_MAX)
 		);
 		nav_append_cell_summary(&out, ci);
 	} else if (symbol.kind == NavKind.PROC) {

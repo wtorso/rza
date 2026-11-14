@@ -31,6 +31,7 @@ struct LspDoc {
 	bool used;
 	sz uri_len;
 	sz text_len;
+	int128 version;
 	char[LSP_URI_MAX] uri;
 	char[LSP_DOC_MAX] text;
 }
@@ -51,7 +52,7 @@ fn void lsp_limit(String kind) {
 	libc::exit(2);
 }
 
-fn void lsp_doc_write(int index, String uri, String text) {
+fn void lsp_doc_write(int index, String uri, String text, int128 version) {
 	assert(index >= 0);
 	assert(index < LSP_DOCS_MAX);
 	if (uri.len > LSP_URI_MAX) lsp_limit("URI");
@@ -61,6 +62,7 @@ fn void lsp_doc_write(int index, String uri, String text) {
 	doc.text[:text.len] = text[..];
 	doc.uri_len = uri.len;
 	doc.text_len = text.len;
+	doc.version = version;
 	doc.used = true;
 	assert(doc.used);
 	assert(doc.uri_len == uri.len);
@@ -240,13 +242,22 @@ fn Object* lsp_text_document(Object* params) {
 	return td;
 }
 
+fn bool lsp_doc_version(Object* td, int128* version) {
+	Object* value = td.get("version") ?? null;
+	if (value == null || !value.is_int()) return false;
+	*version = value.i;
+	return true;
+}
+
 fn void on_did_open(Object* params) {
 	Object* td = lsp_text_document(params);
 	if (td == null) return;
 	String? uri_o = td.get_string("uri");
 	if (catch uri_o) return;
 	String text = td.get_string("text") ?? "";
-	int index   = lsp_doc_find(uri_o);
+	int128 version;
+	if (!lsp_doc_version(td, &version)) return;
+	int index = lsp_doc_find(uri_o);
 	if (index < 0) {
 		for (int i = 0; i < LSP_DOCS_MAX; i++) {
 			if (!lsp_docs[i].used) {
@@ -256,7 +267,7 @@ fn void on_did_open(Object* params) {
 		}
 	}
 	if (index < 0) lsp_limit("document slots");
-	lsp_doc_write(index, uri_o, text);
+	lsp_doc_write(index, uri_o, text, version);
 	validate(lsp_doc_uri(index), lsp_doc_text(index));
 }
 
@@ -265,6 +276,8 @@ fn void on_did_change(Object* params) {
 	if (td == null) return;
 	String? uri = td.get_string("uri");
 	if (catch uri) return;
+	int128 version;
+	if (!lsp_doc_version(td, &version)) return;
 	int index = lsp_doc_find(uri);
 	if (index < 0) return;
 	Object*? changes = params.get("contentChanges");
@@ -280,8 +293,12 @@ fn void on_did_change(Object* params) {
 			has_text = true;
 		}
 	}
-	if (!has_text) return;
-	lsp_doc_write(index, uri, text);
+	if (!has_text) {
+		if (changes.get_len() != 0) return;
+		lsp_docs[index].version = version;
+		return;
+	}
+	lsp_doc_write(index, uri, text, version);
 	validate(lsp_doc_uri(index), lsp_doc_text(index));
 }
 
@@ -326,7 +343,8 @@ fn void handle_message(Object* msg) {
 			lsp_respond(
 				id,
 				`{"capabilities":{"textDocumentSync":1,"hoverProvider":true,`
-					+++ `"definitionProvider":true,"completionProvider":`
+					+++ `"definitionProvider":true,"referencesProvider":true,`
+					+++ `"renameProvider":{"prepareProvider":true},"completionProvider":`
 					+++ `{"resolveProvider":false,"triggerCharacters":["."]}},`
 					+++ `"serverInfo":{"name":"rez3-lsp","version":"`
 					+++ RZA_VERSION
@@ -353,6 +371,12 @@ fn void handle_message(Object* msg) {
 			on_definition(id, params);
 		case "textDocument/completion":
 			on_completion(id, params);
+		case "textDocument/references":
+			on_references(id, params);
+		case "textDocument/prepareRename":
+			on_prepare_rename(id, params);
+		case "textDocument/rename":
+			on_rename(id, params);
 		default:
 			if (id != null) {
 				lsp_respond_error(
