@@ -45,6 +45,9 @@ when RZA itself is built with Zig.
 - The ring workload performs 1024 push/pop requests with four slots, wraparound,
   and full/empty rejection. Its digest includes popped values and both rejection
   counts; RZA, C, and Rust use the same `push ×5 / pop ×3` pattern.
+- The parser workload runs a start/key/value state machine over 4096 patterned
+  bytes. Checked numeric accumulation, invalid transitions, and the final digest
+  are identical in RZA, C, and Rust.
 - The checked-arithmetic pair runs 1024 identical RZA iterations with wrapping or
   checked `add/sub/mul/inc/dec`. Dynamic cell inputs prevent constant folding;
   both variants must return zero. On x86-64, inspection requires `jo` in the

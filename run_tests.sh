@@ -615,6 +615,7 @@ run_dead checked_proc_overflow "FAULT line 3: arithmetic overflow"
 run_dead checked_casc_overflow "FAULT line 7: arithmetic overflow"
 run_dead checked_quota_attack "FAULT line 4: arithmetic overflow"
 run_dead checked_index_attack "FAULT line 6: arithmetic overflow"
+run_dead checked_numeric_overflow "FAULT line 16: arithmetic overflow"
 run_viol viol_bounds_imm STRUCT
 run_viol viol_bounds_negative STRUCT
 run_viol viol_aligned_size STRUCT
@@ -715,8 +716,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=175
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=174; fi
+EXPECTED_PASS=176
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=175; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

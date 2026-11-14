@@ -86,6 +86,9 @@ dump table_rust table_step
 dump ring_rza rza_ring
 dump ring_c ring_step
 dump ring_rust ring_step
+dump parser_rza rza_parse
+dump parser_c parse
+dump parser_rust parse
 dump checked_arith_rza rza_workload
 dump checked_arith_wrap_rza rza_workload
 case "$(uname -m)" in

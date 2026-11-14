@@ -1,0 +1,22 @@
+res input, field, 20
+med input_m, input, field
+mov %r0, 57
+mov %r1, 0
+fill:
+    slt %r2, %r1, 20
+    brz %r2, fill_done
+    storeb [input_m + %r1], %r0
+    inc %r1
+    jmp fill
+fill_done:
+    mov %r3, 0
+    mov %r4, 0
+number:
+    loadb %r5, [input_m + %r3]
+    cmul %r4, %r4, 10
+    sub %r5, %r5, 48
+    cadd %r4, %r4, %r5
+    inc %r3
+    slt %r6, %r3, 20
+    brnz %r6, number
+    ret

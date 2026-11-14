@@ -1,0 +1,92 @@
+; 4096 bytes of abc=12;#x=4;z=9; repeated 256 times.
+layout Byte: value:u8
+res input, field, Byte[4096]
+res result, field, 8
+med input_m, input, field
+med result_m, result, field
+
+proc parse:
+    casc parse_bytes: input_m,result_m -> parsed[parse]
+        mov %r9, 0
+        mov %r0, 0
+        mov %r5, 0
+        mov %r6, 0
+        mov %r7, 0
+        mov %r8, 0
+    parse_byte:
+        slt %r10, %r9, 4096
+        brz %r10, parse_done
+        loadb %r1, [input_m + %r9].value
+        and %r10, %r1, 223
+        slt %r11, %r10, 65
+        brnz %r11, not_alpha
+        slt %r11, %r10, 91
+        brz %r11, not_alpha
+        mov %r2, 1
+        jmp alpha_done
+    not_alpha:
+        mov %r2, 0
+    alpha_done:
+        slt %r10, %r1, 48
+        brnz %r10, not_digit
+        slt %r10, %r1, 58
+        brz %r10, not_digit
+        mov %r3, 1
+        jmp class_done
+    not_digit:
+        mov %r3, 0
+    class_done:
+        brz %r0, state_start
+        sub %r10, %r0, 1
+        brz %r10, state_key
+        jmp state_value
+    state_start:
+        brnz %r2, start_alpha
+        cinc %r7
+        jmp parse_next
+    start_alpha:
+        mov %r0, 1
+        jmp parse_next
+    state_key:
+        brnz %r2, parse_next
+        brnz %r3, parse_next
+        sub %r10, %r1, 61
+        brz %r10, key_value
+        cinc %r7
+        mov %r0, 0
+        mov %r5, 0
+        jmp parse_next
+    key_value:
+        mov %r0, 2
+        mov %r5, 0
+        jmp parse_next
+    state_value:
+        brz %r3, value_not_digit
+        cmul %r5, %r5, 10
+        sub %r10, %r1, 48
+        cadd %r5, %r5, %r10
+        jmp parse_next
+    value_not_digit:
+        sub %r10, %r1, 59
+        brz %r10, value_end
+        cinc %r7
+        mov %r0, 0
+        mov %r5, 0
+        jmp parse_next
+    value_end:
+        cinc %r6
+        cadd %r8, %r8, %r5
+        mov %r5, 0
+        mov %r0, 0
+    parse_next:
+        inc %r9
+        jmp parse_byte
+    parse_done:
+        cmul %r10, %r6, 1000000
+        cmul %r11, %r7, 1000
+        cadd %r10, %r10, %r11
+        cadd %r10, %r10, %r8
+        store [result_m + 0], %r10
+    endc
+    ret
+ret
