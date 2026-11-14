@@ -374,6 +374,7 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
     if (ins.s2 == "<<") helper = "rez_i64_shl";
     if (ins.s2 == ">>") helper = "rez_i64_shr";
     if (ins.s2 == ">>>") helper = "rez_i64_ushr";
+    if (ins.s2 == "crc32c") helper = "rez_crc32c_u64";
     pad(out, ind);
     if (helper.len > 0) {
         out.appendf("r%d = %s(r%d, %s);\n",

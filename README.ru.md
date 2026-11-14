@@ -162,6 +162,10 @@ division/remainder и недопустимый сдвиг вызывают `FAUL
 Постоянный выход за границы отклоняется при проверке; зависящий от регистра —
 во время выполнения.
 
+`crc32c DST, STATE, WORD` обновляет CRC32C над 8 байтами `WORD` в little-endian.
+Initial/final XOR остаются явными. Runtime использует SSE4.2 при поддержке CPU,
+иначе bitwise fallback даёт тот же результат.
+
 Runtime использует фиксированное хранилище. После инициализации он не вызывает
 `malloc`, `realloc` или `free`.
 
@@ -264,7 +268,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=167 FAIL=0` на POSIX и `PASS=166 FAIL=0` на Windows.
+Ожидаемый результат: `PASS=168 FAIL=0` на POSIX и `PASS=167 FAIL=0` на Windows.
 На Windows не запускаются только специфичные для Linux проверки исходников
 benchmark; на Linux для них также нужен `rustc`.
 

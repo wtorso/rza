@@ -232,6 +232,55 @@ static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
     return rez_i64_value(rez_i64_bits(value) >> (unsigned)shift);
 }
 
+#if (defined(__x86_64__) || defined(_M_X64)) && (defined(__GNUC__) || defined(__clang__))
+#include <cpuid.h>
+#include <smmintrin.h>
+#define REZ_CRC32C_X86 1
+#else
+#define REZ_CRC32C_X86 0
+#endif
+
+#if REZ_CRC32C_X86
+static int rez_crc32c_hw = -1;
+__attribute__((target("sse4.2")))
+static uint64_t rez_crc32c_u64_x86(uint64_t state, uint64_t word) {
+    return (uint64_t)_mm_crc32_u64((unsigned int)state, (long long)word);
+}
+#endif
+
+[[maybe_unused]] static bool rez_crc32c_hardware(void) {
+#if REZ_CRC32C_X86
+    if (rez_crc32c_hw < 0) {
+        unsigned int eax, ebx, ecx, edx;
+        __cpuid(1, eax, ebx, ecx, edx);
+        rez_crc32c_hw = (ecx & (1U << 19)) != 0;
+    }
+    return rez_crc32c_hw != 0;
+#else
+    return false;
+#endif
+}
+
+[[maybe_unused]] static uint64_t rez_crc32c_u64_fallback(uint64_t state, uint64_t word) {
+    uint32_t crc = (uint32_t)state;
+    for (unsigned int byte = 0; byte < 8; byte++) {
+        crc ^= (word >> (byte * 8)) & 255U;
+        for (unsigned int bit = 0; bit < 8; bit++) {
+            uint32_t low = crc & 1U;
+            crc >>= 1;
+            if (low != 0) crc ^= UINT32_C(0x82f63b78);
+        }
+    }
+    return (uint64_t)crc;
+}
+
+[[maybe_unused]] static uint64_t rez_crc32c_u64(uint64_t state, uint64_t word) {
+#if REZ_CRC32C_X86
+    if (rez_crc32c_hardware()) return rez_crc32c_u64_x86(state, word);
+#endif
+    return rez_crc32c_u64_fallback(state, word);
+}
+
 #define REZ_TRY(expr) do { if (!(expr)) return -1; } while (0)
 
 #endif

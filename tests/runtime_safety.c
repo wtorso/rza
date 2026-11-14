@@ -84,6 +84,14 @@ static int32_t check_checked_arithmetic(void) {
     return 0;
 }
 
+static int32_t check_crc32c(void) {
+    uint64_t word = UINT64_C(0x3837363534333231);
+    uint64_t expected = UINT64_C(1619493018) ^ UINT32_MAX;
+    CHECK(rez_crc32c_u64_fallback(UINT32_MAX, word) == expected);
+    CHECK(rez_crc32c_u64(UINT32_MAX, word) == expected);
+    return 0;
+}
+
 int main(void) {
     RezCavity field = {0};
     RezCavity proc = {0};
@@ -141,6 +149,7 @@ int main(void) {
     CHECK(rez_i64_div(8, 2) == 4);
     CHECK(rez_i64_mod(8, 3) == 2);
     CHECK(check_checked_arithmetic() == 0);
+    CHECK(check_crc32c() == 0);
 
     rez_decay(&field);
     CHECK(rez_deref_cell(med) == nullptr);

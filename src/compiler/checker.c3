@@ -1273,6 +1273,7 @@ fn bool casc_body_ok(String op) {
 		case "cadd":
 		case "csub":
 		case "cmul":
+		case "crc32c":
 		case "div":
 		case "mod":
 		case "and":
@@ -1299,6 +1300,7 @@ fn bool parse_alu_instr(String op, String rest, int n) {
 		case "csub": coper = "c-";
 		case "mul": coper = "*";
 		case "cmul": coper = "c*";
+		case "crc32c": coper = "crc32c";
 		case "div": coper = "/";
 		case "mod": coper = "%";
 		case "and": coper = "&";

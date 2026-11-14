@@ -16,6 +16,8 @@ int main(void) {
     (void)&rez_i64_mod; (void)&rez_i64_shl; (void)&rez_i64_shr;
     (void)&rez_i64_ushr;
     (void)&rez_i64_cadd; (void)&rez_i64_csub; (void)&rez_i64_cmul;
+    (void)&rez_crc32c_u64_fallback; (void)&rez_crc32c_u64;
+    (void)&rez_crc32c_hardware;
     rza_boot();
     rza_setup();
     m = rza_med_x_m();

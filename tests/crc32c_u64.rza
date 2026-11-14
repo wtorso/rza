@@ -1,0 +1,7 @@
+; Little-endian bytes of "12345678"; independent CRC32C result is 1619493018.
+mov %r0, 0x3837363534333231
+mov %r1, 0xffffffff
+crc32c %r1, %r1, %r0
+xor %r1, %r1, 0xffffffff
+print %r1
+ret

@@ -161,6 +161,10 @@ signed division or remainder, and invalid shift counts produce `FAULT`. A
 constant out-of-bounds access is rejected during validation; a
 register-dependent out-of-bounds access is a runtime `FAULT`.
 
+`crc32c DST, STATE, WORD` updates CRC32C over the eight little-endian bytes of
+`WORD`. Initial and final XOR remain explicit. The runtime uses SSE4.2 when the
+CPU supports it and otherwise produces the same result through a bitwise fallback.
+
 The runtime uses fixed storage. After initialization it does not call `malloc`,
 `realloc`, or `free`.
 
@@ -263,7 +267,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=167 FAIL=0` on POSIX and `PASS=166 FAIL=0` on Windows.
+Expected results are `PASS=168 FAIL=0` on POSIX and `PASS=167 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 

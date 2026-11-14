@@ -551,6 +551,7 @@ run_good arith_wrap
 run_good shift_guard
 run_good ushr
 run_good checked_arith
+run_good crc32c_u64
 run_good capacity_guard
 run_good typed_table
 run_good compare_edges
@@ -707,8 +708,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=167
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=166; fi
+EXPECTED_PASS=168
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=167; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

@@ -1,0 +1,24 @@
+; CRC32C over 4096 bytes = 512 little-endian 64-bit words.
+res input, field, 4096
+res crc, field, 8
+med input_m, input, field
+med crc_m, crc, field
+
+proc checksum:
+    casc crc_words: input_m,crc_m -> output[checksum]
+        mov %r0, 0xffffffff
+        mov %r1, 0
+        mov %r2, 512
+    crc_word:
+        brz %r2, crc_done
+        load %r3, [input_m + %r1]
+        crc32c %r0, %r0, %r3
+        add %r1, %r1, 8
+        dec %r2
+        jmp crc_word
+    crc_done:
+        xor %r0, %r0, 0xffffffff
+        store [crc_m + 0], %r0
+    endc
+    ret
+ret

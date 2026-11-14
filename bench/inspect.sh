@@ -27,6 +27,8 @@ dump crc32c_rust crc32c_software
 dump crc32c_table_rza rza_checksum
 dump crc32c_table_c crc32c_table
 dump crc32c_table_rust crc32c_table
+dump crc32c_hw_rza rza_checksum
+objdump -d "$BUILD/crc32c_hw_rza" >"$ASM/crc32c_hw_rza.all.asm"
 dump crc32c_intrinsic_rust workload_step
 objdump -d "$BUILD/crc32c_intrinsic_rust" >"$ASM/crc32c_intrinsic_rust.all.asm"
 backend=unrecorded
@@ -52,6 +54,29 @@ case "$backend:$(uname -m)" in
         ;;
     *)
         echo "FATAL: inconsistent backend=$backend arch=$(uname -m)" >&2
+        exit 1
+        ;;
+esac
+rza_backend=unrecorded
+if [ -f "$BUILD/crc32c_hw_rza.runtime" ]; then
+    rza_backend=$(sed -n 's/.*backend=\([^ ]*\).*/\1/p' \
+        "$BUILD/crc32c_hw_rza.runtime")
+fi
+if [ -z "$rza_backend" ]; then rza_backend=unrecorded; fi
+case "$rza_backend:$(uname -m)" in
+    hardware_sse42:x86_64|hardware_sse42:amd64)
+        if ! grep --extended-regexp --quiet 'crc32[qbl]?[[:space:]]' \
+                "$ASM/crc32c_hw_rza.all.asm"; then
+            echo "FATAL: RZA hardware CRC instruction is absent" >&2
+            exit 1
+        fi
+        echo "PASS: RZA backend=hardware_sse42; crc32 instruction is present"
+        ;;
+    software:*|unrecorded:*)
+        echo "NOTE: RZA CRC runtime backend=$rza_backend"
+        ;;
+    *)
+        echo "FATAL: inconsistent RZA backend=$rza_backend" >&2
         exit 1
         ;;
 esac

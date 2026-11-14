@@ -64,6 +64,7 @@ build_rust() {
 build_rza crc32c rza_crc_host.c
 build_rza crc32c_flat rza_crc_host.c
 build_rza crc32c_table rza_crc_host.c
+build_rza crc32c_hw rza_crc32c_host.c
 build_c crc32c
 build_c crc32c_table
 build_rust crc32c
@@ -165,16 +166,16 @@ measure_runtime() {
     fi
 }
 
-for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_c crc32c_table_c \
-        crc32c_rust crc32c_table_rust crc32c_intrinsic_rust table_rza table_c table_rust \
-        checked_arith_rza checked_arith_wrap_rza; do
+for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza crc32c_c \
+        crc32c_table_c crc32c_rust crc32c_table_rust crc32c_intrinsic_rust table_rza \
+        table_c table_rust checked_arith_rza checked_arith_wrap_rza; do
     measure_runtime "$name"
 done
-for artifact in crc32c.rza.c crc32c_flat.rza.c crc32c_table.rza.c table.rza.c \
-        checked_arith.rza.c checked_arith_wrap.rza.c crc32c_rza crc32c_flat_rza \
-        crc32c_table_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
-        crc32c_intrinsic_rust table_rza table_c table_rust checked_arith_rza \
-        checked_arith_wrap_rza; do
+for artifact in crc32c.rza.c crc32c_flat.rza.c crc32c_table.rza.c crc32c_hw.rza.c \
+        table.rza.c checked_arith.rza.c checked_arith_wrap.rza.c crc32c_rza \
+        crc32c_flat_rza crc32c_table_rza crc32c_hw_rza crc32c_c crc32c_table_c \
+        crc32c_rust crc32c_table_rust crc32c_intrinsic_rust table_rza table_c table_rust \
+        checked_arith_rza checked_arith_wrap_rza; do
     printf 'artifact_bytes %s %s\n' "$artifact" "$(wc -c <"$BUILD/$artifact")" \
         >>"$RESULTS"
 done
