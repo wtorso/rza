@@ -97,14 +97,42 @@ fn int? run_checked_edges() {
         -9223372036854775807 - 1, -9223372036854775807, -1, 0, 1,
         9223372036854775806, 9223372036854775807, 2, -2, 10
     };
+    long[] directed_left = {
+        -9223372036854775807 - 1, 0, 9223372036854775807,
+        -9223372036854775807 - 1, -9223372036854775807 - 1,
+        9223372036854775807, 9223372036854775807, -9223372036854775807 - 1
+    };
+    long[] directed_right = { -1, -9223372036854775807 - 1, 1, 1, 0, 1, -1,
+        -9223372036854775807 - 1 };
+    int[] directed_operations = { 2, 1, 0, 1, 2, 2, 2, 0 };
+    int directed_count = (int)directed_left.len;
     OwnRng rng = { 0xC0DEC };
     int successes = 0;
     int faults = 0;
-    for (int i = 0; i < 32; i++) {
-        long left = i < (int)edges.len ? edges[i] : own_random_i64(&rng);
-        long right = i < (int)edges.len ? edges[(i * 3 + 1) % (int)edges.len]
-            : own_random_i64(&rng);
-        OwnershipCase expected = own_checked_case(left, right, i % 3);
+    bool min_times_minus_one = false;
+    bool zero_minus_min = false;
+    for (int i = 0; i < 32 + directed_count; i++) {
+        long left;
+        long right;
+        int operation;
+        if (i < 32) {
+            left = i < (int)edges.len ? edges[i] : own_random_i64(&rng);
+            right = i < (int)edges.len ? edges[(i * 3 + 1) % (int)edges.len]
+                : own_random_i64(&rng);
+            operation = i % 3;
+        } else {
+            int directed = i - 32;
+            left = directed_left[directed];
+            right = directed_right[directed];
+            operation = directed_operations[directed];
+        }
+        if (left == (long)OWN_I64_MIN && right == -1 && operation == 2) {
+            min_times_minus_one = true;
+        }
+        if (left == 0 && right == (long)OWN_I64_MIN && operation == 1) {
+            zero_minus_min = true;
+        }
+        OwnershipCase expected = own_checked_case(left, right, operation);
         if (expected.status == 0) {
             successes++;
         } else {
@@ -113,7 +141,8 @@ fn int? run_checked_edges() {
         String name = string::tformat("checked-edge-%d.rza", i);
         if (run_ownership_case(expected, name, false)! != 0) return 1;
     }
-    if (!expect(successes > 0 && faults > 0, "checked edge coverage")) return 1;
+    if (!expect(successes > 0 && faults > 0 && min_times_minus_one && zero_minus_min,
+            "checked directed edge coverage")) return 1;
     return 0;
 }
 
@@ -140,6 +169,6 @@ fn int? ownership_run() {
         if (run_ownership_case(own_invalid(rules[i]), name, false)! != 0) return 1;
     }
     if (run_checked_edges()! != 0) return 1;
-    io::printn("OWNERSHIP_FUZZ OK (106 cases)");
+    io::printn("OWNERSHIP_FUZZ OK (114 cases)");
     return 0;
 }
