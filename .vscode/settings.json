@@ -1,8 +1,14 @@
 {
     "C_Cpp.default.cStandard": "c23",
-    "rust-analyzer.workspace.discoverConfig": {
-        "command": ["sh", ".vscode/rust-project.sh", "{arg}"],
-        "filesToWatch": ["bench/*.rs"],
-        "progressLabel": "RZA Rust benchmarks"
-    }
+    "rust-analyzer.linkedProjects": [
+        "${workspaceFolder}/bench/crc32c.rs",
+        "${workspaceFolder}/bench/crc32c_core.rs",
+        "${workspaceFolder}/bench/crc32c_intrinsic.rs",
+        "${workspaceFolder}/bench/crc32c_table.rs",
+        "${workspaceFolder}/bench/fib_work.rs",
+        "${workspaceFolder}/bench/parser.rs",
+        "${workspaceFolder}/bench/ring.rs",
+        "${workspaceFolder}/bench/table.rs",
+        "${workspaceFolder}/bench/workloads_test.rs"
+    ]
 }
