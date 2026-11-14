@@ -83,6 +83,9 @@ esac
 dump table_rza rza_table
 dump table_c table_step
 dump table_rust table_step
+dump ring_rza rza_ring
+dump ring_c ring_step
+dump ring_rust ring_step
 dump checked_arith_rza rza_workload
 dump checked_arith_wrap_rza rza_workload
 case "$(uname -m)" in

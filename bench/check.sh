@@ -58,6 +58,9 @@ build_rust crc32c_intrinsic
 build_rza table rza_table_host.c
 build_c table
 build_rust table
+build_rza ring rza_ring_host.c
+build_c ring
+build_rust ring
 build_rza checked_arith rza_checked_host.c
 build_rza checked_arith_wrap rza_checked_host.c
 
@@ -67,6 +70,9 @@ for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza crc32c_c \
 done
 for name in table_rza table_c table_rust; do
     check_output "$name" table
+done
+for name in ring_rza ring_c ring_rust; do
+    check_output "$name" ring
 done
 for name in checked_arith_rza checked_arith_wrap_rza; do
     check_output "$name" checked_arith

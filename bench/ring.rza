@@ -1,0 +1,84 @@
+; 1024 requests, push x5 / pop x3; digest includes values and both rejection counts.
+layout Ring: read_pos:i64, count:i64, input:i64, output:i64, full:i64, empty:i64
+layout Slot: value:i64
+res ring, field, Ring
+res slots, field, Slot[4]
+res result, field, 8
+med ring_m, ring, field
+med slots_m, slots, field
+med result_m, result, field
+
+proc push:
+    load %r0, [ring_m + 0].count
+    slt %r1, %r0, 4
+    brz %r1, push_full
+    load %r1, [ring_m + 0].read_pos
+    add %r1, %r1, %r0
+    and %r1, %r1, 3
+    load %r2, [ring_m + 0].input
+    store [slots_m + %r1].value, %r2
+    cinc %r0
+    store [ring_m + 0].count, %r0
+    jmp push_done
+push_full:
+    load %r0, [ring_m + 0].full
+    cinc %r0
+    store [ring_m + 0].full, %r0
+push_done:
+    ret
+
+proc pop:
+    load %r0, [ring_m + 0].count
+    brnz %r0, pop_nonempty
+    load %r1, [ring_m + 0].empty
+    cinc %r1
+    store [ring_m + 0].empty, %r1
+    jmp pop_done
+pop_nonempty:
+    load %r1, [ring_m + 0].read_pos
+    load %r2, [slots_m + %r1].value
+    store [ring_m + 0].output, %r2
+    cinc %r1
+    and %r1, %r1, 3
+    store [ring_m + 0].read_pos, %r1
+    cdec %r0
+    store [ring_m + 0].count, %r0
+    load %r3, [result_m + 0]
+    cadd %r3, %r3, %r2
+    store [result_m + 0], %r3
+pop_done:
+    ret
+
+proc ring:
+    mov %r0, 0
+    store [ring_m + 0].read_pos, %r0
+    store [ring_m + 0].count, %r0
+    store [ring_m + 0].full, %r0
+    store [ring_m + 0].empty, %r0
+    store [result_m + 0], %r0
+    call pop
+    mov %r0, 0
+request:
+    slt %r1, %r0, 1024
+    brz %r1, requests_done
+    and %r2, %r0, 7
+    slt %r3, %r2, 5
+    brz %r3, request_pop
+    add %r4, %r0, 1
+    store [ring_m + 0].input, %r4
+    call push
+    jmp request_next
+request_pop:
+    call pop
+request_next:
+    inc %r0
+    jmp request
+requests_done:
+    load %r0, [result_m + 0]
+    load %r1, [ring_m + 0].full
+    load %r2, [ring_m + 0].empty
+    cadd %r0, %r0, %r1
+    cadd %r0, %r0, %r2
+    store [result_m + 0], %r0
+    ret
+ret

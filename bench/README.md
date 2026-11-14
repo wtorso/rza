@@ -42,6 +42,9 @@ when RZA itself is built with Zig.
 - The table workload performs 1024 requests against 512 open-addressed
   key/value slots. A second variant fills every slot and requires all versions
   to return the same full-table result instead of reading a missing entry.
+- The ring workload performs 1024 push/pop requests with four slots, wraparound,
+  and full/empty rejection. Its digest includes popped values and both rejection
+  counts; RZA, C, and Rust use the same `push ×5 / pop ×3` pattern.
 - The checked-arithmetic pair runs 1024 identical RZA iterations with wrapping or
   checked `add/sub/mul/inc/dec`. Dynamic cell inputs prevent constant folding;
   both variants must return zero. On x86-64, inspection requires `jo` in the
