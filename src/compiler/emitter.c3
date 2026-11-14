@@ -757,6 +757,10 @@ fn void emit_casc_end(Output* out, int ind, Instr* ins) {
 
 fn void emit_call(Output* out, int ind, Instr* ins) {
     pad(out, ind);
+    if (proc_frame_free(ins.x)) {
+        out.appendf("%s();\n", procs[ins.x].cname);
+        return;
+    }
     if (g_lib_mode) { out.appendf("rza_%s();\n", procs[ins.x].name); }
     else { out.appendf("%s();\n", procs[ins.x].cname); }
 }
@@ -907,6 +911,22 @@ fn String crc_variant_name(String base, String kind) {
     }
 }
 
+fn bool proc_frame_free(int pi) {
+    if (proc_has_crc32c(pi)) return false;
+    for (sz i = 0; i < instrs.len(); i++) {
+        Instr* ins = &instrs[i];
+        if (ins.func != pi + 1) continue;
+        switch (ins.op) {
+            case Op.CAV: case Op.RES: case Op.MED: case Op.RAISE: case Op.DECAY:
+            case Op.PROBE: case Op.CASC: case Op.AWAIT: case Op.CALL:
+                return false;
+            default:
+                break;
+        }
+    }
+    return true;
+}
+
 fn void emit_proc_entry(Output* out, Proc* p) {
     if (g_lib_mode) {
         out.appendf("void rza_%s(void) {\n", p.name);
@@ -915,22 +935,39 @@ fn void emit_proc_entry(Output* out, Proc* p) {
     }
 }
 
-fn void emit_proc_body(Output* out, int pi) {
-    Proc* p = &procs[pi];
-    uint rd, wr;
-    scan_regs(pi + 1, &rd, &wr);
-    emit_regs_decl(out, 1, rd | wr);
+fn void emit_proc_frame_reset(Output* out, Proc* p) {
     out.appendf("    if (!rez_frame_reset(&%s, f_field, A_%s, %d)) {\n"
                 "        fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\");\n"
                 "        exit(1);\n"
                 "    }\n",
                 frames[p.frame].cname, frames[p.frame].cname,
                 frames[p.frame].cap, p.line, p.name);
+}
+
+fn void emit_proc_frame_decay(Output* out, Proc* p) {
+    emit_decay_subtree(out, 1, p.frame);
+    out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
+}
+
+fn void emit_proc_body(Output* out, int pi, bool lifecycle) {
+    Proc* p = &procs[pi];
+    uint rd, wr;
+    scan_regs(pi + 1, &rd, &wr);
+    emit_regs_decl(out, 1, rd | wr);
+    if (lifecycle) emit_proc_frame_reset(out, p);
     emit_body(out, pi + 1);
     out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
     emit_writeonly_silence(out, 1, rd, wr);
-    emit_decay_subtree(out, 1, p.frame);
-    out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
+    if (lifecycle) emit_proc_frame_decay(out, p);
+    out.append_string("}\n");
+}
+
+fn void emit_proc_host(Output* out, int pi) {
+    Proc* p = &procs[pi];
+    emit_proc_entry(out, p);
+    emit_proc_frame_reset(out, p);
+    out.appendf("    %s();\n", p.cname);
+    emit_proc_frame_decay(out, p);
     out.append_string("}\n");
 }
 
@@ -942,9 +979,19 @@ fn void emit_proc(Output* out, int pi) {
     assert(p.line > 0 && p.cname.len > 0);
     assert(frames[p.frame].is_procframe);
     assert(frames[p.frame].cap <= ARENA_FRAME_MAX);
+    if (proc_frame_free(pi)) {
+        if (g_lib_mode) {
+            out.appendf("static void %s(void) {\n", p.cname);
+        } else {
+            emit_proc_entry(out, p);
+        }
+        emit_proc_body(out, pi, false);
+        if (g_lib_mode) emit_proc_host(out, pi);
+        return;
+    }
     if (!proc_has_crc32c(pi)) {
         emit_proc_entry(out, p);
-        emit_proc_body(out, pi);
+        emit_proc_body(out, pi, true);
         return;
     }
     String base = g_lib_mode ? cat({ "rza_", p.name }) : p.cname;
@@ -952,12 +999,12 @@ fn void emit_proc(Output* out, int pi) {
     String hardware = crc_variant_name(base, "sse42");
     out.appendf("static void %s(void) {\n", portable);
     emit_crc_direct = false;
-    emit_proc_body(out, pi);
+    emit_proc_body(out, pi, true);
     out.append_string("#if REZ_CRC32C_X86\n");
     out.appendf("__attribute__((target(\"sse4.2\")))\nstatic void %s(void) {\n",
                 hardware);
     emit_crc_direct = true;
-    emit_proc_body(out, pi);
+    emit_proc_body(out, pi, true);
     emit_crc_direct = false;
     out.append_string("#endif\n");
     emit_proc_entry(out, p);
@@ -1055,6 +1102,14 @@ fn void emit_host_api(Output* out) {
                       "{ return rez_deref_cell(mediator); }\n");
 }
 
+fn void emit_proc_frame_storage(Output* out, int pi) {
+    if (proc_frame_free(pi)) out.append_string("[[maybe_unused]] ");
+    out.appendf("static RezCavity %s;\n", frames[procs[pi].frame].cname);
+    if (proc_frame_free(pi)) out.append_string("[[maybe_unused]] ");
+    out.appendf("_Alignas(REZ_ALIGNMENT) static char A_%s[%d];\n",
+                frames[procs[pi].frame].cname, frames[procs[pi].frame].cap);
+}
+
 fn void emit_static_storage(Output* out) {
     out.append_string("static RezCavity S_field;\n");
     out.append_string("static RezCavity *f_field = &S_field;\n");
@@ -1096,9 +1151,7 @@ fn void emit_static_storage(Output* out) {
         assert(procs[i].block >= 0);
         assert(procs[i].block < (int)blocks.len());
         assert(procs[i].cname.len > 0);
-        out.appendf("static RezCavity %s;\n", frames[procs[i].frame].cname);
-        out.appendf("_Alignas(REZ_ALIGNMENT) static char A_%s[%d];\n",
-                    frames[procs[i].frame].cname, frames[procs[i].frame].cap);
+        emit_proc_frame_storage(out, (int)i);
         int pscope = (int)i + 1;
         for (sz j = 0; j < frames.len(); j++) {
             if (frames[j].scope == pscope && !frames[j].is_procframe) {
@@ -1155,6 +1208,9 @@ fn String emit() {
     out.append_string("RezAsyncQueue g_async;\n\n");
     emit_async_callbacks(&out);
     for (sz i = 0; i < procs.len(); i++) {
+        if (g_lib_mode && proc_frame_free((int)i)) {
+            out.appendf("static void %s(void);\n", procs[i].cname);
+        }
         if (g_lib_mode) {
             out.appendf("void rza_%s(void);\n", procs[i].name);
         } else {

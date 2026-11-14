@@ -42,6 +42,18 @@ fn String? emit_artifact(String source, String output) {
     return (String)data;
 }
 
+fn String? emit_lib_artifact(String source, String output) {
+    String[] command = { compiler_path(), source, "--emit-lib", "-o", output };
+    ProcessResult result = run_simple(command)!;
+    if (!expect(result.status == 0 && result.stdout_text.len == 0 &&
+            result.stderr_text.len == 0, "lib artifact emit diagnostics")) {
+        print_result(result);
+        return TEST_ERROR~;
+    }
+    char[] data = read_file(output, artifact_output_buf[..])!;
+    return (String)data;
+}
+
 fn String source_prefix(String source) {
     char[sha256::HASH_SIZE] digest = sha256::hash(source);
     DString prefix = dstring::temp("/* Source-SHA256: ");
@@ -161,6 +173,26 @@ fn int? check_fault_helper_artifact() {
     return 0;
 }
 
+fn int? check_frame_free_artifact() {
+    String hello = emit_lib_artifact("tests/lib_hello.rza",
+        temp_path("frame-free-hello.c"))!;
+    if (!expect(hello.contains("static void p_greet(void) {") &&
+            text_count(hello, "rez_frame_reset(&f_P_greet") == 1 &&
+            text_count(hello, "rez_decay(&f_P_greet") == 1,
+            "frame-free procedure retains one host lifecycle")) return 1;
+    String ring = emit_lib_artifact("bench/ring.rza",
+        temp_path("frame-free-ring.c"))!;
+    if (!expect(text_count(ring, "p_push();") == 2 &&
+            !ring.contains("rza_push();"),
+            "internal calls bypass empty proc lifecycle")) return 1;
+    String raised = emit_lib_artifact("tests/lib_raise.rza",
+        temp_path("frame-owning-raise.c"))!;
+    if (!expect(!raised.contains("static void p_setup(void) {") &&
+            text_count(raised, "rez_frame_reset(&f_P_setup") == 1,
+            "frame-owning procedure keeps the original emitter")) return 1;
+    return 0;
+}
+
 fn int artifacts_main() {
     defer (void)cleanup_temp_dir();
     int? status = artifacts_run();
@@ -180,6 +212,7 @@ fn int? artifacts_run() {
     if (check_prefix_hoist_artifact()! != 0) return 1;
     if (check_async_drain_artifact()! != 0) return 1;
     if (check_fault_helper_artifact()! != 0) return 1;
+    if (check_frame_free_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }
