@@ -50,6 +50,7 @@ build_rza crc32c rza_crc_host.c
 build_rza crc32c_flat rza_crc_host.c
 build_rza crc32c_table rza_crc_host.c
 build_rza crc32c_hw rza_crc32c_host.c
+build_rza crc32c_hw_unroll rza_crc32c_host.c
 build_c crc32c
 build_c crc32c_table
 build_rust crc32c
@@ -67,8 +68,9 @@ build_rust parser
 build_rza checked_arith rza_checked_host.c
 build_rza checked_arith_wrap rza_checked_host.c
 
-for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza crc32c_c \
-        crc32c_table_c crc32c_rust crc32c_table_rust crc32c_intrinsic_rust; do
+for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza \
+        crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
+        crc32c_intrinsic_rust; do
     check_output "$name" crc32c
 done
 for name in table_rza table_c table_rust; do

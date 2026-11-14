@@ -70,7 +70,15 @@ case "$rza_backend:$(uname -m)" in
             echo "FATAL: RZA hardware CRC instruction is absent" >&2
             exit 1
         fi
+        dump crc32c_hw_unroll_rza rza_checksum_crc0_sse42
+        unrolled=$(awk '/crc32[qbl]?[[:space:]]/ { count++ } END { print count + 0 }' \
+            "$ASM/crc32c_hw_unroll_rza.rza_checksum_crc0_sse42.asm")
+        if [ "$unrolled" -ne 8 ]; then
+            echo "FATAL: unrolled RZA CRC has $unrolled instructions, want 8" >&2
+            exit 1
+        fi
         echo "PASS: RZA backend=hardware_sse42; crc32 instruction is present"
+        echo "PASS: RZA hardware CRC has eight unrolled words"
         ;;
     software:*|unrecorded:*)
         echo "NOTE: RZA CRC runtime backend=$rza_backend"

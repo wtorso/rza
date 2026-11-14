@@ -39,6 +39,8 @@ when RZA itself is built with Zig.
   version detects CPU support at runtime and records whether it used hardware or
   the software fallback. The RZA `crc32c` variant processes 512 64-bit words and
   reports the same backend labels; its bitwise fallback is tested independently.
+  A separate RZA variant explicitly unrolls eight words; assembly inspection
+  requires eight hardware CRC instructions in its specialized procedure.
 - The table workload performs 1024 requests against 512 open-addressed
   key/value slots. A second variant fills every slot and requires all versions
   to return the same full-table result instead of reading a missing entry.
