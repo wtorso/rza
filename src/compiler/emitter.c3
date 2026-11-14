@@ -13,6 +13,7 @@ import std::collections::list;
 import std::hash::sha256;
 const long ARENA_FRAME_MAX = 16777216;
 const long ARENA_TOTAL_MAX = 67108864;
+bool emit_crc_direct = false;
 struct Output {
     DString text;
     sz max_bytes;
@@ -374,7 +375,9 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
     if (ins.s2 == "<<") helper = "rez_i64_shl";
     if (ins.s2 == ">>") helper = "rez_i64_shr";
     if (ins.s2 == ">>>") helper = "rez_i64_ushr";
-    if (ins.s2 == "crc32c") helper = "rez_crc32c_u64";
+    if (ins.s2 == "crc32c") {
+        helper = emit_crc_direct ? "rez_crc32c_u64_x86" : "rez_crc32c_u64";
+    }
     pad(out, ind);
     if (helper.len > 0) {
         out.appendf("r%d = %s(r%d, %s);\n",
@@ -804,23 +807,45 @@ fn void emit_body(Output* out, int func) {
     }
 }
 
-fn void emit_proc(Output* out, int pi) {
-    Proc* p = &procs[pi];
-    assert(pi >= 0);
-    assert(pi < (int)procs.len());
-    assert(p.frame >= 0);
-    assert(p.frame < (int)frames.len());
-    assert(p.block >= 0);
-    assert(p.block < (int)blocks.len());
-    assert(p.line > 0);
-    assert(p.cname.len > 0);
-    assert(frames[p.frame].is_procframe);
-    assert(frames[p.frame].cap <= ARENA_FRAME_MAX);
+fn bool proc_has_crc32c(int pi) {
+    for (sz i = 0; i < instrs.len(); i++) {
+        Instr* ins = &instrs[i];
+        if (ins.func == pi + 1 && ins.op == Op.ALU3 && ins.s2 == "crc32c") return true;
+    }
+    return false;
+}
+
+fn bool crc_name_used(String candidate) {
+    for (sz i = 0; i < procs.len(); i++) {
+        String existing = g_lib_mode ? cat({ "rza_", procs[i].name }) : procs[i].cname;
+        if (existing == candidate) return true;
+    }
+    return false;
+}
+
+fn String crc_variant_name(String base, String kind) {
+    int salt = 0;
+    while (true) {
+        assert(salt >= 0 && salt <= (int)procs.len());
+        DString out = dstring::new(workmem);
+        defer out.free();
+        out.appendf("%s_crc%d_%s", base, salt, kind);
+        String candidate = out.copy_str(workmem);
+        if (!crc_name_used(candidate)) return candidate;
+        salt++;
+    }
+}
+
+fn void emit_proc_entry(Output* out, Proc* p) {
     if (g_lib_mode) {
         out.appendf("void rza_%s(void) {\n", p.name);
     } else {
         out.appendf("[[maybe_unused]] static void %s(void) {\n", p.cname);
     }
+}
+
+fn void emit_proc_body(Output* out, int pi) {
+    Proc* p = &procs[pi];
     uint rd, wr;
     scan_regs(pi + 1, &rd, &wr);
     emit_regs_decl(out, 1, rd | wr);
@@ -835,6 +860,40 @@ fn void emit_proc(Output* out, int pi) {
     emit_writeonly_silence(out, 1, rd, wr);
     emit_decay_subtree(out, 1, p.frame);
     out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
+    out.append_string("}\n");
+}
+
+fn void emit_proc(Output* out, int pi) {
+    Proc* p = &procs[pi];
+    assert(pi >= 0 && pi < (int)procs.len());
+    assert(p.frame >= 0 && p.frame < (int)frames.len());
+    assert(p.block >= 0 && p.block < (int)blocks.len());
+    assert(p.line > 0 && p.cname.len > 0);
+    assert(frames[p.frame].is_procframe);
+    assert(frames[p.frame].cap <= ARENA_FRAME_MAX);
+    if (!proc_has_crc32c(pi)) {
+        emit_proc_entry(out, p);
+        emit_proc_body(out, pi);
+        return;
+    }
+    String base = g_lib_mode ? cat({ "rza_", p.name }) : p.cname;
+    String portable = crc_variant_name(base, "portable");
+    String hardware = crc_variant_name(base, "sse42");
+    out.appendf("static void %s(void) {\n", portable);
+    emit_crc_direct = false;
+    emit_proc_body(out, pi);
+    out.append_string("#if REZ_CRC32C_X86\n");
+    out.appendf("__attribute__((target(\"sse4.2\")))\nstatic void %s(void) {\n",
+                hardware);
+    emit_crc_direct = true;
+    emit_proc_body(out, pi);
+    emit_crc_direct = false;
+    out.append_string("#endif\n");
+    emit_proc_entry(out, p);
+    out.append_string("#if REZ_CRC32C_X86\n");
+    out.appendf("    if (rez_crc32c_hardware()) {\n        %s();\n        return;\n"
+                "    }\n#endif\n", hardware);
+    out.appendf("    %s();\n", portable);
     out.append_string("}\n");
 }
 

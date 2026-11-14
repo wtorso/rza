@@ -552,6 +552,7 @@ run_good shift_guard
 run_good ushr
 run_good checked_arith
 run_good crc32c_u64
+run_good crc32c_name_collision
 run_good capacity_guard
 run_good typed_table
 run_good compare_edges
@@ -689,6 +690,7 @@ run_viol viol_cav_proc    DUP
 run_viol viol_med_gdup    DUP tests/viol_med_gdup.stderr
 run_lib lib_hello
 run_lib lib_typed
+run_lib_compile crc32c_name_collision
 run_lib_compile lib_scope
 run_lib lib_abort
 run_lib lib_raise
@@ -708,8 +710,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=168
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=167; fi
+EXPECTED_PASS=170
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=169; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

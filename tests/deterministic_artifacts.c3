@@ -102,6 +102,16 @@ fn int? check_paths_and_indexed() {
     return 0;
 }
 
+fn int? check_crc_dispatch_artifact() {
+    String generated = emit_artifact("bench/crc32c_hw.rza",
+        temp_path("crc-dispatch.c"))!;
+    if (!expect(generated.contains("static void p_checksum_crc0_portable(void)") &&
+            generated.contains("static void p_checksum_crc0_sse42(void)") &&
+            generated.contains("rez_crc32c_u64_x86(r0"),
+            "CRC procedure has portable and hardware variants")) return 1;
+    return 0;
+}
+
 fn int artifacts_main() {
     defer (void)cleanup_temp_dir();
     int? status = artifacts_run();
@@ -117,6 +127,7 @@ fn int? artifacts_run() {
     reset_temp_dir()!;
     if (check_repeat_and_change()! != 0) return 1;
     if (check_paths_and_indexed()! != 0) return 1;
+    if (check_crc_dispatch_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }

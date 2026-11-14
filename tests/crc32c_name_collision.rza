@@ -1,0 +1,15 @@
+proc work:
+    mov %r0, 0x3837363534333231
+    mov %r1, 0xffffffff
+    crc32c %r1, %r1, %r0
+    xor %r1, %r1, 0xffffffff
+    print %r1
+    ret
+proc work_portable:
+    ret
+proc work_sse42:
+    ret
+call work
+call work_portable
+call work_sse42
+ret

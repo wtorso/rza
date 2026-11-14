@@ -141,13 +141,21 @@ organized into cells and is never addressed through a raw pointer in RZA code.
 - `decay frame` invalidates the frame and all of its descendants. Later access
   through an affected mediator produces a runtime `FAULT`.
 - `raise cell, ancestor` changes ownership only for static checking. It does not
-  move memory or extend the lifetime of the original frame.
+  move memory or extend the lifetime of the original frame. The home frame must
+  remain alive for any access.
 - `casc ... endc` checks all input mediators before executing a block. If an
   input is dead at runtime, the whole block is skipped with `ABORT`; its output
   is an 8-byte cell.
 - `acasc ... endc` enqueues work in a bounded cooperative FIFO. `await` drains
   the queue and returns the number of successful tasks. This is not OS-thread
   parallelism or network asynchronous I/O.
+
+RZA combines static validation with defined runtime outcomes. Statically
+detectable ownership errors and constant out-of-bounds accesses produce
+`VIOLATION`. Dead mediators, dynamic out-of-bounds accesses, invalid arithmetic,
+and exhausted runtime resources produce `FAULT`. A cascade with a dead input
+skips its body with `ABORT`. These checks do not prove application logic and do
+not cover raw pointers, offsets, or lifetimes manipulated by a C host.
 
 Procedures start with clean registers. Values are exchanged through cells, not
 parameter registers or a return register. Recursion is rejected.
@@ -253,8 +261,9 @@ and workload; they do not establish a universal advantage over C or Rust.
   packed layouts, unions, bitfields, and a portable wire ABI are not implemented.
 - There are no OS threads, garbage collection, recursion, physical memory moves,
   transactional rollback, or general-purpose networking primitives.
-- RZA has no direct SIMD/intrinsics or native optimizing backend. The selected
-  C23 compiler performs optimization and target-specific code generation.
+- RZA has no general SIMD or intrinsic interface and no native optimizing backend.
+  The fixed `crc32c` opcode uses runtime feature detection and has a portable
+  fallback. The selected C23 compiler performs other target-specific code generation.
 - Fixed budgets make resource limits explicit; they do not resize automatically.
 - The checker does not prove application logic correct or sanitize host C.
 
@@ -267,7 +276,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=168 FAIL=0` on POSIX and `PASS=167 FAIL=0` on Windows.
+Expected results are `PASS=170 FAIL=0` on POSIX and `PASS=169 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 
