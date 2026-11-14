@@ -914,7 +914,7 @@ fn void emit_proc_body(Output* out, int pi) {
                 frames[p.frame].cname, frames[p.frame].cname,
                 frames[p.frame].cap, p.line, p.name);
     emit_body(out, pi + 1);
-    out.append_string("    (void)rez_async_drain(&g_async);\n");
+    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
     emit_writeonly_silence(out, 1, rd, wr);
     emit_decay_subtree(out, 1, p.frame);
     out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
@@ -970,7 +970,7 @@ fn void emit_main(Output* out) {
                 "        exit(1);\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
-    out.append_string("    (void)rez_async_drain(&g_async);\n");
+    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
     emit_writeonly_silence(out, 1, rd, wr);
     bool last_ret = false;
     for (sz i = instrs.len(); i > 0; i--) {
@@ -998,7 +998,7 @@ fn void emit_boot(Output* out) {
                 "        exit(1);\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
-    out.append_string("    (void)rez_async_drain(&g_async);\n");
+    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
     emit_writeonly_silence(out, 1, rd, wr);
     out.append_string("}\n");
 }

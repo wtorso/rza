@@ -136,6 +136,15 @@ fn int? check_crc_dispatch_artifact() {
     return 0;
 }
 
+fn int? check_async_drain_artifact() {
+    String generated = emit_artifact("tests/hoist_prefix.rza",
+        temp_path("async-drain.c"))!;
+    if (!expect(generated.contains("if (g_async.count != 0) (void)rez_async_drain") &&
+            !generated.contains("\n    (void)rez_async_drain(&g_async);"),
+            "empty async queue skips drain call")) return 1;
+    return 0;
+}
+
 fn int artifacts_main() {
     defer (void)cleanup_temp_dir();
     int? status = artifacts_run();
@@ -153,6 +162,7 @@ fn int? artifacts_run() {
     if (check_paths_and_indexed()! != 0) return 1;
     if (check_crc_dispatch_artifact()! != 0) return 1;
     if (check_prefix_hoist_artifact()! != 0) return 1;
+    if (check_async_drain_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }
