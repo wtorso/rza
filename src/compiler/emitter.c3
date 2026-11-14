@@ -233,6 +233,29 @@ fn void append_access_offset(DString* out, Instr* ins) {
     assert(out.len() < OFFSET_STRING_BYTES);
 }
 
+fn void emit_fault(Output* out, int ind, int line, String reason, String name) {
+    pad(out, ind);
+    if (name.len == 0) {
+        out.appendf("rez3asm_fault(%d, \"%s\", nullptr);\n", line, reason);
+        return;
+    }
+    out.appendf("rez3asm_fault(%d, \"%s\", \"%s\");\n", line, reason, name);
+}
+
+fn void emit_fault_support(Output* out) {
+    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_fault(\n");
+    out.append_string("    int line, const char *reason, const char *name\n");
+    out.append_string(") {\n");
+    out.append_string("    if (name != nullptr) {\n");
+    out.append_string("        fprintf(stderr, \"FAULT line %d: %s %s\\n\",");
+    out.append_string(" line, reason, name);\n");
+    out.append_string("    } else {\n");
+    out.append_string("        fprintf(stderr, \"FAULT line %d: %s\\n\", line, reason);\n");
+    out.append_string("    }\n");
+    out.append_string("    exit(1);\n");
+    out.append_string("}\n\n");
+}
+
 fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
     if (ins.c < 0) return;
     Cell* cell = validated_access_cell(ins);
@@ -249,11 +272,7 @@ fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
             out.appendf("if ((uint64_t)r%d > %d) {\n", ins.c, cell.size - width);
         }
     }
-    pad(out, ind + 1);
-    out.appendf("fprintf(stderr, \"FAULT line %d: out of bounds %s\\n\");\n",
-                ins.line, meds[ins.x].name);
-    pad(out, ind + 1);
-    out.append_string("exit(1);\n");
+    emit_fault(out, ind + 1, ins.line, "out of bounds", meds[ins.x].name);
     pad(out, ind);
     out.append_string("}\n");
 }
@@ -263,8 +282,10 @@ fn void emit_hoist_guard(Output* out, int ind, Instr* ins) {
     pad(out, ind);
     out.appendf("void *p_%s = rez_deref_cell(%s);\n", name, meds[ins.x].cname);
     pad(out, ind);
-    out.appendf("if (!p_%s) { fprintf(stderr, \"FAULT line %d: "
-                "dead mediator %s\\n\"); exit(1); }\n", name, ins.line, name);
+    out.appendf("if (!p_%s) {\n", name);
+    emit_fault(out, ind + 1, ins.line, "dead mediator", name);
+    pad(out, ind);
+    out.append_string("}\n");
 }
 
 fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
@@ -282,9 +303,10 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
         pad(out, ind);
         out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
         pad(out, ind);
-        out.appendf("  if (!p) { fprintf(stderr, \"FAULT line %d: "
-                    "dead mediator %s\\n\"); exit(1); }\n",
-                    ins.line, meds[ins.x].name);
+        out.append_string("if (!p) {\n");
+        emit_fault(out, ind + 1, ins.line, "dead mediator", meds[ins.x].name);
+        pad(out, ind);
+        out.append_string("}\n");
         ind++;
     }
     emit_bounds_guard(out, ind, ins);
@@ -314,9 +336,10 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
         pad(out, ind);
         out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
         pad(out, ind);
-        out.appendf("  if (!p) { fprintf(stderr, \"FAULT line %d: "
-                    "dead mediator %s\\n\"); exit(1); }\n",
-                    ins.line, meds[ins.x].name);
+        out.append_string("if (!p) {\n");
+        emit_fault(out, ind + 1, ins.line, "dead mediator", meds[ins.x].name);
+        pad(out, ind);
+        out.append_string("}\n");
         ind++;
     }
     emit_bounds_guard(out, ind, ins);
@@ -334,11 +357,7 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
 fn void emit_checked_arith(Output* out, int ind, Instr* ins, String helper, String rhs) {
     pad(out, ind);
     out.appendf("if (%s(r%d, %s, &r%d)) {\n", helper, ins.b, rhs, ins.a);
-    pad(out, ind + 1);
-    out.appendf("fprintf(stderr, \"FAULT line %d: arithmetic overflow\\n\");\n",
-                ins.line);
-    pad(out, ind + 1);
-    out.append_string("exit(1);\n");
+    emit_fault(out, ind + 1, ins.line, "arithmetic overflow", "");
     pad(out, ind);
     out.append_string("}\n");
 }
@@ -361,10 +380,7 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
         pad(out, ind);
         out.appendf("if (%s == 0 || (r%d == INT64_MIN && %s == -1)) {\n",
                     rhs.str_view(), ins.b, rhs.str_view());
-        pad(out, ind + 1);
-        out.appendf("fprintf(stderr, \"FAULT line %d: division\\n\");\n", ins.line);
-        pad(out, ind + 1);
-        out.append_string("exit(1);\n");
+        emit_fault(out, ind + 1, ins.line, "division", "");
         pad(out, ind);
         out.append_string("}\n");
     }
@@ -372,10 +388,7 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
         pad(out, ind);
         out.appendf("if (%s < 0 || %s >= 64) {\n",
                     rhs.str_view(), rhs.str_view());
-        pad(out, ind + 1);
-        out.appendf("fprintf(stderr, \"FAULT line %d: shift\\n\");\n", ins.line);
-        pad(out, ind + 1);
-        out.append_string("exit(1);\n");
+        emit_fault(out, ind + 1, ins.line, "shift", "");
         pad(out, ind);
         out.append_string("}\n");
     }
@@ -1137,6 +1150,7 @@ fn String emit() {
     out.append_string("#include <stdint.h>\n");
     out.append_string("#include <stdlib.h>\n");
     out.append_string("#include \"rez3ext.h\"\n\n");
+    emit_fault_support(&out);
     emit_static_storage(&out);
     out.append_string("RezAsyncQueue g_async;\n\n");
     emit_async_callbacks(&out);

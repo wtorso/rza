@@ -698,6 +698,7 @@ run_lib lib_hello
 run_lib lib_typed
 run_lib_compile crc32c_name_collision
 run_lib_compile lib_scope
+run_lib_compile lib_fault_name
 run_lib lib_abort
 run_lib lib_raise
 run_lib lib_async
@@ -716,8 +717,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=176
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=175; fi
+EXPECTED_PASS=177
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=176; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

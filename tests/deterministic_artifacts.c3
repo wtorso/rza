@@ -145,6 +145,22 @@ fn int? check_async_drain_artifact() {
     return 0;
 }
 
+fn int? check_fault_helper_artifact() {
+    String checked = emit_artifact("tests/checked_add_overflow.rza",
+        temp_path("checked-helper.c"))!;
+    if (!expect(text_count(checked, "static void rez3asm_fault(") == 1 &&
+            checked.contains("[[noreturn]] static void rez3asm_fault(") &&
+            checked.contains("rez3asm_fault(2, \"arithmetic overflow\", nullptr);") &&
+            !checked.contains("fprintf(stderr, \"FAULT line 2: arithmetic overflow"),
+            "checked overflow uses the cold helper")) return 1;
+    String bounds = emit_artifact("tests/bounds_dynamic.rza",
+        temp_path("bounds-helper.c"))!;
+    if (!expect(bounds.contains("rez3asm_fault(6, \"out of bounds\", \"x_m\");") &&
+            !bounds.contains("fprintf(stderr, \"FAULT line 6: out of bounds"),
+            "dynamic bounds use the cold helper")) return 1;
+    return 0;
+}
+
 fn int artifacts_main() {
     defer (void)cleanup_temp_dir();
     int? status = artifacts_run();
@@ -163,6 +179,7 @@ fn int? artifacts_run() {
     if (check_crc_dispatch_artifact()! != 0) return 1;
     if (check_prefix_hoist_artifact()! != 0) return 1;
     if (check_async_drain_artifact()! != 0) return 1;
+    if (check_fault_helper_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }
