@@ -94,6 +94,15 @@ dump table_rust table_step
 dump ring_rza rza_ring
 dump ring_c ring_step
 dump ring_rust ring_step
+for symbol in p_push p_pop; do
+    dump ring_rza "$symbol"
+    if grep --extended-regexp --quiet '<rez_deref_cell[^>]*>' \
+            "$ASM/ring_rza.$symbol.asm"; then
+        echo "FATAL: $symbol retains a mediator dereference call" >&2
+        exit 1
+    fi
+done
+echo "PASS: frame-free mediator dereferences are inlined"
 dump parser_rza rza_parse
 dump parser_c parse
 dump parser_rust parse

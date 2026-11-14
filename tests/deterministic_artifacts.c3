@@ -127,13 +127,18 @@ fn int text_count(String text, String needle) {
     return count;
 }
 
+fn int mediator_deref_count(String text) {
+    return text_count(text, "rez_deref_cell(m_x_m)") +
+        text_count(text, "rez_deref_cell_inline(m_x_m)");
+}
+
 fn int? check_prefix_hoist_artifact() {
     String generated = emit_artifact("tests/hoist_prefix.rza",
         temp_path("hoist-prefix.c"))!;
-    if (!expect(text_count(generated, "rez_deref_cell(m_x_m)") == 2,
+    if (!expect(mediator_deref_count(generated) == 2,
             "prefix mediator is checked once per procedure")) return 1;
     generated = emit_artifact("tests/hoist_call.rza", temp_path("hoist-call.c"))!;
-    if (!expect(text_count(generated, "rez_deref_cell(m_x_m)") == 3,
+    if (!expect(mediator_deref_count(generated) == 3,
             "call disables mediator hoisting")) return 1;
     return 0;
 }
@@ -180,6 +185,9 @@ fn int? check_frame_free_artifact() {
             text_count(hello, "rez_frame_reset(&f_P_greet") == 1 &&
             text_count(hello, "rez_decay(&f_P_greet") == 1,
             "frame-free procedure retains one host lifecycle")) return 1;
+    if (!expect(hello.contains("{ return rez_deref_cell(mediator); }") &&
+            !hello.contains("{ return rez_deref_cell_inline(mediator); }"),
+            "public deref wrapper keeps the portable helper")) return 1;
     String ring = emit_lib_artifact("bench/ring.rza",
         temp_path("frame-free-ring.c"))!;
     if (!expect(text_count(ring, "p_push();") == 2 &&
@@ -190,6 +198,12 @@ fn int? check_frame_free_artifact() {
     if (!expect(!raised.contains("static void p_setup(void) {") &&
             text_count(raised, "rez_frame_reset(&f_P_setup") == 1,
             "frame-owning procedure keeps the original emitter")) return 1;
+    String[] sources = { "tests/cascade.rza", "bench/table.rza", "bench/parser.rza" };
+    for (sz i = 0; i < sources.len; i++) {
+        String generated = emit_artifact(sources[i], temp_path("deref-negative.c"))!;
+        if (!expect(!generated.contains("rez_deref_cell_inline("),
+                "non-frame-free paths keep the original helper")) return 1;
+    }
     return 0;
 }
 

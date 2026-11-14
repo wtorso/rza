@@ -93,7 +93,11 @@ static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
     return mediator;
 }
 
-[[maybe_unused]] static void *rez_deref_cell(RezCellMed mediator) {
+[[maybe_unused]] static inline
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+void *rez_deref_cell_inline(RezCellMed mediator) {
     if (mediator.cell == nullptr) return nullptr;
     if (mediator.owner == nullptr) return nullptr;
     if (mediator.home == nullptr) return nullptr;
@@ -104,6 +108,10 @@ static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
     assert(mediator.gen != 0);
     assert(mediator.home_gen != 0);
     return mediator.cell;
+}
+
+[[maybe_unused]] static void *rez_deref_cell(RezCellMed mediator) {
+    return rez_deref_cell_inline(mediator);
 }
 
 [[maybe_unused]] static bool rez_cell_bounds(

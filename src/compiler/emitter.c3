@@ -277,10 +277,15 @@ fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
     out.append_string("}\n");
 }
 
+fn String deref_helper(Instr* ins) {
+    if (ins.func > 0 && proc_frame_free(ins.func - 1)) return "rez_deref_cell_inline";
+    return "rez_deref_cell";
+}
+
 fn void emit_hoist_guard(Output* out, int ind, Instr* ins) {
     String name = meds[ins.x].name;
     pad(out, ind);
-    out.appendf("void *p_%s = rez_deref_cell(%s);\n", name, meds[ins.x].cname);
+    out.appendf("void *p_%s = %s(%s);\n", name, deref_helper(ins), meds[ins.x].cname);
     pad(out, ind);
     out.appendf("if (!p_%s) {\n", name);
     emit_fault(out, ind + 1, ins.line, "dead mediator", name);
@@ -301,7 +306,7 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     }
     if (!in_casc && !hoisted) {
         pad(out, ind);
-        out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
+        out.appendf("{ void *p = %s(%s);\n", deref_helper(ins), meds[ins.x].cname);
         pad(out, ind);
         out.append_string("if (!p) {\n");
         emit_fault(out, ind + 1, ins.line, "dead mediator", meds[ins.x].name);
@@ -334,7 +339,7 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     }
     if (!in_casc && !hoisted) {
         pad(out, ind);
-        out.appendf("{ void *p = rez_deref_cell(%s);\n", meds[ins.x].cname);
+        out.appendf("{ void *p = %s(%s);\n", deref_helper(ins), meds[ins.x].cname);
         pad(out, ind);
         out.append_string("if (!p) {\n");
         emit_fault(out, ind + 1, ins.line, "dead mediator", meds[ins.x].name);
