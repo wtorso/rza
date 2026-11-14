@@ -93,6 +93,12 @@ fn int? check_paths_and_indexed() {
             "indexed source hash")) return 1;
     String second_c = emit_artifact("tests/indexed.rza", temp_path("indexed-second.c"))!;
     if (!expect(first_c == second_c, "indexed emit is not deterministic")) return 1;
+    if (!expect(first_c.contains("if ((uint64_t)r2 > 56) {") &&
+            !first_c.contains("rez_cell_bounds("), "constant raw cell bounds")) return 1;
+    String casc_c = emit_artifact("tests/bounds_casc_dynamic.rza",
+        temp_path("bounds-casc.c"))!;
+    if (!expect(casc_c.contains("if ((uint64_t)r0 > 0) {") &&
+            !casc_c.contains("rez_cell_bounds("), "constant cascade bounds")) return 1;
     return 0;
 }
 

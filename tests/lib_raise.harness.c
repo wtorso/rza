@@ -14,6 +14,8 @@ int main(void) {
     (void)&rez_frame_reset; (void)&rez_cav_enter; (void)&rez_i64_add;
     (void)&rez_i64_sub; (void)&rez_i64_mul; (void)&rez_i64_div;
     (void)&rez_i64_mod; (void)&rez_i64_shl; (void)&rez_i64_shr;
+    (void)&rez_i64_ushr;
+    (void)&rez_i64_cadd; (void)&rez_i64_csub; (void)&rez_i64_cmul;
     rza_boot();
     rza_setup();
     m = rza_med_x_m();

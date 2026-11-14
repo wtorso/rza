@@ -152,9 +152,13 @@ organized into cells and is never addressed through a raw pointer in RZA code.
 Procedures start with clean registers. Values are exchanged through cells, not
 parameter registers or a return register. Recursion is rejected.
 
-`add`, `sub`, `mul`, `inc`, and `dec` wrap modulo 2^64. Division by zero,
-overflowing signed division or remainder, and invalid shift counts produce
-`FAULT`. A constant out-of-bounds access is rejected during validation; a
+`add`, `sub`, `mul`, `inc`, and `dec` wrap modulo 2^64. Their checked variants
+`cadd`, `csub`, `cmul`, `cinc`, and `cdec` instead produce `FAULT` on signed
+overflow. Checked arithmetic does not enforce application rules such as a
+nonnegative quota; those still need explicit validation. `shr` is an arithmetic
+right shift; `ushr` is a logical right shift. Division by zero, overflowing
+signed division or remainder, and invalid shift counts produce `FAULT`. A
+constant out-of-bounds access is rejected during validation; a
 register-dependent out-of-bounds access is a runtime `FAULT`.
 
 The runtime uses fixed storage. After initialization it does not call `malloc`,
@@ -259,7 +263,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=153 FAIL=0` on POSIX and `PASS=152 FAIL=0` on Windows.
+Expected results are `PASS=167 FAIL=0` on POSIX and `PASS=166 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 
@@ -273,6 +277,7 @@ CC="zig cc" RUST_CC=clang bash run_tests.sh
 `RUST_CC` selects the linker for Rust static libraries; it does not replace the
 C compiler used for generated RZA code. CI runs Linux GCC/Clang/Zig, Windows Zig,
 and VS Code unit, packaging, Extension Host, and production-dependency checks.
+Linux Clang additionally runs the full suite with ASan and UBSan.
 Linux GCC and Windows also verify reproducible packages and staged installation.
 The Release workflow supports manual dry runs and publication from version tags.
 

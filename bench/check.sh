@@ -48,19 +48,27 @@ check_output() {
 
 build_rza crc32c rza_crc_host.c
 build_rza crc32c_flat rza_crc_host.c
+build_rza crc32c_table rza_crc_host.c
 build_c crc32c
+build_c crc32c_table
 build_rust crc32c
+build_rust crc32c_table
 build_rust crc32c_intrinsic
 build_rza table rza_table_host.c
 build_c table
 build_rust table
+build_rza checked_arith rza_checked_host.c
+build_rza checked_arith_wrap rza_checked_host.c
 
-for name in crc32c_rza crc32c_flat_rza crc32c_c crc32c_rust \
-        crc32c_intrinsic_rust; do
+for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_c crc32c_table_c \
+        crc32c_rust crc32c_table_rust crc32c_intrinsic_rust; do
     check_output "$name" crc32c
 done
 for name in table_rza table_c table_rust; do
     check_output "$name" table
+done
+for name in checked_arith_rza checked_arith_wrap_rza; do
+    check_output "$name" checked_arith
 done
 
 # Changing only the key mask creates 1024 distinct requests. After 512 inserts
@@ -86,7 +94,11 @@ done
 $CC $CFLAGS $LDFLAGS bench/crc32c.c bench/crc32c_vector.c \
     -o "$BUILD/crc32c_vector"
 check_output crc32c_vector crc32c_vector
-$RUSTC --edition=2021 --test -O bench/workloads_test.rs -o "$BUILD/workloads_test"
+$CC $CFLAGS $LDFLAGS -DCRC32C_TABLE bench/crc32c_table.c bench/crc32c_vector.c \
+    -o "$BUILD/crc32c_table_vector"
+check_output crc32c_table_vector crc32c_vector
+$RUSTC --edition=2021 --test -D warnings -O bench/workloads_test.rs \
+    -o "$BUILD/workloads_test"
 "$BUILD/workloads_test"
 $CC $CFLAGS $LDFLAGS bench/timer.c bench/timer_test.c -o "$BUILD/timer_test"
 "$BUILD/timer_test" >"$BUILD/timer_test.out"

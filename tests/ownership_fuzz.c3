@@ -63,7 +63,7 @@ fn int ownership_main() {
 
 fn int? ownership_run() {
     reset_temp_dir()!;
-    for (int seed = 1; seed <= 12; seed++) {
+    for (int seed = 1; seed <= 64; seed++) {
         if (run_ownership_case(own_valid(seed), string::tformat("valid-%d.rza", seed),
                 seed == 1)! != 0) return 1;
     }
@@ -73,6 +73,6 @@ fn int? ownership_run() {
         String name = string::tformat("invalid-%s.rza", rules[i]);
         if (run_ownership_case(own_invalid(rules[i]), name, false)! != 0) return 1;
     }
-    io::printn("OWNERSHIP_FUZZ OK (22 cases)");
+    io::printn("OWNERSHIP_FUZZ OK (74 cases)");
     return 0;
 }

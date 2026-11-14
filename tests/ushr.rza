@@ -1,0 +1,19 @@
+; Logical shifts discard the sign bit instead of extending it.
+mov %r0, -1
+ushr %r0, %r0, 0
+print %r0
+ushr %r0, %r0, 1
+print %r0
+mov %r0, -1
+ushr %r0, %r0, 63
+print %r0
+mov %r0, -9223372036854775808
+ushr %r0, %r0, 63
+print %r0
+mov %r0, -8
+ushr %r0, %r0, 2
+print %r0
+mov %r0, 8
+ushr %r1, %r0, 1
+print %r1
+ret

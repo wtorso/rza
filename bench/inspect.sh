@@ -24,6 +24,9 @@ dump crc32c_rza rza_checksum
 dump crc32c_flat_rza rza_checksum
 dump crc32c_c crc32c_software
 dump crc32c_rust crc32c_software
+dump crc32c_table_rza rza_checksum
+dump crc32c_table_c crc32c_table
+dump crc32c_table_rust crc32c_table
 dump crc32c_intrinsic_rust workload_step
 objdump -d "$BUILD/crc32c_intrinsic_rust" >"$ASM/crc32c_intrinsic_rust.all.asm"
 backend=unrecorded
@@ -55,6 +58,23 @@ esac
 dump table_rza rza_table
 dump table_c table_step
 dump table_rust table_step
+dump checked_arith_rza rza_workload
+dump checked_arith_wrap_rza rza_workload
+case "$(uname -m)" in
+    x86_64|amd64)
+        if ! grep --extended-regexp --quiet '[[:space:]]jo[[:space:]]' \
+                "$ASM/checked_arith_rza.rza_workload.asm"; then
+            echo "FATAL: checked arithmetic has no overflow branch" >&2
+            exit 1
+        fi
+        if grep --extended-regexp --quiet '[[:space:]]jo[[:space:]]' \
+                "$ASM/checked_arith_wrap_rza.rza_workload.asm"; then
+            echo "FATAL: wrapping arithmetic unexpectedly uses overflow branches" >&2
+            exit 1
+        fi
+        echo "PASS: checked arithmetic uses jo; wrapping path does not"
+        ;;
+esac
 
 $CC -std=c23 -O2 -I include/rza -I . -c bench/safety/null_check.c -o "$ASM/null_default.o"
 $CC -std=c23 -O2 -fno-delete-null-pointer-checks -I include/rza -I . \

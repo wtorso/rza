@@ -549,6 +549,8 @@ done
 run_good imm_bounds
 run_good arith_wrap
 run_good shift_guard
+run_good ushr
+run_good checked_arith
 run_good capacity_guard
 run_good typed_table
 run_good compare_edges
@@ -589,13 +591,25 @@ run_dead typed_scalar_index "FAULT line 5: out of bounds entries_m"
 run_dead cav_reentry "FAULT line 3: frame allocation f"
 run_dead raise_home "FAULT line 9: dead mediator x_m"
 run_dead bounds_dynamic "FAULT line 6: out of bounds x_m"
+run_dead bounds_narrow_dynamic "FAULT line 4: out of bounds x_m"
 run_dead bounds_casc_dynamic "FAULT line 7: out of bounds x_m"
 run_dead div_zero "FAULT line 3: division"
 run_dead div_overflow "FAULT line 4: division"
 run_dead mod_overflow "FAULT line 4: division"
 run_dead shift_range "FAULT line 2: shift"
 run_dead shift_negative "FAULT line 3: shift"
+run_dead ushr_range "FAULT line 2: shift"
+run_dead ushr_negative "FAULT line 3: shift"
 run_dead shift_ibft "FAULT line 6: shift"
+run_dead checked_add_overflow "FAULT line 2: arithmetic overflow"
+run_dead checked_sub_overflow "FAULT line 2: arithmetic overflow"
+run_dead checked_mul_overflow "FAULT line 2: arithmetic overflow"
+run_dead checked_inc_overflow "FAULT line 2: arithmetic overflow"
+run_dead checked_dec_overflow "FAULT line 2: arithmetic overflow"
+run_dead checked_proc_overflow "FAULT line 3: arithmetic overflow"
+run_dead checked_casc_overflow "FAULT line 7: arithmetic overflow"
+run_dead checked_quota_attack "FAULT line 4: arithmetic overflow"
+run_dead checked_index_attack "FAULT line 6: arithmetic overflow"
 run_viol viol_bounds_imm STRUCT
 run_viol viol_bounds_negative STRUCT
 run_viol viol_aligned_size STRUCT
@@ -693,8 +707,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=153
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=152; fi
+EXPECTED_PASS=167
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=166; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

@@ -15,6 +15,9 @@ casc addup: a_m,b_m -> total[main]
     load  %r2, [a_m + 0]
     load  %r3, [b_m + 0]
     add   %r4, %r2, %r3
+    mov   %r5, -1
+    ushr  %r5, %r5, 63
+    mul   %r4, %r4, %r5
     store [a_m + 8], %r4
 endc
 

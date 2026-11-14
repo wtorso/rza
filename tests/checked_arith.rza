@@ -1,0 +1,47 @@
+res amount, field, 8
+med amount_m, amount, field
+
+proc checked_proc:
+    mov %r0, 41
+    cinc %r0
+    print %r0
+    cdec %r0
+    print %r0
+    ret
+
+mov %r0, 9223372036854775807
+cadd %r1, %r0, 0
+print %r1
+mov %r0, -9223372036854775808
+csub %r1, %r0, 0
+print %r1
+cmul %r1, %r0, 1
+print %r1
+mov %r0, 9223372036854775807
+cmul %r1, %r0, 1
+print %r1
+mov %r0, -1
+cmul %r1, %r0, -1
+print %r1
+mov %r0, 0
+cinc %r0
+print %r0
+mov %r0, 0
+cdec %r0
+print %r0
+mov %r0, 9223372036854775807
+add %r0, %r0, 1
+print %r0
+mov %r0, 40
+store [amount_m + 0], %r0
+casc checked: amount_m -> checked_out[field]
+    load %r0, [amount_m + 0]
+    cadd %r0, %r0, 1
+    csub %r0, %r0, 1
+    cmul %r0, %r0, 2
+    store [amount_m + 0], %r0
+endc
+load %r0, [amount_m + 0]
+print %r0
+call checked_proc
+ret

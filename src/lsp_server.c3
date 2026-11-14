@@ -167,6 +167,10 @@ fn void lsp_respond(Object* id, String result_json) {
 	d.append_string(`,"result":`);
 	d.append_string(result_json);
 	d.append_string("}");
+	if (d.len() > (sz)LSP_RESPONSE_MAX) {
+		lsp_respond_error(id, LSP_REQUEST_FAILED, "response exceeds static budget");
+		return;
+	}
 	lsp_send_body(d.str_view());
 }
 

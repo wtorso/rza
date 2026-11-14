@@ -1,0 +1,5 @@
+res x, field, 1
+med x_m, x, field
+mov %r0, 0
+load %r1, [x_m + %r0]
+ret

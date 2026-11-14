@@ -33,11 +33,20 @@ when RZA itself is built with Zig.
 - CRC32C processes 4096 deterministic input bytes with the reflected Castagnoli
   polynomial. It compares RZA inside a cascade, RZA with a lifetime check on each
   byte, portable C, portable Rust, and a Rust SSE4.2 intrinsic implementation.
-  The intrinsic version detects CPU support at runtime and records whether it
-  used hardware or the software fallback.
+  A separate table-driven variant uses the same 256-entry table in RZA, C, and
+  Rust. RZA builds its table during `rza_boot`, C during preparation, and Rust at
+  compile time; all initialization is outside the timed region. The intrinsic
+  version detects CPU support at runtime and records whether it used hardware or
+  the software fallback.
 - The table workload performs 1024 requests against 512 open-addressed
   key/value slots. A second variant fills every slot and requires all versions
   to return the same full-table result instead of reading a missing entry.
+- The checked-arithmetic pair runs 1024 identical RZA iterations with wrapping or
+  checked `add/sub/mul/inc/dec`. Dynamic cell inputs prevent constant folding;
+  both variants must return zero. On x86-64, inspection requires `jo` in the
+  checked path and rejects it in the wrapping path. This measures both overflow
+  branches and optimizations lost when faults are observable, including loop
+  collapse; it is not an isolated instruction-latency benchmark.
 
 `bench/run.sh` first calls `bench/check.sh`. That script builds every variant,
 compares output with the checked-in expected files, tests the full-table case,

@@ -239,8 +239,12 @@ fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
                     ins.c, ins.c, cell.element_count);
     } else {
         int width = ins.flag ? 1 : 8;
-        out.appendf("if (!rez_cell_bounds(%s, r%d, %d)) {\n",
-                    meds[ins.x].cname, ins.c, width);
+        assert(cell.size > 0 && width > 0);
+        if (cell.size < width) {
+            out.append_string("if (1) {\n");
+        } else {
+            out.appendf("if ((uint64_t)r%d > %d) {\n", ins.c, cell.size - width);
+        }
     }
     pad(out, ind + 1);
     out.appendf("fprintf(stderr, \"FAULT line %d: out of bounds %s\\n\");\n",
@@ -305,6 +309,18 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     out.append_string(in_casc ? "\n" : " }\n");
 }
 
+fn void emit_checked_arith(Output* out, int ind, Instr* ins, String helper, String rhs) {
+    pad(out, ind);
+    out.appendf("if (%s(r%d, %s, &r%d)) {\n", helper, ins.b, rhs, ins.a);
+    pad(out, ind + 1);
+    out.appendf("fprintf(stderr, \"FAULT line %d: arithmetic overflow\\n\");\n",
+                ins.line);
+    pad(out, ind + 1);
+    out.append_string("exit(1);\n");
+    pad(out, ind);
+    out.append_string("}\n");
+}
+
 fn void emit_alu3(Output* out, int ind, Instr* ins) {
     DString rhs = dstring::new(workmem);
     defer rhs.free();
@@ -318,7 +334,7 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
         return;
     }
     bool division = ins.s2 == "/" || ins.s2 == "%";
-    bool shift = ins.s2 == "<<" || ins.s2 == ">>";
+    bool shift = ins.s2 == "<<" || ins.s2 == ">>" || ins.s2 == ">>>";
     if (division) {
         pad(out, ind);
         out.appendf("if (%s == 0 || (r%d == INT64_MIN && %s == -1)) {\n",
@@ -341,6 +357,14 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
         pad(out, ind);
         out.append_string("}\n");
     }
+    String checked = "";
+    if (ins.s2 == "c+") checked = "rez_i64_cadd";
+    if (ins.s2 == "c-") checked = "rez_i64_csub";
+    if (ins.s2 == "c*") checked = "rez_i64_cmul";
+    if (checked.len > 0) {
+        emit_checked_arith(out, ind, ins, checked, rhs.str_view());
+        return;
+    }
     String helper = "";
     if (ins.s2 == "+") helper = "rez_i64_add";
     if (ins.s2 == "-") helper = "rez_i64_sub";
@@ -349,6 +373,7 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
     if (ins.s2 == "%") helper = "rez_i64_mod";
     if (ins.s2 == "<<") helper = "rez_i64_shl";
     if (ins.s2 == ">>") helper = "rez_i64_shr";
+    if (ins.s2 == ">>>") helper = "rez_i64_ushr";
     pad(out, ind);
     if (helper.len > 0) {
         out.appendf("r%d = %s(r%d, %s);\n",

@@ -1,0 +1,8 @@
+; The byte offset must overflow before any memory access is attempted.
+res data, field, 64
+med data_m, data, field
+mov %r0, 9223372036854775807
+mov %r1, 8
+cmul %r2, %r0, %r1
+store [data_m + %r2], %r0
+ret

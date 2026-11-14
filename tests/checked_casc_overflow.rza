@@ -1,0 +1,10 @@
+res x, field, 8
+med x_m, x, field
+mov %r0, 9223372036854775807
+store [x_m + 0], %r0
+casc checked: x_m -> out[field]
+    load %r0, [x_m + 0]
+    cadd %r0, %r0, 1
+    store [x_m + 0], %r0
+endc
+ret

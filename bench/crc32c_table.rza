@@ -1,0 +1,51 @@
+; Table-driven CRC32C. The table is built once by rza_boot before timing.
+layout Byte: value:u8
+layout CrcEntry: value:i64
+res input, field, Byte[4096]
+res crc_table, field, CrcEntry[256]
+res crc, field, 8
+med input_m, input, field
+med table_m, crc_table, field
+med crc_m, crc, field
+
+proc checksum:
+    casc table_batch: input_m,table_m,crc_m -> output[checksum]
+        mov %r0, 0xffffffff
+        mov %r1, 0
+        mov %r2, 4096
+    crc_byte:
+        brz %r2, crc_done
+        loadb %r3, [input_m + %r1].value
+        xor %r0, %r0, %r3
+        and %r4, %r0, 255
+        load %r5, [table_m + %r4].value
+        ushr %r0, %r0, 8
+        xor %r0, %r0, %r5
+        inc %r1
+        dec %r2
+        jmp crc_byte
+    crc_done:
+        xor %r0, %r0, 0xffffffff
+        store [crc_m + 0], %r0
+    endc
+    ret
+
+mov %r0, 0
+table_entry:
+    slt %r7, %r0, 256
+    brz %r7, table_ready
+    mov %r1, %r0
+    mov %r2, 8
+table_bit:
+    and %r3, %r1, 1
+    ushr %r1, %r1, 1
+    brz %r3, table_next
+    xor %r1, %r1, 0x82f63b78
+table_next:
+    dec %r2
+    brnz %r2, table_bit
+    store [table_m + %r0].value, %r1
+    inc %r0
+    jmp table_entry
+table_ready:
+ret

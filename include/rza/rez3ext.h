@@ -143,6 +143,61 @@ static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
     return rez_i64_value(rez_i64_bits(left) * rez_i64_bits(right));
 }
 
+[[maybe_unused]] static bool rez_i64_cadd(
+    int64_t left,
+    int64_t right,
+    int64_t *result
+) {
+    assert(result != nullptr);
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_add_overflow(left, right, result);
+#else
+    if (right > 0 && left > INT64_MAX - right) return true;
+    if (right < 0 && left < INT64_MIN - right) return true;
+    *result = rez_i64_add(left, right);
+    return false;
+#endif
+}
+
+[[maybe_unused]] static bool rez_i64_csub(
+    int64_t left,
+    int64_t right,
+    int64_t *result
+) {
+    assert(result != nullptr);
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_sub_overflow(left, right, result);
+#else
+    if (right > 0 && left < INT64_MIN + right) return true;
+    if (right < 0 && left > INT64_MAX + right) return true;
+    *result = rez_i64_sub(left, right);
+    return false;
+#endif
+}
+
+[[maybe_unused]] static bool rez_i64_cmul(
+    int64_t left,
+    int64_t right,
+    int64_t *result
+) {
+    assert(result != nullptr);
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(left, right, result);
+#else
+    int64_t wrapped;
+    if (left == 0 || right == 0) {
+        *result = 0;
+        return false;
+    }
+    if (left == -1 && right == INT64_MIN) return true;
+    if (left == INT64_MIN && right == -1) return true;
+    wrapped = rez_i64_mul(left, right);
+    if (wrapped / right != left) return true;
+    *result = wrapped;
+    return false;
+#endif
+}
+
 [[maybe_unused]] static int64_t rez_i64_div(int64_t left, int64_t right) {
     assert(right != 0);
     if (left == INT64_MIN) assert(right != -1);
@@ -169,6 +224,12 @@ static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
     bits = rez_i64_bits(value) >> (unsigned)shift;
     if (value < 0) bits |= ~(uint64_t)0 << (64 - (unsigned)shift);
     return rez_i64_value(bits);
+}
+
+[[maybe_unused]] static int64_t rez_i64_ushr(int64_t value, int64_t shift) {
+    assert(shift >= 0);
+    assert(shift < 64);
+    return rez_i64_value(rez_i64_bits(value) >> (unsigned)shift);
 }
 
 #define REZ_TRY(expr) do { if (!(expr)) return -1; } while (0)

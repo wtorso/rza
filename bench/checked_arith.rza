@@ -1,0 +1,28 @@
+res state, field, 8
+res config, field, 8
+med state_m, state, field
+med config_m, config, field
+
+proc workload:
+    mov %r0, 0
+    load %r1, [state_m + 0]
+    load %r2, [config_m + 0]
+checked_loop:
+    slt %r3, %r0, 1024
+    brz %r3, checked_done
+    cadd %r1, %r1, %r2
+    csub %r1, %r1, %r2
+    cmul %r1, %r1, %r2
+    cinc %r1
+    cdec %r1
+    inc %r0
+    jmp checked_loop
+checked_done:
+    store [state_m + 0], %r1
+    ret
+
+mov %r0, 0
+store [state_m + 0], %r0
+mov %r0, 1
+store [config_m + 0], %r0
+ret

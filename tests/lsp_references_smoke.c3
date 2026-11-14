@@ -373,6 +373,52 @@ fn int? reference_limit_checks(Process* child) {
 	return status;
 }
 
+fn String reference_string_id_request(sz id_len, String uri) {
+	DString out = dstring::temp(`{"jsonrpc":"2.0","id":"`);
+	for (sz i = 0; i < id_len; i++) out.append_char('i');
+	out.append_string(`","method":"textDocument/references","params":{"textDocument":{"uri":`);
+	json_string(&out, uri);
+	out.append_string(
+		`},"position":{"line":2,"character":6},"context":{"includeDeclaration":true}}}`
+	);
+	return out.str_view();
+}
+
+fn int? response_envelope_boundary_checks(Process* child) {
+	DString uri = dstring::temp("file:///");
+	while (uri.len() < 956) uri.append_char('u');
+	Object* response = lsp_call_json(child, open_message(uri.str_view(), many_calls(4007), 1))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "boundary document")) return 1;
+	String raw = lsp_call(child, reference_string_id_request(1, uri.str_view()))!;
+	if (!expect(raw.len <= TEST_LSP_RESPONSE_MAX, "boundary fixture fits")) return 1;
+	response = json_message(raw)!;
+	Object* result = response.get("result") ?? null;
+	if (!expect(
+		result != null && result.is_indexable() && result.get_len() == 4008,
+		"boundary fixture references"
+	)) return 1;
+	sz padding = TEST_LSP_RESPONSE_MAX - raw.len;
+	if (!expect(padding <= 254, "boundary fixture leaves adjustable ID space")) return 1;
+	raw = lsp_call(child, reference_string_id_request(1 + padding, uri.str_view()))!;
+	if (!expect(raw.len == TEST_LSP_RESPONSE_MAX, "response at exact budget")) {
+		io::eprintfn("exact boundary bytes=%d", raw.len);
+		return 1;
+	}
+	response = json_message(raw)!;
+	result = response.get("result") ?? null;
+	if (!expect(
+		result != null && result.is_indexable() && result.get_len() == 4008,
+		"exact boundary returns all references"
+	)) return 1;
+	raw = lsp_call(child, reference_string_id_request(2 + padding, uri.str_view()))!;
+	response = json_message(raw)!;
+	if (!expect(json_error_code(response, -32803), "response envelope above budget")) {
+		io::eprintfn("oversize response bytes=%d", raw.len);
+		return 1;
+	}
+	return 0;
+}
+
 fn int? references_checks(Process* child) {
 	int status = 0;
 	if (reference_proc_field_checks(child)! != 0) status = 1;
@@ -380,6 +426,7 @@ fn int? references_checks(Process* child) {
 	if (reference_keyword_ab_checks(child)! != 0) status = 1;
 	if (reference_cascade_checks(child)! != 0) status = 1;
 	if (reference_limit_checks(child)! != 0) status = 1;
+	if (response_envelope_boundary_checks(child)! != 0) status = 1;
 	if (rename_checks(child)! != 0) status = 1;
 	return status;
 }

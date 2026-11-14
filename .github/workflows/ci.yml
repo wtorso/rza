@@ -67,6 +67,16 @@ jobs:
           CC: ${{ matrix.cc }}
           RUST_CC: ${{ matrix.rust_cc }}
         run: bash run_tests.sh
+      - name: Address and undefined behavior sanitizers
+        if: matrix.cc == 'clang'
+        shell: bash
+        env:
+          CC: clang
+          CFLAGS: >-
+            -std=c23 -pedantic -Wall -Wextra -Werror
+            -fsanitize=address,undefined -fno-sanitize-recover=undefined
+            -I include/rza -I .
+        run: bash run_tests.sh
       - name: Package and install smoke
         if: matrix.cc == 'gcc'
         shell: bash

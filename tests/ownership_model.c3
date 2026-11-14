@@ -43,6 +43,13 @@ fn void own_probe(OwnModel* model, String med, bool alive) {
     model.expected.append(alive ? "ALIVE\n" : "DEAD\n");
 }
 
+fn void own_checked_noop(OwnModel* model, int reg) {
+    model.source.appendf("    cadd %%r%d, %%r%d, 0\n", reg, reg);
+    model.source.appendf("    csub %%r%d, %%r%d, 0\n", reg, reg);
+    model.source.appendf("    cmul %%r%d, %%r%d, 1\n", reg, reg);
+    model.source.appendf("    cinc %%r%d\n    cdec %%r%d\n", reg, reg);
+}
+
 fn void own_proc(OwnModel* model, int seed) {
     model.tick_value = 20 + seed % 10;
     model.source.append("proc tick:\n"
@@ -52,8 +59,9 @@ fn void own_proc(OwnModel* model, int seed) {
     model.source.append("    store [tick_m + 0], %r0\n"
         "    load %r0, [tick_m + 0]\n"
         "    print %r0\n"
-        "    load %r0, [counter_m + 0]\n"
-        "    inc %r0\n"
+        "    load %r0, [counter_m + 0]\n");
+    own_checked_noop(model, 0);
+    model.source.append("    inc %r0\n"
         "    store [counter_m + 0], %r0\n"
         "ret\n");
 }
@@ -64,8 +72,9 @@ fn void own_global(OwnModel* model) {
     model.source.appendf("mov %%r0, %d\nstore [global_m + 0], %%r0\n",
         model.global_value);
     model.source.append("acasc bump: global_m -> gout\n"
-        "    load %r0, [global_m + 0]\n"
-        "    inc %r0\n"
+        "    load %r0, [global_m + 0]\n");
+    own_checked_noop(model, 0);
+    model.source.append("    inc %r0\n"
         "    store [global_m + 0], %r0\n"
         "endc\n"
         "await %r0\n"
@@ -99,8 +108,9 @@ fn OwnershipCase own_valid(int seed) {
     model.source.append("    load %r0, [counter_m + 0]\n");
     model.source.appendf("    load %%r1, [%s + 0]%s\n", lifted,
         typed ? ".value" : "");
-    model.source.append("    add %r2, %r0, %r1\n"
-        "    store [counter_m + 0], %r2\n"
+    model.source.append("    add %r2, %r0, %r1\n");
+    own_checked_noop(&model, 2);
+    model.source.append("    store [counter_m + 0], %r2\n"
         "endc\n");
     own_probe(&model, "tmp_m", true);
     own_probe(&model, lifted, true);

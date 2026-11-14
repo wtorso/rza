@@ -953,11 +953,24 @@ fn void op_alu3(String opname, String coper, String rest, int line) {
 	add_instr({ .op = Op.ALU3, .line = line, .a = d, .b = a, .c = b, .s2 = coper, .flag = false });
 }
 
-fn void op_alu1(String rest, int line, bool is_inc) {
+fn void op_alu1(String rest, int line, bool is_inc, bool checked) {
 	String[1] buf;
-	if (!split_ops_exact(rest, 1, line, is_inc ? "inc" : "dec", &buf)) return;
+	String opname = is_inc ? (checked ? "cinc" : "inc") : (checked ? "cdec" : "dec");
+	if (!split_ops_exact(rest, 1, line, opname, &buf)) return;
 	int r = parse_reg(buf[0], line);
 	if (r < 0) return;
+	if (checked) {
+		add_instr({
+			.op = Op.ALU3,
+			.line = line,
+			.a = r,
+			.b = r,
+			.immediate = 1,
+			.s2 = is_inc ? "c+" : "c-",
+			.flag = true
+		});
+		return;
+	}
 	add_instr({ .op = Op.ALU1, .line = line, .a = r, .flag = is_inc });
 }
 
@@ -1252,9 +1265,14 @@ fn bool casc_body_ok(String op) {
 		case "brnz":
 		case "inc":
 		case "dec":
+		case "cinc":
+		case "cdec":
 		case "add":
 		case "sub":
 		case "mul":
+		case "cadd":
+		case "csub":
+		case "cmul":
 		case "div":
 		case "mod":
 		case "and":
@@ -1262,12 +1280,37 @@ fn bool casc_body_ok(String op) {
 		case "xor":
 		case "shl":
 		case "shr":
+		case "ushr":
 		case "storeb":
 		case "slt":
 			return true;
 		default:
 			return false;
 	}
+}
+
+fn bool parse_alu_instr(String op, String rest, int n) {
+	String coper = "";
+	switch (op) {
+		case "slt": coper = "<";
+		case "add": coper = "+";
+		case "cadd": coper = "c+";
+		case "sub": coper = "-";
+		case "csub": coper = "c-";
+		case "mul": coper = "*";
+		case "cmul": coper = "c*";
+		case "div": coper = "/";
+		case "mod": coper = "%";
+		case "and": coper = "&";
+		case "or": coper = "|";
+		case "xor": coper = "^";
+		case "shl": coper = "<<";
+		case "shr": coper = ">>";
+		case "ushr": coper = ">>>";
+		default: return false;
+	}
+	op_alu3(op, coper, rest, n);
+	return true;
 }
 
 fn void parse_instr(String line, int n, bool in_casc) {
@@ -1312,38 +1355,20 @@ fn void parse_instr(String line, int n, bool in_casc) {
 		op_storeb(rest, n);
 	} else if (op == "mov") {
 		op_mov(rest, n);
-	} else if (op == "slt") {
-		op_alu3(op, "<", rest, n);
-	} else if (op == "add") {
-		op_alu3(op, "+", rest, n);
-	} else if (op == "sub") {
-		op_alu3(op, "-", rest, n);
-	} else if (op == "mul") {
-		op_alu3(op, "*", rest, n);
-	} else if (op == "div") {
-		op_alu3(op, "/", rest, n);
-	} else if (op == "mod") {
-		op_alu3(op, "%", rest, n);
-	} else if (op == "and") {
-		op_alu3(op, "&", rest, n);
-	} else if (op == "or") {
-		op_alu3(op, "|", rest, n);
-	} else if (op == "xor") {
-		op_alu3(op, "^", rest, n);
-	} else if (op == "shl") {
-		op_alu3(op, "<<", rest, n);
-	} else if (op == "shr") {
-		op_alu3(op, ">>", rest, n);
-	} else {
+	} else if (!parse_alu_instr(op, rest, n)) {
 		parse_control_instr(op, rest, n);
 	}
 }
 
 fn void parse_control_instr(String op, String rest, int n) {
 	if (op == "inc") {
-		op_alu1(rest, n, true);
+		op_alu1(rest, n, true, false);
 	} else if (op == "dec") {
-		op_alu1(rest, n, false);
+		op_alu1(rest, n, false, false);
+	} else if (op == "cinc") {
+		op_alu1(rest, n, true, true);
+	} else if (op == "cdec") {
+		op_alu1(rest, n, false, true);
 	} else if (op == "print") {
 		op_print(rest, n);
 	} else if (op == "await") {

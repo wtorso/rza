@@ -69,6 +69,21 @@ static int check_async_queue(void) {
     return 0;
 }
 
+static int32_t check_checked_arithmetic(void) {
+    int64_t checked;
+    CHECK(!rez_i64_cadd(INT64_MAX, 0, &checked) && checked == INT64_MAX);
+    CHECK(rez_i64_cadd(INT64_MAX, 1, &checked));
+    CHECK(rez_i64_cadd(INT64_MIN, -1, &checked));
+    CHECK(!rez_i64_csub(INT64_MIN, 0, &checked) && checked == INT64_MIN);
+    CHECK(rez_i64_csub(INT64_MIN, 1, &checked));
+    CHECK(rez_i64_csub(INT64_MAX, -1, &checked));
+    CHECK(!rez_i64_cmul(INT64_MIN, 1, &checked) && checked == INT64_MIN);
+    CHECK(!rez_i64_cmul(-1, -1, &checked) && checked == 1);
+    CHECK(rez_i64_cmul(INT64_MIN, -1, &checked));
+    CHECK(rez_i64_cmul(INT64_MAX, 2, &checked));
+    return 0;
+}
+
 int main(void) {
     RezCavity field = {0};
     RezCavity proc = {0};
@@ -119,9 +134,13 @@ int main(void) {
     CHECK(rez_i64_add(INT64_MAX, 1) == INT64_MIN);
     CHECK(rez_i64_sub(INT64_MIN, 1) == INT64_MAX);
     CHECK(rez_i64_shr(-2, 1) == -1);
+    CHECK(rez_i64_ushr(-1, 0) == -1);
+    CHECK(rez_i64_ushr(-1, 1) == INT64_MAX);
+    CHECK(rez_i64_ushr(INT64_MIN, 63) == 1);
     CHECK(rez_i64_shl(1, 63) == INT64_MIN);
     CHECK(rez_i64_div(8, 2) == 4);
     CHECK(rez_i64_mod(8, 3) == 2);
+    CHECK(check_checked_arithmetic() == 0);
 
     rez_decay(&field);
     CHECK(rez_deref_cell(med) == nullptr);

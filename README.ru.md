@@ -153,8 +153,12 @@ cd rza-0.1.0-linux-x86_64
 Процедуры начинают работу с чистыми регистрами. Значения передаются через ячейки,
 а не регистры параметров или возвращаемого значения. Рекурсия запрещена.
 
-`add`, `sub`, `mul`, `inc` и `dec` выполняют wrapping modulo 2^64. Деление на ноль,
-переполняющие signed division/remainder и недопустимый сдвиг вызывают `FAULT`.
+`add`, `sub`, `mul`, `inc` и `dec` выполняют wrapping modulo 2^64. Checked-варианты
+`cadd`, `csub`, `cmul`, `cinc` и `cdec` вместо этого вызывают `FAULT` при signed
+overflow. Checked arithmetic не доказывает прикладные инварианты вроде
+неотрицательной quota: их нужно проверять отдельно. `shr` — арифметический сдвиг
+вправо, `ushr` — логический. Деление на ноль, переполняющие signed
+division/remainder и недопустимый сдвиг вызывают `FAULT`.
 Постоянный выход за границы отклоняется при проверке; зависящий от регистра —
 во время выполнения.
 
@@ -260,7 +264,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=153 FAIL=0` на POSIX и `PASS=152 FAIL=0` на Windows.
+Ожидаемый результат: `PASS=167 FAIL=0` на POSIX и `PASS=166 FAIL=0` на Windows.
 На Windows не запускаются только специфичные для Linux проверки исходников
 benchmark; на Linux для них также нужен `rustc`.
 
@@ -273,7 +277,8 @@ CC="zig cc" RUST_CC=clang bash run_tests.sh
 
 `RUST_CC` выбирает linker для Rust static libraries, но не заменяет C compiler для
 сгенерированного RZA-кода. CI запускает Linux GCC/Clang/Zig, Windows Zig, а также
-unit, packaging, Extension Host и production-dependency проверки VS Code. Linux
+unit, packaging, Extension Host и production-dependency проверки VS Code. Linux Clang
+дополнительно запускает полный suite с ASan и UBSan. Linux
 GCC и Windows дополнительно проверяют воспроизводимые пакеты и staged install.
 Release workflow поддерживает ручной dry run и публикацию из version tags.
 

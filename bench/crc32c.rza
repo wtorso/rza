@@ -18,7 +18,7 @@ proc checksum:
         mov %r4, 8
     crc_bit:
         and %r5, %r0, 1
-        shr %r0, %r0, 1
+        ushr %r0, %r0, 1
         brz %r5, crc_next
         xor %r0, %r0, 0x82f63b78
     crc_next:

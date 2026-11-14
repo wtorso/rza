@@ -63,12 +63,17 @@ build_rust() {
 
 build_rza crc32c rza_crc_host.c
 build_rza crc32c_flat rza_crc_host.c
+build_rza crc32c_table rza_crc_host.c
 build_c crc32c
+build_c crc32c_table
 build_rust crc32c
+build_rust crc32c_table
 build_rust crc32c_intrinsic
 build_rza table rza_table_host.c
 build_c table
 build_rust table
+build_rza checked_arith rza_checked_host.c
+build_rza checked_arith_wrap rza_checked_host.c
 
 RESULTS="$BUILD/results.txt"
 : >"$RESULTS"
@@ -112,8 +117,11 @@ measure() {
         "${sorted[REPEATS - 1]}" "$total" >>"$RESULTS"
 }
 
-for name in crc32c table; do
-    if [ "$name" = crc32c ]; then host=rza_crc_host.c; else host=rza_table_host.c; fi
+for name in crc32c crc32c_table table; do
+    case "$name" in
+        crc32c*) host=rza_crc_host.c ;;
+        *) host=rza_table_host.c ;;
+    esac
     measure "transpile_${name}_rza" "$RZA_COMPILER" "bench/$name.rza" \
         --emit-lib -o "$BUILD/$name.rza.c"
     measure "compile_${name}_c" bash -c \
@@ -157,13 +165,16 @@ measure_runtime() {
     fi
 }
 
-for name in crc32c_rza crc32c_flat_rza crc32c_c crc32c_rust \
-        crc32c_intrinsic_rust table_rza table_c table_rust; do
+for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_c crc32c_table_c \
+        crc32c_rust crc32c_table_rust crc32c_intrinsic_rust table_rza table_c table_rust \
+        checked_arith_rza checked_arith_wrap_rza; do
     measure_runtime "$name"
 done
-for artifact in crc32c.rza.c crc32c_flat.rza.c table.rza.c crc32c_rza \
-        crc32c_flat_rza crc32c_c crc32c_rust crc32c_intrinsic_rust table_rza \
-        table_c table_rust; do
+for artifact in crc32c.rza.c crc32c_flat.rza.c crc32c_table.rza.c table.rza.c \
+        checked_arith.rza.c checked_arith_wrap.rza.c crc32c_rza crc32c_flat_rza \
+        crc32c_table_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
+        crc32c_intrinsic_rust table_rza table_c table_rust checked_arith_rza \
+        checked_arith_wrap_rza; do
     printf 'artifact_bytes %s %s\n' "$artifact" "$(wc -c <"$BUILD/$artifact")" \
         >>"$RESULTS"
 done
