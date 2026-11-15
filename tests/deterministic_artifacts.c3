@@ -127,6 +127,14 @@ fn int text_count(String text, String needle) {
     return count;
 }
 
+fn String artifact_function(String text, String header) {
+    sz? start = text.index_of(header);
+    if (catch start) return "";
+    sz? end = text[start..].index_of("\n}\n");
+    if (catch end) return "";
+    return text[start..start + end + 3];
+}
+
 fn int mediator_deref_count(String text) {
     return text_count(text, "rez_deref_cell(m_x_m)") +
         text_count(text, "rez_deref_cell_inline(m_x_m)");
@@ -154,11 +162,32 @@ fn int? check_crc_dispatch_artifact() {
 }
 
 fn int? check_async_drain_artifact() {
-    String generated = emit_artifact("tests/hoist_prefix.rza",
+    String synchronous = emit_artifact("tests/hoist_prefix.rza",
+        temp_path("sync-no-drain.c"))!;
+    if (!expect(!synchronous.contains("g_async.count"),
+            "programs without async tasks omit the queue check")) return 1;
+    String library = emit_lib_artifact("bench/calls.rza",
+        temp_path("sync-library-drain.c"))!;
+    String core = artifact_function(library, "static void p_work(void) {");
+    String wrapper = artifact_function(library, "void rza_work(void) {");
+    String driver = artifact_function(library, "void rza_workload(void) {");
+    String boot = artifact_function(library, "void rza_boot(void) {");
+    if (!expect(!core.contains("g_async.count") &&
+            wrapper.contains("    p_work();\n    if (g_async.count != 0)") &&
+            wrapper.contains("rez_async_drain(&g_async);\n    rez_decay") &&
+            driver.contains("g_async.count") && boot.contains("g_async.count"),
+            "library cores omit only internal checks; wrappers retain them")) return 1;
+    String asynchronous = emit_artifact("tests/async_fifo.rza",
         temp_path("async-drain.c"))!;
-    if (!expect(generated.contains("if (g_async.count != 0) (void)rez_async_drain") &&
-            !generated.contains("\n    (void)rez_async_drain(&g_async);"),
-            "empty async queue skips drain call")) return 1;
+    if (!expect(asynchronous.contains("if (g_async.count != 0) (void)rez_async_drain") &&
+            !asynchronous.contains("\n    (void)rez_async_drain(&g_async);"),
+            "async programs retain the conditional drain call")) return 1;
+    String async_proc = emit_artifact("tests/async_framefree_drain.rza",
+        temp_path("async-proc-drain.c"))!;
+    String async_core = artifact_function(async_proc, "static void p_framefree(void) {");
+    String async_main = artifact_function(async_proc, "int main(void) {");
+    if (!expect(async_core.contains("g_async.count") && async_main.contains("g_async.count"),
+            "async programs retain drains in procedures and at top level")) return 1;
     return 0;
 }
 

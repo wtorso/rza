@@ -1,0 +1,17 @@
+res x, field, 8
+med x_m, x, field
+proc framefree:
+    mov %r0, 42
+    print %r0
+    ret
+acasc bump: x_m -> out
+    load %r0, [x_m + 0]
+    inc %r0
+    store [x_m + 0], %r0
+endc
+med out_m, out, field
+call framefree
+probe out_m
+load %r0, [x_m + 0]
+print %r0
+ret

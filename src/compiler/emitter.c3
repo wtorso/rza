@@ -753,6 +753,24 @@ fn void emit_async_callback(Output* out, int ci) {
     out.append_string("}\n\n");
 }
 
+fn bool program_has_async() {
+    for (sz i = 0; i < cascades.len(); i++) {
+        if (cascades[i].is_async) return true;
+    }
+    return false;
+}
+
+fn void emit_async_drain(Output* out) {
+    if (program_has_async()) {
+        out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+    }
+}
+
+fn void emit_proc_drain(Output* out, bool lifecycle) {
+    if (!program_has_async() && (!g_lib_mode || !lifecycle)) return;
+    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+}
+
 fn void emit_async_callbacks(Output* out) {
     for (sz i = 0; i < cascades.len(); i++) {
         if (cascades[i].is_async) emit_async_callback(out, (int)i);
@@ -968,7 +986,7 @@ fn void emit_proc_body(Output* out, int pi, bool lifecycle) {
     emit_regs_decl(out, 1, rd | wr);
     if (lifecycle) emit_proc_frame_reset(out, p);
     emit_body(out, pi + 1);
-    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+    emit_proc_drain(out, lifecycle);
     emit_writeonly_silence(out, 1, rd, wr);
     if (lifecycle) emit_proc_frame_decay(out, p);
     out.append_string("}\n");
@@ -979,6 +997,9 @@ fn void emit_proc_host(Output* out, int pi) {
     emit_proc_entry(out, p);
     emit_proc_frame_reset(out, p);
     out.appendf("    %s();\n", p.cname);
+    if (!program_has_async()) {
+        out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+    }
     emit_proc_frame_decay(out, p);
     out.append_string("}\n");
 }
@@ -1042,7 +1063,7 @@ fn void emit_main(Output* out) {
                 "        exit(1);\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
-    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+    emit_async_drain(out);
     emit_writeonly_silence(out, 1, rd, wr);
     bool last_ret = false;
     for (sz i = instrs.len(); i > 0; i--) {

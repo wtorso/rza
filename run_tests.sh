@@ -572,6 +572,7 @@ run_good async_await_empty
 run_abort async_abort "ABORT line 11: cascade blocked: dead mediator out_m"
 run_abort typed_ownership "ABORT line 39: cascade blocked: dead mediator temp_m"
 run_good async_proc_drain
+run_good async_framefree_drain
 run_good async_proc_pending
 run_good async_proc_repeat
 run_abort async_proc_abort "ABORT line 10: cascade blocked: dead mediator out_m"
@@ -724,8 +725,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=180
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=179; fi
+EXPECTED_PASS=181
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=180; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1
