@@ -24,6 +24,23 @@ struct OracleCoverage {
     ulong proc_dead_after_ret;
     uint proc_entry_regs;
     uint proc_restore_regs;
+    ulong casc_sync_successes;
+    ulong casc_sync_aborts;
+    ulong casc_async_enqueues;
+    ulong casc_async_successes;
+    ulong casc_async_aborts;
+    ulong casc_pending_faults;
+    ulong casc_repeat_faults;
+    ulong casc_queue_full_faults;
+    ulong casc_body_faults;
+    ulong casc_out_alive;
+    ulong casc_out_dead;
+    ulong casc_empty_awaits;
+    ulong[9] cascade_cases;
+    uint casc_snapshot_regs;
+    uint casc_caller_regs;
+    ulong casc_ret_drains;
+    ulong casc_reenqueue_clears;
 }
 
 OracleCoverage oracle_coverage;
@@ -87,6 +104,36 @@ fn bool proc_oracle_coverage_ok() {
     return true;
 }
 
+fn bool cascade_oracle_coverage_ok() {
+    if (!expect(oracle_coverage.casc_sync_successes > 0 &&
+            oracle_coverage.casc_sync_aborts > 0,
+            "cascade oracle needs sync success and abort")) return false;
+    if (!expect(oracle_coverage.casc_async_enqueues > 0 &&
+            oracle_coverage.casc_async_successes > 0 &&
+            oracle_coverage.casc_async_aborts > 0,
+            "cascade oracle needs async enqueue, success and abort")) return false;
+    if (!expect(oracle_coverage.casc_pending_faults > 0 &&
+            oracle_coverage.casc_repeat_faults > 0 &&
+            oracle_coverage.casc_queue_full_faults > 0 &&
+            oracle_coverage.casc_body_faults > 0,
+            "cascade oracle needs pending, repeat, queue and body faults")) return false;
+    if (!expect(oracle_coverage.casc_out_alive > 0 && oracle_coverage.casc_out_dead > 0,
+            "cascade oracle needs live and unpublished outputs")) return false;
+    if (!expect(oracle_coverage.casc_empty_awaits > 0,
+            "cascade oracle needs an empty await")) return false;
+    if (!expect(oracle_coverage.casc_snapshot_regs == 0xFFFF &&
+            oracle_coverage.casc_caller_regs == 0xFFFB,
+            "cascade oracle needs async snapshot and caller registers")) return false;
+    if (!expect(oracle_coverage.casc_ret_drains > 0 &&
+            oracle_coverage.casc_reenqueue_clears > 0,
+            "cascade oracle needs ret drain and reenqueue clearing")) return false;
+    for (int scenario = 0; scenario < 9; scenario++) {
+        if (!expect(oracle_coverage.cascade_cases[scenario] == 4,
+                "cascade oracle needs four passing programs per scenario")) return false;
+    }
+    return true;
+}
+
 fn void oracle_coverage_print() {
     io::printfn("ORACLE_COVERAGE success=%d fault=%d checked=%d bounds=%d",
         oracle_coverage.successes, oracle_coverage.faults,
@@ -102,4 +149,17 @@ fn void oracle_coverage_print() {
         oracle_coverage.proc_arena_faults, oracle_coverage.proc_dead_after_ret);
     io::printfn("ORACLE_PROC_REGISTERS entry=%d restore=%d",
         oracle_coverage.proc_entry_regs, oracle_coverage.proc_restore_regs);
+    io::printfn("ORACLE_CASC sync=%d sync_abort=%d enqueue=%d async=%d abort=%d",
+        oracle_coverage.casc_sync_successes, oracle_coverage.casc_sync_aborts,
+        oracle_coverage.casc_async_enqueues, oracle_coverage.casc_async_successes,
+        oracle_coverage.casc_async_aborts);
+    io::printfn("ORACLE_CASC_FAULT pending=%d repeat=%d full=%d body=%d",
+        oracle_coverage.casc_pending_faults, oracle_coverage.casc_repeat_faults,
+        oracle_coverage.casc_queue_full_faults, oracle_coverage.casc_body_faults);
+    io::printfn("ORACLE_CASC_OUT alive=%d dead=%d empty_await=%d",
+        oracle_coverage.casc_out_alive, oracle_coverage.casc_out_dead,
+        oracle_coverage.casc_empty_awaits);
+    io::printfn("ORACLE_CASC_REGISTERS snapshot=%d caller=%d ret_drain=%d reenqueue=%d",
+        oracle_coverage.casc_snapshot_regs, oracle_coverage.casc_caller_regs,
+        oracle_coverage.casc_ret_drains, oracle_coverage.casc_reenqueue_clears);
 }

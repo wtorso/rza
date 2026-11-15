@@ -60,6 +60,8 @@ struct OracleWorld {
     int proc_calls;
     bool nested_calls;
     ProcFaultMode proc_fault;
+    CascScenario cascade_scenario;
+    int cascade_tasks;
 }
 
 struct OracleRng {
@@ -413,8 +415,9 @@ fn int? oracle_run() {
         if (oracle_run_case(seed)! != 0) return 1;
     }
     if (proc_oracle_run()! != 0) return 1;
+    if (cascade_oracle_run()! != 0) return 1;
     if (!oracle_coverage_ok()) return 1;
     oracle_coverage_print();
-    io::printn("EXECUTION_ORACLE OK (64 programs)");
+    io::printn("EXECUTION_ORACLE OK (164 programs)");
     return 0;
 }

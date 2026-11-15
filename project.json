@@ -42,6 +42,8 @@
         "tests/execution_oracle.c3",
         "tests/execution_proc_oracle.c3",
         "tests/execution_proc_model.c3",
+        "tests/execution_cascade_oracle.c3",
+        "tests/execution_cascade_model.c3",
         "tests/execution_shrink.c3",
         "tests/execution_coverage.c3",
         "tests/lsp_client.c3",

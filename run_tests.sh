@@ -66,7 +66,8 @@ run_function_style() {
             tests/function_length.c3 tests/source_style.c3 tests/deterministic_artifacts.c3 \
             tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
             tests/ownership_fuzz.c3 tests/execution_oracle.c3 tests/execution_proc_oracle.c3 \
-            tests/execution_proc_model.c3 tests/execution_shrink.c3 \
+            tests/execution_proc_model.c3 tests/execution_cascade_oracle.c3 \
+            tests/execution_cascade_model.c3 tests/execution_shrink.c3 \
             tests/execution_coverage.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
             tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
             tests/lsp_completion_smoke.c3 tests/lsp_references_smoke.c3 \

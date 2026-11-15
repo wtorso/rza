@@ -10,6 +10,7 @@ enum OracleDimension : char {
     TRIPS,
     PROC_COUNT,
     PROC_CALLS,
+    CASC_TASKS,
 }
 
 fn int oracle_dimension_get(OracleWorld world, OracleDimension dimension) {
@@ -20,7 +21,8 @@ fn int oracle_dimension_get(OracleWorld world, OracleDimension dimension) {
         case OracleDimension.SUFFIX: return world.suffix_ops;
         case OracleDimension.TRIPS: return world.loop_trips;
         case OracleDimension.PROC_COUNT: return world.proc_count;
-        default: return world.proc_calls;
+        case OracleDimension.PROC_CALLS: return world.proc_calls;
+        default: return world.cascade_tasks;
     }
 }
 
@@ -39,6 +41,9 @@ fn void oracle_dimension_set(OracleWorld* world, OracleDimension dimension, int 
             world.proc_count = value;
             if (value < PROC_ORACLE_PROCS_MAX) world.nested_calls = false;
         case OracleDimension.PROC_CALLS: world.proc_calls = value;
+        case OracleDimension.CASC_TASKS:
+            assert(value <= CASC_SITES_MAX);
+            world.cascade_tasks = value;
     }
 }
 
@@ -112,6 +117,7 @@ fn OracleWorld oracle_shrink(OracleWorld world, OraclePredicate fails) {
         if (oracle_lower_dimension(&best, OracleDimension.TRIPS, 1, fails)) improved = true;
         if (oracle_lower_dimension(&best, OracleDimension.PROC_COUNT, 0, fails)) improved = true;
         if (oracle_lower_dimension(&best, OracleDimension.PROC_CALLS, 0, fails)) improved = true;
+        if (oracle_lower_dimension(&best, OracleDimension.CASC_TASKS, 0, fails)) improved = true;
         if (!improved) {
             settled = true;
             break;
