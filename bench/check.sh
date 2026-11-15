@@ -67,6 +67,11 @@ build_c parser
 build_rust parser
 build_rza checked_arith rza_checked_host.c
 build_rza checked_arith_wrap rza_checked_host.c
+"$RZA_COMPILER" bench/calls.rza --emit-lib -o "$BUILD/calls.c"
+for variant in internal abi_direct abi_indirect; do
+    $CC $CFLAGS $LDFLAGS -D"CALLS_${variant^^}" "$BUILD/calls.c" \
+        bench/rza_calls_host.c bench/bench_check.c -o "$BUILD/calls_${variant}_rza"
+done
 
 for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza \
         crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
@@ -84,6 +89,9 @@ for name in parser_rza parser_c parser_rust; do
 done
 for name in checked_arith_rza checked_arith_wrap_rza; do
     check_output "$name" checked_arith
+done
+for variant in internal abi_direct abi_indirect; do
+    check_output "calls_${variant}_rza" calls
 done
 
 # Changing only the key mask creates 1024 distinct requests. After 512 inserts

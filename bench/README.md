@@ -56,6 +56,15 @@ when RZA itself is built with Zig.
   checked path and rejects it in the wrapping path. This measures both overflow
   branches and optimizations lost when faults are observable, including loop
   collapse; it is not an isolated instruction-latency benchmark.
+- The call workload performs 1024 wrapping updates and returns digest 3072. It
+  compares an RZA driver making direct internal calls, direct calls to the exported
+  ABI from C, and calls to the same exported ABI through a volatile function pointer.
+  The host is a separate translation unit from generated C. Both ABI loops disable
+  unrolling; on x86-64, inspection requires one direct or indirect work-call site.
+  Direct versus indirect ABI isolates indirection; internal versus exported calls
+  also includes driver, frame lifecycle, and loop differences. Each timed step also
+  includes one reset and the final mediator/digest read, so `ns/step` is the complete
+  1024-update workload, not the latency of one call.
 
 `bench/run.sh` first calls `bench/check.sh`. That script builds every variant,
 compares output with the checked-in expected files, tests the full-table case,

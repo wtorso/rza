@@ -108,6 +108,35 @@ dump parser_c parse
 dump parser_rust parse
 dump checked_arith_rza rza_workload
 dump checked_arith_wrap_rza rza_workload
+dump calls_internal_rza rza_workload
+dump calls_abi_direct_rza workload_step
+dump calls_abi_indirect_rza workload_step
+case "$(uname -m)" in
+    x86_64|amd64)
+        direct_asm="$ASM/calls_abi_direct_rza.workload_step.asm"
+        indirect_asm="$ASM/calls_abi_indirect_rza.workload_step.asm"
+        direct_calls=$(awk '/call[a-z]*[[:space:]].*<rza_work>/ { count++ } \
+            END { print count + 0 }' "$direct_asm")
+        indirect_calls=$(awk '/call[a-z]*[[:space:]]+\*/ { count++ } \
+            END { print count + 0 }' "$indirect_asm")
+        if [ "$direct_calls" -ne 1 ]; then
+            echo "FATAL: direct ABI has $direct_calls work-call sites, want 1" >&2
+            exit 1
+        fi
+        if [ "$indirect_calls" -ne 1 ]; then
+            echo "FATAL: indirect ABI has $indirect_calls pointer-call sites, want 1" >&2
+            exit 1
+        fi
+        if grep --extended-regexp --quiet 'call[a-z]*[[:space:]].*<rza_work>' "$indirect_asm"; then
+            echo "FATAL: indirect ABI was devirtualized" >&2
+            exit 1
+        fi
+        echo "PASS: direct and volatile indirect ABI calls are distinct"
+        ;;
+    *)
+        echo "NOTE: call-shape inspection is only asserted on x86-64"
+        ;;
+esac
 case "$(uname -m)" in
     x86_64|amd64)
         if ! grep --extended-regexp --quiet '[[:space:]]jo[[:space:]]' \

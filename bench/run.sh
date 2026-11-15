@@ -82,6 +82,12 @@ build_c parser
 build_rust parser
 build_rza checked_arith rza_checked_host.c
 build_rza checked_arith_wrap rza_checked_host.c
+"$RZA_COMPILER" bench/calls.rza --emit-lib -o "$BUILD/calls.rza.c"
+for variant in internal abi_direct abi_indirect; do
+    $CC $CFLAGS $LDFLAGS -D"CALLS_${variant^^}" "$BUILD/calls.rza.c" \
+        bench/rza_calls_host.c bench/runtime_host.c bench/timer.c \
+        -o "$BUILD/calls_${variant}_rza"
+done
 
 RESULTS="$BUILD/results.txt"
 : >"$RESULTS"
@@ -149,6 +155,18 @@ for name in crc32c crc32c_table table ring parser; do
             $CC $CFLAGS $LDFLAGS $BUILD/$name.rza.c bench/$host \
             bench/runtime_host.c bench/timer.c -o $BUILD/${name}_rza"
 done
+measure "transpile_calls_rza" "$RZA_COMPILER" bench/calls.rza \
+    --emit-lib -o "$BUILD/calls.rza.c"
+for variant in internal abi_direct abi_indirect; do
+    measure "backend_calls_${variant}_rza" $CC $CFLAGS $LDFLAGS \
+        -D"CALLS_${variant^^}" "$BUILD/calls.rza.c" bench/rza_calls_host.c \
+        bench/runtime_host.c bench/timer.c -o "$BUILD/calls_${variant}_rza"
+done
+measure "pipeline_calls_internal_rza" bash -c \
+    "\"$RZA_COMPILER\" bench/calls.rza --emit-lib -o $BUILD/calls.rza.c && \
+        $CC $CFLAGS $LDFLAGS -DCALLS_INTERNAL $BUILD/calls.rza.c \
+        bench/rza_calls_host.c bench/runtime_host.c bench/timer.c \
+        -o $BUILD/calls_internal_rza"
 
 measure_runtime() {
     local name=$1 median
@@ -178,16 +196,18 @@ measure_runtime() {
 for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza \
         crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
         crc32c_intrinsic_rust table_rza table_c table_rust ring_rza ring_c ring_rust \
-        parser_rza parser_c parser_rust checked_arith_rza checked_arith_wrap_rza; do
+        parser_rza parser_c parser_rust checked_arith_rza checked_arith_wrap_rza \
+        calls_internal_rza calls_abi_direct_rza calls_abi_indirect_rza; do
     measure_runtime "$name"
 done
 for artifact in crc32c.rza.c crc32c_flat.rza.c crc32c_table.rza.c crc32c_hw.rza.c \
         crc32c_hw_unroll.rza.c table.rza.c ring.rza.c parser.rza.c checked_arith.rza.c \
-        checked_arith_wrap.rza.c crc32c_rza crc32c_flat_rza crc32c_table_rza \
+        checked_arith_wrap.rza.c calls.rza.c crc32c_rza crc32c_flat_rza crc32c_table_rza \
         crc32c_hw_rza crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust \
         crc32c_table_rust crc32c_intrinsic_rust table_rza table_c table_rust ring_rza \
         ring_c ring_rust parser_rza parser_c parser_rust checked_arith_rza \
-        checked_arith_wrap_rza; do
+        checked_arith_wrap_rza calls_internal_rza calls_abi_direct_rza \
+        calls_abi_indirect_rza; do
     printf 'artifact_bytes %s %s\n' "$artifact" "$(wc -c <"$BUILD/$artifact")" \
         >>"$RESULTS"
 done
