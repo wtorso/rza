@@ -120,6 +120,7 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
                 if (!ins.flag) *rd |= 1u << ins.b;
             case Op.ALU3:
                 *wr |= 1u << ins.a;
+                if (ins.s2 == "<" && !ins.flag && ins.b == ins.c) break;
                 *rd |= 1u << ins.b;
                 if (!ins.flag) *rd |= 1u << ins.c;
             case Op.ALU1:
@@ -377,7 +378,11 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
     else { rhs.appendf("r%d", ins.c); }
     if (ins.s2 == "<") {
         pad(out, ind);
-        out.appendf("r%d = r%d < %s;\n", ins.a, ins.b, rhs.str_view());
+        if (!ins.flag && ins.b == ins.c) {
+            out.appendf("r%d = 0;\n", ins.a);
+        } else {
+            out.appendf("r%d = r%d < %s;\n", ins.a, ins.b, rhs.str_view());
+        }
         return;
     }
     bool division = ins.s2 == "/" || ins.s2 == "%";
@@ -705,6 +710,7 @@ fn uint scan_casc_regs(Cascade* ca) {
                 if (!ins.flag) mask |= 1u << ins.b;
             case Op.ALU3:
                 mask |= 1u << ins.a;
+                if (ins.s2 == "<" && !ins.flag && ins.b == ins.c) break;
                 mask |= 1u << ins.b;
                 if (!ins.flag) mask |= 1u << ins.c;
             case Op.ALU1: case Op.PRINT: case Op.BRZ: case Op.BRNZ:

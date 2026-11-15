@@ -1,0 +1,21 @@
+res value, field, 8
+med value_m, value, field
+mov %r6, 42
+slt %r11, %r6, %r6
+print %r11
+proc p:
+    mov %r6, 42
+    slt %r6, %r6, %r6
+    print %r6
+    ret
+casc check: value_m -> out[field]
+    slt %r8, %r6, %r6
+    print %r8
+endc
+acasc acheck: value_m -> aout
+    slt %r9, %r6, %r6
+    print %r9
+endc
+await %r0
+call p
+ret

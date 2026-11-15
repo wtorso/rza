@@ -8,6 +8,8 @@ enum OracleDimension : char {
     LOOP,
     SUFFIX,
     TRIPS,
+    PROC_COUNT,
+    PROC_CALLS,
 }
 
 fn int oracle_dimension_get(OracleWorld world, OracleDimension dimension) {
@@ -16,7 +18,9 @@ fn int oracle_dimension_get(OracleWorld world, OracleDimension dimension) {
         case OracleDimension.FORWARD: return world.forward_ops;
         case OracleDimension.LOOP: return world.loop_ops;
         case OracleDimension.SUFFIX: return world.suffix_ops;
-        default: return world.loop_trips;
+        case OracleDimension.TRIPS: return world.loop_trips;
+        case OracleDimension.PROC_COUNT: return world.proc_count;
+        default: return world.proc_calls;
     }
 }
 
@@ -30,6 +34,11 @@ fn void oracle_dimension_set(OracleWorld* world, OracleDimension dimension, int 
         case OracleDimension.TRIPS:
             assert(value > 0);
             world.loop_trips = value;
+        case OracleDimension.PROC_COUNT:
+            assert(value <= PROC_ORACLE_PROCS_MAX);
+            world.proc_count = value;
+            if (value < PROC_ORACLE_PROCS_MAX) world.nested_calls = false;
+        case OracleDimension.PROC_CALLS: world.proc_calls = value;
     }
 }
 
@@ -77,6 +86,16 @@ fn void oracle_lower_features(OracleWorld* best, OraclePredicate fails) {
         candidate.backward_loop = false;
         if (fails(candidate)) *best = candidate;
     }
+    if (best.nested_calls) {
+        OracleWorld candidate = *best;
+        candidate.nested_calls = false;
+        if (fails(candidate)) *best = candidate;
+    }
+    if (best.proc_fault != ProcFaultMode.NONE) {
+        OracleWorld candidate = *best;
+        candidate.proc_fault = ProcFaultMode.NONE;
+        if (fails(candidate)) *best = candidate;
+    }
 }
 
 fn OracleWorld oracle_shrink(OracleWorld world, OraclePredicate fails) {
@@ -91,6 +110,8 @@ fn OracleWorld oracle_shrink(OracleWorld world, OraclePredicate fails) {
         if (oracle_lower_dimension(&best, OracleDimension.LOOP, 0, fails)) improved = true;
         if (oracle_lower_dimension(&best, OracleDimension.SUFFIX, 0, fails)) improved = true;
         if (oracle_lower_dimension(&best, OracleDimension.TRIPS, 1, fails)) improved = true;
+        if (oracle_lower_dimension(&best, OracleDimension.PROC_COUNT, 0, fails)) improved = true;
+        if (oracle_lower_dimension(&best, OracleDimension.PROC_CALLS, 0, fails)) improved = true;
         if (!improved) {
             settled = true;
             break;

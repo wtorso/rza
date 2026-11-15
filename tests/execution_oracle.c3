@@ -56,6 +56,10 @@ struct OracleWorld {
     bool forward_branch;
     bool backward_loop;
     bool branch_on_zero;
+    int proc_count;
+    int proc_calls;
+    bool nested_calls;
+    ProcFaultMode proc_fault;
 }
 
 struct OracleRng {
@@ -408,6 +412,7 @@ fn int? oracle_run() {
     for (ulong seed = 1; seed <= 64; seed++) {
         if (oracle_run_case(seed)! != 0) return 1;
     }
+    if (proc_oracle_run()! != 0) return 1;
     if (!oracle_coverage_ok()) return 1;
     oracle_coverage_print();
     io::printn("EXECUTION_ORACLE OK (64 programs)");

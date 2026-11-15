@@ -14,6 +14,16 @@ struct OracleCoverage {
     ulong branch_fallthrough;
     ulong forward_taken;
     ulong backward_taken;
+    ulong proc_calls;
+    ulong nested_proc_calls;
+    ulong proc_returns;
+    ulong proc_reentries;
+    ulong proc_local_loads;
+    ulong proc_local_stores;
+    ulong proc_arena_faults;
+    ulong proc_dead_after_ret;
+    uint proc_entry_regs;
+    uint proc_restore_regs;
 }
 
 OracleCoverage oracle_coverage;
@@ -60,6 +70,23 @@ fn bool oracle_coverage_ok() {
     return true;
 }
 
+fn bool proc_oracle_coverage_ok() {
+    if (!expect(oracle_coverage.proc_calls > 0 && oracle_coverage.nested_proc_calls > 0,
+            "proc oracle needs top-level and nested calls")) return false;
+    if (!expect(oracle_coverage.proc_returns > 0 && oracle_coverage.proc_reentries > 0,
+            "proc oracle needs returns and reentries")) return false;
+    if (!expect(oracle_coverage.proc_local_loads > 0 && oracle_coverage.proc_local_stores > 0,
+            "proc oracle needs local memory reads and writes")) return false;
+    if (!expect(oracle_coverage.proc_arena_faults > 0,
+            "proc oracle needs arena exhaustion")) return false;
+    if (!expect(oracle_coverage.proc_dead_after_ret > 0,
+            "proc oracle needs dead-after-return faults")) return false;
+    if (!expect(oracle_coverage.proc_entry_regs == 0xFFFF &&
+            oracle_coverage.proc_restore_regs == 0xFFFF,
+            "proc oracle needs all sixteen entry and restored registers")) return false;
+    return true;
+}
+
 fn void oracle_coverage_print() {
     io::printfn("ORACLE_COVERAGE success=%d fault=%d checked=%d bounds=%d",
         oracle_coverage.successes, oracle_coverage.faults,
@@ -67,4 +94,12 @@ fn void oracle_coverage_print() {
     io::printfn("ORACLE_BRANCHES taken=%d fallthrough=%d forward=%d backward=%d",
         oracle_coverage.branch_taken, oracle_coverage.branch_fallthrough,
         oracle_coverage.forward_taken, oracle_coverage.backward_taken);
+    io::printfn("ORACLE_PROC calls=%d nested=%d returns=%d reentries=%d",
+        oracle_coverage.proc_calls, oracle_coverage.nested_proc_calls,
+        oracle_coverage.proc_returns, oracle_coverage.proc_reentries);
+    io::printfn("ORACLE_PROC_MEMORY loads=%d stores=%d arena=%d dead_after_ret=%d",
+        oracle_coverage.proc_local_loads, oracle_coverage.proc_local_stores,
+        oracle_coverage.proc_arena_faults, oracle_coverage.proc_dead_after_ret);
+    io::printfn("ORACLE_PROC_REGISTERS entry=%d restore=%d",
+        oracle_coverage.proc_entry_regs, oracle_coverage.proc_restore_regs);
 }

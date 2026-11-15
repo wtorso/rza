@@ -65,7 +65,8 @@ run_function_style() {
     if ! "$c3c_bin" compile tests/runner.c3 tests/harness.c3 \
             tests/function_length.c3 tests/source_style.c3 tests/deterministic_artifacts.c3 \
             tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
-            tests/ownership_fuzz.c3 tests/execution_oracle.c3 tests/execution_shrink.c3 \
+            tests/ownership_fuzz.c3 tests/execution_oracle.c3 tests/execution_proc_oracle.c3 \
+            tests/execution_proc_model.c3 tests/execution_shrink.c3 \
             tests/execution_coverage.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
             tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
             tests/lsp_completion_smoke.c3 tests/lsp_references_smoke.c3 \
@@ -559,6 +560,7 @@ run_good hoist_prefix
 run_good hoist_dead_branch
 run_good hoist_call
 run_good mov_self
+run_good slt_self
 run_good capacity_guard
 run_good typed_table
 run_good compare_edges
@@ -721,8 +723,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=179
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=178; fi
+EXPECTED_PASS=180
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=179; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1
