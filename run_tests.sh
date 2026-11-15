@@ -65,7 +65,8 @@ run_function_style() {
     if ! "$c3c_bin" compile tests/runner.c3 tests/harness.c3 \
             tests/function_length.c3 tests/source_style.c3 tests/deterministic_artifacts.c3 \
             tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
-            tests/ownership_fuzz.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
+            tests/ownership_fuzz.c3 tests/execution_oracle.c3 tests/execution_shrink.c3 \
+            tests/execution_coverage.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
             tests/fault_smoke.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
             tests/lsp_completion_smoke.c3 tests/lsp_references_smoke.c3 \
             tests/lsp_memory_posix.c3 tests/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
@@ -303,6 +304,7 @@ run_c3() {
 run_lsp_smoke() { run_c3 lsp_smoke lsp; }
 run_fuzz() { run_c3 fuzz fuzz; }
 run_ownership_fuzz() { run_c3 ownership_fuzz ownership; }
+run_execution_oracle() { run_c3 execution_oracle oracle; }
 run_fault_smoke() { run_c3 fault_smoke faults; }
 run_deterministic_artifacts() { run_c3 deterministic_artifacts artifacts; }
 run_tiny_budgets() { run_c3 tiny_budgets budgets; }
@@ -706,6 +708,7 @@ run_lib lib_async_boot
 run_cli_contract
 run_lsp_smoke
 run_ownership_fuzz
+run_execution_oracle
 run_fault_smoke
 run_deterministic_artifacts
 run_tiny_budgets
@@ -717,8 +720,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=177
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=176; fi
+EXPECTED_PASS=178
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=177; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1
