@@ -207,6 +207,14 @@ fn int? check_frame_free_artifact() {
     return 0;
 }
 
+fn int? check_self_move_artifact() {
+    String generated = emit_artifact("tests/mov_self.rza",
+        temp_path("self-move.c"))!;
+    if (!expect(!generated.contains("r0 = r0;"),
+            "self move is omitted from generated C")) return 1;
+    return 0;
+}
+
 fn int artifacts_main() {
     defer (void)cleanup_temp_dir();
     int? status = artifacts_run();
@@ -227,6 +235,7 @@ fn int? artifacts_run() {
     if (check_async_drain_artifact()! != 0) return 1;
     if (check_fault_helper_artifact()! != 0) return 1;
     if (check_frame_free_artifact()! != 0) return 1;
+    if (check_self_move_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }

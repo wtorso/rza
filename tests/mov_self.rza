@@ -1,0 +1,8 @@
+res value, field, 8
+med value_m, value, field
+mov %r0, 42
+store [value_m + 0], %r0
+mov %r0, %r0
+load %r1, [value_m + 0]
+print %r1
+ret

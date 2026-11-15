@@ -558,6 +558,7 @@ run_good crc32c_name_collision
 run_good hoist_prefix
 run_good hoist_dead_branch
 run_good hoist_call
+run_good mov_self
 run_good capacity_guard
 run_good typed_table
 run_good compare_edges
@@ -720,8 +721,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=178
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=177; fi
+EXPECTED_PASS=179
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=178; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

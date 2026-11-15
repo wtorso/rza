@@ -115,6 +115,7 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
                 *rd |= 1u << ins.a;
                 if (ins.c >= 0) *rd |= 1u << ins.c;
             case Op.MOV:
+                if (!ins.flag && ins.a == ins.b) break;
                 *wr |= 1u << ins.a;
                 if (!ins.flag) *rd |= 1u << ins.b;
             case Op.ALU3:
@@ -630,6 +631,20 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
     emit_hoisted_meds(out, ind, ca.out_cell);
 }
 
+fn void emit_mov(Output* out, int ind, Instr* ins) {
+    if (!ins.flag && ins.a == ins.b) return;
+    pad(out, ind);
+    if (ins.flag) {
+        if (ins.immediate == -9223372036854775807 - 1) {
+            out.appendf("r%d = INT64_MIN;\n", ins.a);
+        } else {
+            out.appendf("r%d = %d;\n", ins.a, ins.immediate);
+        }
+    } else {
+        out.appendf("r%d = r%d;\n", ins.a, ins.b);
+    }
+}
+
 fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
     for (sz i = 0; i < instrs.len(); i++) {
         Instr* ins = &instrs[i];
@@ -639,13 +654,7 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
             case Op.LOAD: emit_load(out, ind, ins, true);
             case Op.STORE: emit_store(out, ind, ins, true);
             case Op.MOV:
-                pad(out, ind);
-                if (ins.flag) { if (ins.immediate == -9223372036854775807 - 1) {
-                    out.appendf("r%d = INT64_MIN;\n", ins.a);
-                } else {
-                    out.appendf("r%d = %d;\n", ins.a, ins.immediate);
-                } }
-                else { out.appendf("r%d = r%d;\n", ins.a, ins.b); }
+                emit_mov(out, ind, ins);
             case Op.ALU3: emit_alu3(out, ind, ins);
             case Op.ALU1:
                 pad(out, ind);
@@ -691,6 +700,7 @@ fn uint scan_casc_regs(Cascade* ca) {
                 mask |= 1u << ins.a;
                 if (ins.c >= 0) mask |= 1u << ins.c;
             case Op.MOV:
+                if (!ins.flag && ins.a == ins.b) break;
                 mask |= 1u << ins.a;
                 if (!ins.flag) mask |= 1u << ins.b;
             case Op.ALU3:
@@ -847,16 +857,7 @@ fn void emit_body(Output* out, int func) {
             case Op.STORE:
                 emit_store(out, ind, ins, in_casc);
             case Op.MOV:
-                pad(out, ind);
-                if (ins.flag) {
-                    if (ins.immediate == -9223372036854775807 - 1) {
-                    out.appendf("r%d = INT64_MIN;\n", ins.a);
-                } else {
-                    out.appendf("r%d = %d;\n", ins.a, ins.immediate);
-                }
-                } else {
-                    out.appendf("r%d = r%d;\n", ins.a, ins.b);
-                }
+                emit_mov(out, ind, ins);
             case Op.ALU3:
                 emit_alu3(out, ind, ins);
             case Op.ALU1:
