@@ -15,7 +15,7 @@ import std::hash::sha256;
 extern fn CInt _setmode(CInt fd, CInt mode) @feat(WIN32);
 const CInt RZA_O_BINARY @feat(WIN32) = 0x8000;
 
-const String RZA_VERSION = "0.1.0";
+const String RZA_VERSION = "0.2.0";
 const String USAGE_TEXT = "Usage:\n"
     "  rez3asm <file.rza> [--emit-c | --emit-lib] [-o <file.c>]\n"
     "  rez3asm --lsp\n"

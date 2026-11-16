@@ -9,7 +9,7 @@ C23, leaving native optimization and instruction selection to the C toolchain.
 
 RZA is intended for small kernels that benefit from fixed memory budgets and
 defined fault behavior, not for hiding low-level programming behind a high-level
-syntax. Version [0.1.0](https://github.com/wtorso/rza/releases/tag/v0.1.0) is a
+syntax. Version [0.2.0](https://github.com/wtorso/rza/releases/tag/v0.2.0) is a
 prerelease; the language and host interfaces can still change.
 
 ## Requirements
@@ -81,7 +81,7 @@ rez3asm --version
   flag. Without `-o`, generated C is written to standard output.
 - `--lsp` starts the language server on standard input and output.
 - Sole `--help` prints usage and exits 0; no arguments prints it to stderr and
-  exits 2. Sole `--version` prints `rez3asm 0.1.0` and exits 0.
+  exits 2. Sole `--version` prints `rez3asm 0.2.0` and exits 0.
 
 `build_compiler.sh` creates the compiler but does not install it into `PATH`;
 invoke it by its path or use the installer below.
@@ -112,13 +112,13 @@ RZA_COMPILER=./rez3asm PREFIX="$HOME/.local" bash install.sh
 ### Binary archives
 
 Download the desired archive and `SHA256SUMS` from the
-[0.1.0 release](https://github.com/wtorso/rza/releases/tag/v0.1.0), then verify
+[0.2.0 release](https://github.com/wtorso/rza/releases/tag/v0.2.0), then verify
 and extract it. `--ignore-missing` lets you download only one platform archive:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf rza-0.1.0-linux-x86_64.tar.gz
-cd rza-0.1.0-linux-x86_64
+tar -xzf rza-0.2.0-linux-x86_64.tar.gz
+cd rza-0.2.0-linux-x86_64
 ./rez3asm --version
 ```
 
@@ -176,6 +176,31 @@ CPU supports it and otherwise produces the same result through a bitwise fallbac
 The runtime uses fixed storage. After initialization it does not call `malloc`,
 `realloc`, or `free`.
 
+## Bounded views
+
+`view DST, SOURCE, OFFSET, LENGTH` creates a mediator for a subrange of an
+existing mediator without allocating or copying cell data:
+
+```asm
+view payload_m, input_m, %r2, %r3
+loadb %r0, [payload_m + %r1]
+```
+
+Offsets and lengths are bytes for raw cells and elements for typed cells. Each
+operand can be an `i64` immediate or a register. Negative or impossible constant
+ranges are `VIOLATION`; dynamic failures and dead sources are `FAULT`. An
+immediate length fixes the destination extent for static access checks even when
+the offset or parent extent is dynamic. Dynamic lengths retain runtime bounds
+checks. Empty views, including one at the end of a cell, are valid; nested views
+cannot widen their parent.
+
+Views inherit owner, home, lifetime, and generation checks. Async OUT cells reuse
+their fixed eight bytes on each enqueue and advance a per-allocation generation,
+so stale mediators and views cannot observe a later publication as if it were
+the old one. Create views at top level, in procedures, or inside synchronous cascades.
+Block-local views are visible only within that cascade. Async cascade bodies do
+not construct views; both cascade forms accept preconstructed views as inputs.
+
 ## Typed layouts
 
 Flat records describe field widths, alignment, and element counts:
@@ -219,9 +244,22 @@ observes the decayed cart frame. The library exports `rza_boot`, procedure entry
 points, frame and mediator accessors, `rza_deref_cell`, `rza_arena_alloc`, and
 `rza_await`.
 
-The host ABI version is 4. Rebuild all C translation units against the same
+The host ABI version is 5. Rebuild all C translation units against the same
 headers and generated code. RZA checks do not make arbitrary host C safe: the
 host remains responsible for its own pointers, offsets, and object lifetimes.
+
+`rza_boot` is single-shot and returns an `RzaResult`. Repeated boots and reentry
+from a diagnostic callback return `RZA_FAULT_ENTRY_STATE`. Exported procedures
+also return `RzaResult`; their implicit frames are closed on success and fault,
+so they may be called again. `rza_await` returns `RzaAwaitResult` with the
+completed count and result. Any `FAULT` cancels queued tasks and clears their
+pending flags; completed writes remain, and cancelled OUT cells are not published.
+
+Standalone programs print the diagnostic and exit 1 on `FAULT`. A generated
+library instead returns the first fault code and source line without exiting or
+printing by default. Install `rza_set_diagnostic_handler` to receive diagnostics.
+There is no transactional rollback: writes completed before the fault remain
+visible and the host must repair or discard application state as appropriate.
 
 ## Examples and editors
 
@@ -277,7 +315,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=181 FAIL=0` on POSIX and `PASS=180 FAIL=0` on Windows.
+Expected results are `PASS=201 FAIL=0` on POSIX and `PASS=200 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 
