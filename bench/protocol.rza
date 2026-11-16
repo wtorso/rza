@@ -1,20 +1,17 @@
 ; Stream frames: A5, length 0..8, sequence, flags, payload, little-endian CRC32C.
-layout Byte: value:u8
 layout Control: input_len:i64
 layout Slot: value:i64
-res input, field, Byte[4096]
+res input, field, 4096
 res control, field, Control
 res slots, field, Slot[4]
-res scratch, field, 8
 res result, field, 8
 med input_m, input, field
 med control_m, control, field
 med slots_m, slots, field
-med scratch_m, scratch, field
 med result_m, result, field
 
 proc process:
-    casc stream: input_m,control_m,slots_m,scratch_m,result_m -> output[process]
+    casc stream: input_m,control_m,slots_m,result_m -> output[process]
         mov %r0, 0
         mov %r1, 0
         mov %r2, 0
@@ -36,7 +33,7 @@ proc process:
         cinc %r4
         jmp drain
     header:
-        loadb %r12, [input_m + %r0].value
+        loadb %r12, [input_m + %r0]
         sub %r12, %r12, 165
         brz %r12, sync_ok
         cinc %r2
@@ -44,7 +41,7 @@ proc process:
         jmp parse_loop
     sync_ok:
         add %r15, %r0, 1
-        loadb %r11, [input_m + %r15].value
+        loadb %r11, [input_m + %r15]
         slt %r12, %r11, 9
         brnz %r12, length_ok
         cinc %r2
@@ -61,7 +58,7 @@ proc process:
         mov %r0, %r12
         sub %r12, %r0, %r11
         sub %r12, %r12, 6
-        loadb %r12, [input_m + %r12].value
+        loadb %r12, [input_m + %r12]
         sub %r13, %r12, %r10
         mov %r10, %r12
         cinc %r10
@@ -71,7 +68,7 @@ proc process:
     sequence_ok:
         sub %r12, %r0, %r11
         sub %r12, %r12, 5
-        loadb %r12, [input_m + %r12].value
+        loadb %r12, [input_m + %r12]
         brz %r12, flags_ok
         cinc %r2
         jmp parse_loop
@@ -82,37 +79,42 @@ proc process:
         cinc %r5
         jmp drain
     quota_ok:
-        mov %r12, 0
-        store [scratch_m + 0], %r12
-        mov %r12, 0
-    scratch_loop:
-        slt %r13, %r12, %r11
-        brz %r13, scratch_done
         sub %r15, %r0, %r11
         sub %r15, %r15, 4
-        add %r15, %r15, %r12
-        loadb %r13, [input_m + %r15].value
-        storeb [scratch_m + %r12], %r13
-        cinc %r12
-        jmp scratch_loop
-    scratch_done:
-        sub %r15, %r0, 4
-        loadb %r12, [input_m + %r15].value
+        view payload_m, input_m, %r15, %r11
+        mov %r15, 0
+        mov %r12, 8
+        sub %r12, %r11, %r12
+        brz %r12, full_word
+    short_word:
+        brz %r11, word_ready
+        mov %r12, %r11
+    short_loop:
+        brz %r12, word_ready
+        dec %r12
+        loadb %r13, [payload_m + %r12]
+        shl %r15, %r15, 8
+        or %r15, %r15, %r13
+        jmp short_loop
+    full_word:
+        load %r15, [payload_m + 0]
+    word_ready:
+        sub %r12, %r0, 4
+        loadb %r12, [input_m + %r12]
         mov %r13, %r12
-        cinc %r15
-        loadb %r12, [input_m + %r15].value
+        sub %r12, %r0, 3
+        loadb %r12, [input_m + %r12]
         shl %r12, %r12, 8
         or %r13, %r13, %r12
-        cinc %r15
-        loadb %r12, [input_m + %r15].value
+        sub %r12, %r0, 2
+        loadb %r12, [input_m + %r12]
         shl %r12, %r12, 16
         or %r13, %r13, %r12
-        cinc %r15
-        loadb %r12, [input_m + %r15].value
+        sub %r12, %r0, 1
+        loadb %r12, [input_m + %r12]
         shl %r12, %r12, 24
         or %r13, %r13, %r12
         mov %r12, 0xffffffff
-        load %r15, [scratch_m + 0]
         crc32c %r12, %r12, %r15
         xor %r12, %r12, 0xffffffff
         sub %r12, %r12, %r13
@@ -125,7 +127,7 @@ proc process:
         brz %r12, ring_full
         add %r12, %r8, %r7
         and %r12, %r12, 3
-        load %r13, [scratch_m + 0]
+        mov %r13, %r15
         store [slots_m + %r12].value, %r13
         cinc %r7
         jmp after_push

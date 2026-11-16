@@ -52,7 +52,9 @@ when RZA itself is built with Zig.
   are identical in RZA, C, and Rust.
 - The protocol workload parses variable-length binary frames with checked offsets,
   sequence recovery, a 1024-byte payload quota, a four-slot ring with backpressure,
-  and CRC32C over zero-padded eight-byte payloads. The mixed input exercises malformed
+  and CRC32C over zero-padded eight-byte payloads. Bounded payload views avoid
+  a scratch copy: full words are loaded directly and short words are assembled in
+  a register with zero high bytes. The mixed input exercises malformed
   lengths, bad sequences and bad CRCs. Quota, truncated-input, and initial-length-attack
   variants run during correctness checks on all three implementations. RZA uses its
   `crc32c` opcode with runtime feature detection; C and Rust use the portable bitwise
@@ -79,11 +81,13 @@ when RZA itself is built with Zig.
   includes one reset and the final mediator/digest read, so `ns/step` is the complete
   1024-update workload, not the latency of one call.
 - The async pair executes 1024 tasks and checks 1024 completions per step. The
-  single-callback variant resets the field for every task; the queue variant performs
-  128 resets with eight FIFO tasks each. Their digest is 2048. Timing includes reset,
-  enqueue, drain, mediator reads, and frame lifecycle; `ns/task` is not isolated indirect
-  branch latency. Single-callback programs use a specialized direct drain, while programs
-  with multiple callbacks retain the generic queue drain. Inspection checks both shapes.
+  single-callback variant resets state and completed cells for every task; the queue
+  variant performs 128 resets with eight FIFO tasks each. Their digest is 2048. Timing
+  includes reset, enqueue, drain, mediator reads, and frame lifecycle; `ns/task` is not
+  isolated indirect branch latency. Each cascade reuses its fixed OUT allocation with
+  a fresh allocation generation. Single-callback programs use a specialized direct
+  drain, while programs with multiple callbacks retain the generic queue drain.
+  Inspection checks both shapes.
 
 `bench/run.sh` first calls `bench/check.sh`. That script builds every variant,
 compares output with the checked-in expected files, tests the full-table case,

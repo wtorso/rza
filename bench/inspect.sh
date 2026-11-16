@@ -12,10 +12,25 @@ if ! command -v objdump >/dev/null 2>&1; then
 fi
 
 dump() {
-    local binary=$1 symbol=$2
-    objdump --disassemble="$symbol" "$BUILD/$binary" >"$ASM/$binary.$symbol.asm"
-    if ! grep --quiet "<$symbol>:" "$ASM/$binary.$symbol.asm"; then
+    local binary=$1 symbol=$2 actual
+    actual=$(objdump -t "$BUILD/$binary" | \
+        awk -v base="$symbol" '
+            $NF == base { exact = $NF }
+            index($NF, base ".") == 1 && $NF !~ /\.cold$/ && candidate == "" {
+                candidate = $NF
+            }
+            END {
+                if (exact != "") print exact
+                else if (candidate != "") print candidate
+            }')
+    if [ -z "$actual" ]; then
         echo "FATAL: $symbol is absent from $binary" >&2
+        exit 1
+    fi
+    objdump --disassemble="$actual" "$BUILD/$binary" >"$ASM/$binary.$symbol.asm"
+    if ! grep --extended-regexp --quiet "<$symbol(\\.[^>]*)?>:" \
+            "$ASM/$binary.$symbol.asm"; then
+        echo "FATAL: $symbol disassembly is empty in $binary" >&2
         exit 1
     fi
 }

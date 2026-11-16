@@ -65,6 +65,14 @@ build_rust ring
 build_rza parser rza_parser_host.c
 build_c parser
 build_rust parser
+if ! grep --quiet '^[[:space:]]*view payload_m, input_m,' bench/protocol.rza; then
+    echo "FATAL: protocol must construct a bounded payload view" >&2
+    exit 1
+fi
+if grep --quiet 'scratch' bench/protocol.rza; then
+    echo "FATAL: protocol retains a scratch payload copy" >&2
+    exit 1
+fi
 build_rza protocol rza_protocol_host.c
 build_c protocol
 build_rust protocol
