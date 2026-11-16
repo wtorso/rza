@@ -114,6 +114,7 @@ struct Med {
 	String cname;
 	int scope;
 	int view_source; // исходный медиатор, -1 = полная ячейка
+	int cascade; // блок sync-каскада, -1 = видимость по обычному scope
 	int extent; // байты или элементы; -1 = динамическая длина
 	ViewOperand view_offset;
 	ViewOperand view_length;

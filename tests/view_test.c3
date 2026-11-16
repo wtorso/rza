@@ -59,9 +59,18 @@ fn void view_declaration_diagnostics() @test {
 }
 
 fn void view_cascade_and_capacity_diagnostics() @test {
+    prepare_checker("res raw, field, 32\nmed raw_m, raw, field\n"
+        "casc c: raw_m -> out[field]\nview raw_v_m, raw_m, 8, 8\n"
+        "view nested_m, raw_v_m, 4, 4\nloadb %r0, [nested_m + 0]\nendc\n");
+    assert(meds[1].cascade == 0 && meds[2].cascade == 0);
+    free_checker();
     expect_layout_error("res raw, field, 8\nmed raw_m, raw, field\n"
-        "casc c: raw_m -> out[field]\nview raw_v_m, raw_m, 0, 1\nendc\n", 4,
-        "STRUCT", "op view not allowed in cascade body (data instructions only)");
+        "acasc c: raw_m -> out\nview raw_v_m, raw_m, 0, 1\nendc\n", 4,
+        "STRUCT", "op view not allowed in async cascade body (data instructions only)");
+    expect_layout_error("res raw, field, 8\nmed raw_m, raw, field\n"
+        "casc c: raw_m -> out[field]\nview raw_v_m, raw_m, 0, 1\nendc\n"
+        "loadb %r0, [raw_v_m + 0]\n", 6,
+        "SCOPE", "mediator raw_v_m is not visible outside its cascade");
     prepare_checker("res raw, field, 8\nmed raw_m, raw, field\n");
     cells[0].med_count = CELL_MED_MAX;
     op_view("raw_v_m, raw_m, 0, 1", 1);

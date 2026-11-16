@@ -60,6 +60,30 @@ typedef struct {
     uint32_t count;
 } RezAsyncQueue;
 
+[[maybe_unused]] static inline
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+void rez_async_regs_clear(int64_t *regs) {
+    assert(regs != nullptr);
+    regs[0] = 0;
+    regs[1] = 0;
+    regs[2] = 0;
+    regs[3] = 0;
+    regs[4] = 0;
+    regs[5] = 0;
+    regs[6] = 0;
+    regs[7] = 0;
+    regs[8] = 0;
+    regs[9] = 0;
+    regs[10] = 0;
+    regs[11] = 0;
+    regs[12] = 0;
+    regs[13] = 0;
+    regs[14] = 0;
+    regs[15] = 0;
+}
+
 [[maybe_unused]] static bool rez_async_enqueue(
     RezAsyncQueue *queue,
     RezAsyncRun run,
@@ -126,6 +150,39 @@ typedef struct {
 static_assert(sizeof(((RezCellMed *)nullptr)->gen) == 4);
 static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
 static_assert(sizeof(RezCellMed) == 56);
+
+[[maybe_unused]] static inline
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+void rez_cell_med_clear(RezCellMed *mediator) {
+    assert(mediator != nullptr);
+    mediator->cell = nullptr;
+    mediator->owner = nullptr;
+    mediator->home = nullptr;
+    mediator->gen = 0;
+    mediator->home_gen = 0;
+    mediator->size = 0;
+    mediator->allocation = nullptr;
+    mediator->allocation_gen = 0;
+}
+
+[[maybe_unused]] static inline
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+void rez_cell_med_copy(RezCellMed *destination, const RezCellMed *source) {
+    assert(destination != nullptr);
+    assert(source != nullptr);
+    destination->cell = source->cell;
+    destination->owner = source->owner;
+    destination->home = source->home;
+    destination->gen = source->gen;
+    destination->home_gen = source->home_gen;
+    destination->size = source->size;
+    destination->allocation = source->allocation;
+    destination->allocation_gen = source->allocation_gen;
+}
 
 [[maybe_unused]] static RezCellMed rez_issue_cell(
     RezCavity *owner,
@@ -200,7 +257,11 @@ void *rez_deref_cell_inline(RezCellMed mediator) {
     return width <= mediator.size - offset;
 }
 
-[[maybe_unused]] static bool rez_view_cell(
+[[maybe_unused]] static inline
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+bool rez_view_cell(
     RezCellMed source,
     uint64_t offset,
     uint64_t length,
@@ -210,7 +271,7 @@ void *rez_deref_cell_inline(RezCellMed mediator) {
     uint64_t elements;
     uint64_t byte_offset;
     if (out == nullptr) return false;
-    *out = (RezCellMed){0};
+    rez_cell_med_clear(out);
     if (stride == 0) return false;
     if (rez_deref_cell_inline(source) == nullptr) return false;
     if (source.size % stride != 0) return false;
@@ -220,7 +281,7 @@ void *rez_deref_cell_inline(RezCellMed mediator) {
     byte_offset = offset * stride;
     source.cell = (char *)source.cell + byte_offset;
     source.size = length * stride;
-    *out = source;
+    rez_cell_med_copy(out, &source);
     assert(out->size <= elements * stride);
     return true;
 }

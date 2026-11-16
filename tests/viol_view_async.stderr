@@ -1,0 +1,1 @@
+VIOLATION line 4 [STRUCT]: op view not allowed in async cascade body (data instructions only)

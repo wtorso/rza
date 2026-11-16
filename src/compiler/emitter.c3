@@ -653,7 +653,7 @@ fn void emit_view_build(Output* out, int ind, int mi) {
 	out.append_string("}\n");
 }
 
-fn void emit_view(Output* out, int ind, int mi) {
+fn void emit_view(Output* out, int ind, int mi, bool in_casc) {
 	pad(out, ind);
 	out.appendf("%s = %s;\n", view_snapshot_name(mi, "off"),
 	            view_operand_expr(meds[mi].view_offset));
@@ -661,6 +661,10 @@ fn void emit_view(Output* out, int ind, int mi) {
 	out.appendf("%s = %s;\n", view_snapshot_name(mi, "len"),
 	            view_operand_expr(meds[mi].view_length));
 	emit_view_build(out, ind, mi);
+	if (!in_casc) return;
+	pad(out, ind);
+	out.appendf("[[maybe_unused]] void *p_%s = %s.cell;\n",
+	            meds[mi].name, meds[mi].cname);
 }
 
 fn void emit_own(Output* out, int ind, Instr* ins) {
@@ -704,7 +708,7 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
             pad(out, ind);
             out.append_string(");\n");
         case Op.VIEW:
-            emit_view(out, ind, ins.x);
+            emit_view(out, ind, ins.x, blocks[ins.block].kind == 2);
         case Op.RAISE:
             pad(out, ind);
             out.appendf("/* raise %s -> %s (line %d): static-only; "
@@ -726,7 +730,7 @@ fn void emit_clear_meds(Output* out, int ind, int cell) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
         pad(out, ind);
-        out.appendf("%s = (RezCellMed){0};\n", meds[mi].cname);
+        out.appendf("rez_cell_med_clear(&%s);\n", meds[mi].cname);
     }
 }
 
@@ -777,8 +781,7 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
     uint rd, wr;
     scan_regs(ins.func, &rd, &wr);
     pad(out, ind);
-    out.appendf("memset(ac_state_%d.regs, 0, sizeof(ac_state_%d.regs));\n",
-                ca.seq, ca.seq);
+    out.appendf("rez_async_regs_clear(ac_state_%d.regs);\n", ca.seq);
     for (int r = 0; r < 16; r++) {
         if ((rd | wr) & (1u << r)) {
             pad(out, ind);
@@ -788,7 +791,7 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
     for (int i = 0; i < ca.med_count; i++) {
         int mi = ca.med_idxs[i];
         pad(out, ind);
-        out.appendf("ac_state_%d.meds[%d] = %s;\n",
+        out.appendf("rez_cell_med_copy(&ac_state_%d.meds[%d], &%s);\n",
                     ca.seq, i, meds[mi].cname);
     }
     pad(out, ind);
@@ -879,6 +882,7 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
             case Op.LABEL: emit_label(out, ind, ins);
             case Op.LOAD: emit_load(out, ind, ins, true);
             case Op.STORE: emit_store(out, ind, ins, true);
+            case Op.VIEW: emit_view(out, ind, ins.x, blocks[ins.block].kind == 2);
             case Op.MOV:
                 emit_mov(out, ind, ins);
             case Op.ALU3: emit_alu3(out, ind, ins);

@@ -1,0 +1,7 @@
+res raw, field, 8
+med raw_m, raw, field
+casc c: raw_m -> out[field]
+    view raw_v_m, raw_m, 0, 1
+endc
+load %r0, [raw_v_m + 0]
+ret

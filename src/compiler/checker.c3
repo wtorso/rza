@@ -305,6 +305,14 @@ fn int find_proc(String name) {
 	return proc_map.get(name) ?? -1;
 }
 
+fn bool med_visible_here(int mi) {
+	return meds[mi].cascade < 0 || meds[mi].cascade == cur_casc;
+}
+
+fn void cascade_scope_viol(int line, String name) {
+	viol(line, "SCOPE", cat({ "mediator ", name, " is not visible outside its cascade" }));
+}
+
 // Host API names are unique and checked before C generation.
 fn bool host_name_bad(String name, int line) {
 	if (name == "boot" || name == "arena_alloc" || name == "deref_cell" || name == "rez3ext_abi"
@@ -623,6 +631,7 @@ fn void op_med(String rest, int line) {
 		.cname = cname_for("m_", name),
 		.scope = cur_proc,
 		.view_source = -1,
+		.cascade = -1,
 		.extent = cells[ci].layout >= 0 ? cells[ci].element_count : cells[ci].size
 	};
 	meds.push(m);
@@ -668,6 +677,27 @@ fn bool view_range_valid(int source, String name, ViewOperand offset,
 	return true;
 }
 
+fn int resolve_view_source(String name, int line) {
+	int source = find_med(name, cur_proc);
+	if (source == -2) {
+		scope_viol(line, "mediator", name);
+		return -1;
+	}
+	if (source < 0) {
+		viol(line, "STRUCT", cat({ "view via unknown mediator ", name }));
+		return -1;
+	}
+	if (!med_visible_here(source)) {
+		cascade_scope_viol(line, name);
+		return -1;
+	}
+	if (cur_casc >= 0 && !cascade_input_ok(name)) {
+		viol(line, "STRUCT", cat({ "cascade body addresses non-input mediator ", name }));
+		return -1;
+	}
+	return source;
+}
+
 fn void op_view(String rest, int line) {
 	assert(line > 0);
 	assert(rest.len <= SOURCE_BYTES_MAX);
@@ -679,15 +709,8 @@ fn void op_view(String rest, int line) {
 		viol(line, "STRUCT", cat({ "mediator name ", name, " must end with _m" }));
 		return;
 	}
-	int source = find_med(buf[1], cur_proc);
-	if (source == -2) {
-		scope_viol(line, "mediator", buf[1]);
-		return;
-	}
-	if (source < 0) {
-		viol(line, "STRUCT", cat({ "view via unknown mediator ", buf[1] }));
-		return;
-	}
+	int source = resolve_view_source(buf[1], line);
+	if (source < 0) return;
 	ViewOperand offset;
 	ViewOperand length;
 	if (!parse_view_operand(buf[2], line, &offset)) return;
@@ -709,6 +732,7 @@ fn void op_view(String rest, int line) {
 		.cell = ci, .owner = meds[source].owner, .issuer = meds[source].issuer,
 		.gen = meds[source].gen, .home_gen = meds[source].home_gen,
 		.cname = cname_for("m_", name), .scope = cur_proc,
+		.cascade = cur_casc,
 		.view_source = source, .view_offset = offset, .view_length = length,
 		.extent = length.is_immediate ? (int)length.immediate : -1
 	};
@@ -803,6 +827,10 @@ fn void op_probe(String rest, int line) {
 		viol(line, "STRUCT", cat({ "probe of unknown mediator ", mname }));
 		return;
 	}
+	if (!med_visible_here(mi)) {
+		cascade_scope_viol(line, mname);
+		return;
+	}
 	add_instr({ .op = Op.PROBE, .line = line, .x = mi });
 }
 
@@ -875,6 +903,10 @@ fn bool parse_mem(String tok, int line, String* mname, int* off, int* off_reg, S
 
 fn bool cascade_input_ok(String mname) {
 	if (cur_casc < 0) return true;
+	int? found = med_map.get(mname);
+	if (try mi = found) {
+		if (meds[mi].cascade == cur_casc) return true;
+	}
 	foreach (name : cascades[cur_casc].med_names[:cascades[cur_casc].med_count]) {
 		if (name == mname) return true;
 	}
@@ -901,6 +933,10 @@ fn int resolve_mem_med(
 	}
 	if (mi < 0) {
 		viol(line, "STRUCT", cat({ opname, " via unknown mediator ", mname }));
+		return -1;
+	}
+	if (!med_visible_here(mi)) {
+		cascade_scope_viol(line, mname);
 		return -1;
 	}
 	int ci = meds[mi].cell;
@@ -1241,6 +1277,10 @@ fn void add_casc_input(
 		viol(line, "I3", cat({ "cascade uses unknown link ", name, " ", tok }));
 		return;
 	}
+	if (!med_visible_here(mdi)) {
+		cascade_scope_viol(line, tok);
+		return;
+	}
 	if (*count >= CASC_MED_MAX) {
 		viol(line, "STRUCT", "too many cascade inputs");
 		return;
@@ -1344,6 +1384,7 @@ fn void end_casc(int line) {
 
 // --- диспетчер инструкций -------------------------------------------------------------
 fn bool casc_body_ok(String op) {
+	if (op == "view") return !cascades[cur_casc].is_async;
 	switch (op) {
 		case "mov":
 		case "store":
@@ -1416,10 +1457,11 @@ fn void parse_instr(String line, int n, bool in_casc) {
 	String op   = line[:sp];
 	String rest = (sp < line.len) ? line[sp + 1..].trim() : "";
 	if (in_casc && !casc_body_ok(op)) {
+		String kind = cascades[cur_casc].is_async ? "async cascade body" : "cascade body";
 		viol(
 			n,
 			"STRUCT",
-			cat({ "op ", op, " not allowed in cascade body (data instructions only)" })
+			cat({ "op ", op, " not allowed in ", kind, " (data instructions only)" })
 		);
 		return;
 	}

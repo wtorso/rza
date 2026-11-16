@@ -655,6 +655,7 @@ run_viol viol_layout_access STRUCT tests/viol_layout_access.stderr
 run_viol viol_layout_scope STRUCT tests/viol_layout_scope.stderr
 run_viol viol_layout_index STRUCT tests/viol_layout_index.stderr
 run_good views
+run_good view_sync
 run_good view_async_out
 run_dead view_fault_range "FAULT line 4: invalid view bad_m"
 run_dead view_fault_access "FAULT line 5: out of bounds dynamic_m"
@@ -662,6 +663,9 @@ run_dead view_fault_dead "FAULT line 6: dead mediator dead_view_m"
 run_dead view_fault_typed "FAULT line 5: invalid view bad_typed_m"
 run_dead view_async_out_widen "FAULT line 22: out of bounds tail_m"
 run_viol viol_view_range STRUCT tests/viol_view_range.stderr
+run_viol viol_view_async STRUCT tests/viol_view_async.stderr
+run_viol viol_view_escape SCOPE tests/viol_view_escape.stderr
+run_viol viol_view_noninput STRUCT tests/viol_view_noninput.stderr
 run_dead storeb_oob "FAULT line 5: out of bounds x_m"
 run_dead typed_index_negative "FAULT line 5: out of bounds entries_m"
 run_dead typed_index_min "FAULT line 5: out of bounds entries_m"
@@ -796,8 +800,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=197
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=196; fi
+EXPECTED_PASS=201
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=200; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1
