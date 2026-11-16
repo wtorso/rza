@@ -4,12 +4,50 @@
 
 #include "rez3.h"
 
-#define REZ3EXT_ABI 4u
-static_assert(REZ3EXT_ABI == 4);
+#define REZ3EXT_ABI 5u
+static_assert(REZ3EXT_ABI == 5);
+
+typedef enum {
+    RZA_OK = 0,
+    RZA_ABORT = 1,
+    RZA_FAULT_DEAD_MEDIATOR = 2,
+    RZA_FAULT_ARITHMETIC_OVERFLOW = 3,
+    RZA_FAULT_OUT_OF_BOUNDS = 4,
+    RZA_FAULT_DIVISION = 5,
+    RZA_FAULT_SHIFT = 6,
+    RZA_FAULT_FRAME = 7,
+    RZA_FAULT_ARENA = 8,
+    RZA_FAULT_ASYNC_PENDING = 9,
+    RZA_FAULT_ASYNC_QUEUE = 10,
+    RZA_FAULT_VIEW = 11,
+    RZA_FAULT_ENTRY_STATE = 12
+} RzaFault;
+
+typedef struct {
+    uint32_t code;
+    uint32_t line;
+} RzaResult;
+
+typedef struct {
+    uint64_t completed;
+    RzaResult result;
+} RzaAwaitResult;
+
+typedef struct {
+    uint32_t fault;
+    uint32_t line;
+    const char *operation;
+    const char *subject;
+} RzaDiagnostic;
+
+typedef void (*RzaDiagnosticHandler)(RzaDiagnostic diagnostic, void *context);
+
+static_assert(sizeof(RzaResult) == 8);
+static_assert(sizeof(RzaAwaitResult) == 16);
 
 #define REZ_ASYNC_MAX 64u
 
-typedef bool (*RezAsyncRun)(void *context);
+typedef RzaResult (*RezAsyncRun)(void *context);
 
 typedef struct {
     RezAsyncRun run;
@@ -42,23 +80,36 @@ typedef struct {
     return true;
 }
 
-[[maybe_unused]] static uint64_t rez_async_drain(RezAsyncQueue *queue) {
-    uint64_t completed = 0;
+[[maybe_unused]] static void rez_async_cancel(RezAsyncQueue *queue) {
+    assert(queue != nullptr);
+    assert(queue->count <= REZ_ASYNC_MAX);
+    memset(queue->tasks, 0, sizeof(queue->tasks));
+    queue->head = 0;
+    queue->count = 0;
+}
+
+[[maybe_unused]] static RzaAwaitResult rez_async_drain(RezAsyncQueue *queue) {
+    RzaAwaitResult drained = {0};
     assert(queue != nullptr);
     assert(queue->count <= REZ_ASYNC_MAX);
     while (queue->count > 0) {
         RezAsyncTask task = queue->tasks[queue->head];
-        bool success;
+        RzaResult status;
         assert(task.run != nullptr);
         assert(task.context != nullptr);
         queue->tasks[queue->head] = (RezAsyncTask){0};
         queue->head = (queue->head + 1) % REZ_ASYNC_MAX;
         queue->count--;
-        success = task.run(task.context);
-        if (success) completed++;
+        status = task.run(task.context);
+        if (status.code == RZA_OK) drained.completed++;
+        if (status.code != RZA_OK && status.code != RZA_ABORT) {
+            drained.result = status;
+            rez_async_cancel(queue);
+            return drained;
+        }
     }
     queue->head = 0;
-    return completed;
+    return drained;
 }
 
 typedef struct {
@@ -68,10 +119,13 @@ typedef struct {
     uint32_t gen;
     uint32_t home_gen;
     uint64_t size;
+    uint32_t *allocation;
+    uint32_t allocation_gen;
 } RezCellMed;
 
 static_assert(sizeof(((RezCellMed *)nullptr)->gen) == 4);
 static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
+static_assert(sizeof(RezCellMed) == 56);
 
 [[maybe_unused]] static RezCellMed rez_issue_cell(
     RezCavity *owner,
@@ -88,8 +142,25 @@ static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
     mediator.gen = owner->generation;
     mediator.home_gen = home->generation;
     mediator.size = size;
+    mediator.allocation = nullptr;
+    mediator.allocation_gen = 0;
     assert(mediator.gen == owner->generation);
     assert(mediator.home_gen == home->generation);
+    return mediator;
+}
+
+[[maybe_unused]] static RezCellMed rez_issue_cell_versioned(
+    RezCavity *owner,
+    RezCavity *home,
+    void *cell,
+    uint64_t size,
+    uint32_t *allocation
+) {
+    assert(allocation != nullptr);
+    assert(*allocation != 0);
+    RezCellMed mediator = rez_issue_cell(owner, home, cell, size);
+    mediator.allocation = allocation;
+    mediator.allocation_gen = *allocation;
     return mediator;
 }
 
@@ -105,6 +176,10 @@ void *rez_deref_cell_inline(RezCellMed mediator) {
     if (!mediator.home->alive) return nullptr;
     if (mediator.gen != mediator.owner->generation) return nullptr;
     if (mediator.home_gen != mediator.home->generation) return nullptr;
+    if (mediator.allocation != nullptr) {
+        if (mediator.allocation_gen == 0) return nullptr;
+        if (mediator.allocation_gen != *mediator.allocation) return nullptr;
+    }
     assert(mediator.gen != 0);
     assert(mediator.home_gen != 0);
     return mediator.cell;

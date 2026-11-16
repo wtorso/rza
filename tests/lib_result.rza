@@ -1,0 +1,13 @@
+res state, field, 16
+med state_m, state, field
+proc succeed:
+    mov %r0, 11
+    store [state_m + 8], %r0
+    ret
+proc fail:
+    mov %r0, 5
+    store [state_m + 0], %r0
+    mov %r1, 9223372036854775807
+    cadd %r1, %r1, 1
+    ret
+ret

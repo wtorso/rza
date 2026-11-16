@@ -38,34 +38,54 @@ static int32_t check_generation_exhaustion(void) {
     return 0;
 }
 
-static bool async_succeed(void *context) {
+static RzaResult async_succeed(void *context) {
     (*(int *)context)++;
-    return true;
+    return (RzaResult){ .code = RZA_OK };
 }
 
-static bool async_abort(void *context) {
+static RzaResult async_abort(void *context) {
     (void)context;
-    return false;
+    return (RzaResult){ .code = RZA_ABORT };
+}
+
+static RzaResult async_fault(void *context) {
+    (void)context;
+    return (RzaResult){ .code = RZA_FAULT_DIVISION };
 }
 
 static int check_async_queue(void) {
     RezAsyncQueue queue = {0};
+    RzaAwaitResult drained;
     int completed = 0;
     bool pending = false;
     bool other_pending = false;
     CHECK(rez_async_enqueue(&queue, async_succeed, &completed, &pending));
     CHECK(rez_async_enqueue(&queue, async_abort, &completed, &other_pending));
     CHECK(queue.count == 2);
-    CHECK(rez_async_drain(&queue) == 1);
-    CHECK(completed == 1);
-    CHECK(queue.count == 0);
-    CHECK(rez_async_drain(&queue) == 0);
+    drained = rez_async_drain(&queue);
+    CHECK(drained.completed == 1 && drained.result.code == RZA_OK);
+    CHECK(completed == 1 && queue.count == 0);
+    drained = rez_async_drain(&queue);
+    CHECK(drained.completed == 0 && drained.result.code == RZA_OK);
     for (uint32_t i = 0; i < REZ_ASYNC_MAX; i++) {
         bool slot_pending = false;
         CHECK(rez_async_enqueue(&queue, async_succeed, &completed, &slot_pending));
     }
     CHECK(!rez_async_enqueue(&queue, async_succeed, &completed, &pending));
-    CHECK(rez_async_drain(&queue) == REZ_ASYNC_MAX);
+    drained = rez_async_drain(&queue);
+    CHECK(drained.completed == REZ_ASYNC_MAX && drained.result.code == RZA_OK);
+
+    completed = 0;
+    pending = false;
+    other_pending = false;
+    bool last_pending = false;
+    CHECK(rez_async_enqueue(&queue, async_succeed, &completed, &pending));
+    CHECK(rez_async_enqueue(&queue, async_fault, &completed, &other_pending));
+    CHECK(rez_async_enqueue(&queue, async_succeed, &completed, &last_pending));
+    drained = rez_async_drain(&queue);
+    CHECK(drained.completed == 1 && drained.result.code == RZA_FAULT_DIVISION);
+    CHECK(completed == 1 && queue.count == 0 && queue.head == 0);
+    for (uint32_t i = 0; i < REZ_ASYNC_MAX; i++) CHECK(queue.tasks[i].run == nullptr);
     return 0;
 }
 
@@ -81,6 +101,24 @@ static int32_t check_checked_arithmetic(void) {
     CHECK(!rez_i64_cmul(-1, -1, &checked) && checked == 1);
     CHECK(rez_i64_cmul(INT64_MIN, -1, &checked));
     CHECK(rez_i64_cmul(INT64_MAX, 2, &checked));
+    return 0;
+}
+
+static int32_t check_allocation_generation(RezCavity *field, void *cell) {
+    uint32_t generation = 1;
+    RezCellMed view = {0};
+    RezCellMed current = rez_issue_cell_versioned(field, field, cell, 8, &generation);
+    RezCellMed stale = current;
+    CHECK(current.allocation == &generation && current.allocation_gen == 1);
+    CHECK(rez_deref_cell(current) == cell);
+    generation++;
+    CHECK(rez_deref_cell(stale) == nullptr);
+    CHECK(!rez_view_cell(stale, 0, 1, 1, &view));
+    CHECK(view.cell == nullptr && view.size == 0);
+    current = rez_issue_cell_versioned(field, field, cell, 8, &generation);
+    CHECK(rez_deref_cell(current) == cell);
+    CHECK(rez_view_cell(current, 0, 8, 1, &view));
+    CHECK(view.allocation == &generation && view.allocation_gen == generation);
     return 0;
 }
 
@@ -143,11 +181,10 @@ int main(void) {
     RezArena empty = {0};
     RezArena misaligned_arena = { .base = misaligned_storage + 1, .cap = 64 };
     RezCellMed med;
-    uint32_t gen;
-    uint32_t saved;
+    uint32_t gen, saved;
     void *cell;
 
-    static_assert(REZ3EXT_ABI == 4);
+    static_assert(REZ3EXT_ABI == 5);
     CHECK(rez_arena_alloc_z(&misaligned_arena, 1) == nullptr);
     CHECK(!rez_frame_reset(&misaligned, nullptr, misaligned_storage + 1, 64));
     CHECK(!misaligned.alive);
@@ -194,6 +231,7 @@ int main(void) {
     CHECK(check_checked_arithmetic() == 0);
     CHECK(check_crc32c() == 0);
     CHECK(check_view_ranges(med) == 0);
+    CHECK(check_allocation_generation(&field, cell) == 0);
 
     rez_decay(&field);
     CHECK(rez_deref_cell(med) == nullptr);

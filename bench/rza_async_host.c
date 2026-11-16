@@ -22,8 +22,9 @@
 
 uint32_t rza_rez3ext_abi(void);
 void *rza_deref_cell(RezCellMed mediator);
-void rza_boot(void);
-void rza_work(void);
+RzaResult rza_boot(void);
+RzaResult rza_reset(void);
+RzaResult rza_work(void);
 RezCellMed rza_med_state_m(void);
 RezCellMed rza_med_completed_m(void);
 
@@ -37,15 +38,15 @@ static uint64_t read_cell(RezCellMed mediator) {
 
 void workload_prepare(void) {
     if (rza_rez3ext_abi() != REZ3EXT_ABI) exit(2);
-    rza_boot();
+    if (rza_boot().code != RZA_OK) exit(1);
 }
 
 uint64_t workload_step(void) {
     uint64_t digest = 0;
     ASYNC_NO_UNROLL
     for (uint64_t iteration = 0; iteration < ASYNC_BOOT_COUNT; iteration++) {
-        rza_boot();
-        rza_work();
+        if (rza_reset().code != RZA_OK) exit(1);
+        if (rza_work().code != RZA_OK) exit(1);
         digest += read_cell(rza_med_state_m());
         digest += read_cell(rza_med_completed_m());
     }

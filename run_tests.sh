@@ -368,6 +368,10 @@ run_lib() {
         bad "$t" "runtime failed (want exit 0)"; cat "$BUILD/$t.runerr"
         return
     fi
+    if [ -s "$BUILD/$t.runerr" ]; then
+        bad "$t" "library wrote stderr by default"; cat "$BUILD/$t.runerr"
+        return
+    fi
     tr --delete '\r' <"$BUILD/$t.out" >"$BUILD/$t.out.lf"
     if ! compare_text "tests/$t.expected" "$BUILD/$t.out.lf" >/dev/null 2>&1; then
         bad "$t" "stdout mismatch"
@@ -568,6 +572,7 @@ run_good compare_edges
 run_good skipped_decay
 run_good cav_reuse
 run_good async_fifo
+run_good async_out_reuse
 run_good async_await_empty
 run_abort async_abort "ABORT line 11: cascade blocked: dead mediator out_m"
 run_abort typed_ownership "ABORT line 39: cascade blocked: dead mediator temp_m"
@@ -711,6 +716,8 @@ run_viol viol_cav_proc    DUP
 run_viol viol_med_gdup    DUP tests/viol_med_gdup.stderr
 run_lib lib_hello
 run_lib lib_typed
+run_lib lib_result
+run_lib lib_boot_fault
 run_lib_compile crc32c_name_collision
 run_lib_compile lib_scope
 run_lib_compile lib_fault_name
@@ -733,8 +740,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=189
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=188; fi
+EXPECTED_PASS=192
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=191; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

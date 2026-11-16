@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include "rez3ext.h"
 
-extern void rza_boot(void);
-extern void rza_setup(void);
+extern RzaResult rza_boot(void);
+extern RzaResult rza_setup(void);
 extern RezCavity *rza_frame_main(void);
 extern RezCavity *rza_frame_tmp(void);
 extern RezCellMed rza_med_x_m(void);
@@ -18,8 +18,8 @@ int main(void) {
     (void)&rez_i64_cadd; (void)&rez_i64_csub; (void)&rez_i64_cmul;
     (void)&rez_crc32c_u64_fallback; (void)&rez_crc32c_u64;
     (void)&rez_crc32c_hardware;
-    rza_boot();
-    rza_setup();
+    if (rza_boot().code != RZA_OK) return 12;
+    if (rza_setup().code != RZA_OK) return 13;
     m = rza_med_x_m();
     if (m.owner != rza_frame_main()) return 10;
     if (m.home != rza_frame_tmp()) return 11;

@@ -1,0 +1,7 @@
+boot 0
+repeat 12 0
+first 0 11
+fault 3 11 5 0
+retry 0 11
+diag 3 arithmetic overflow
+reentry 12 3

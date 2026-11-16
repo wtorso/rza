@@ -1,8 +1,14 @@
-; One task per boot: 1024 state increments and 1024 completed notifications.
+; One task per reset: 1024 state increments and 1024 completed notifications.
 res state, field, 8
 res completed, field, 8
 med state_m, state, field
 med completed_m, completed, field
+
+proc reset:
+    mov %r0, 0
+    store [state_m + 0], %r0
+    store [completed_m + 0], %r0
+    ret
 
 proc work:
     acasc bump: state_m -> out

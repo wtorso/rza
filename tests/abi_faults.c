@@ -7,6 +7,20 @@ _Alignas(16) static char field_arena[64];
 _Alignas(16) static char home_arena[64];
 _Alignas(16) static char misaligned_storage[65];
 
+static_assert(REZ3EXT_ABI == 5);
+static_assert(sizeof(RzaResult) == 8);
+static_assert(offsetof(RzaResult, code) == 0);
+static_assert(offsetof(RzaResult, line) == 4);
+static_assert(sizeof(RzaAwaitResult) == 16);
+static_assert(offsetof(RzaAwaitResult, completed) == 0);
+static_assert(offsetof(RzaAwaitResult, result) == 8);
+static_assert(sizeof(RzaDiagnostic) == 24);
+static_assert(offsetof(RzaDiagnostic, operation) == 8);
+static_assert(offsetof(RzaDiagnostic, subject) == 16);
+static_assert(sizeof(RezCellMed) == 56);
+static_assert(offsetof(RezCellMed, allocation) == 40);
+static_assert(offsetof(RezCellMed, allocation_gen) == 48);
+
 int main(void) {
     RezCavity field = {0};
     RezCavity home = {0};

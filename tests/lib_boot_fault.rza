@@ -1,0 +1,5 @@
+res state, field, 8
+med state_m, state, field
+mov %r0, 9223372036854775807
+cadd %r0, %r0, 1
+ret

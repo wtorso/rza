@@ -309,54 +309,95 @@ fn void append_access_offset(DString* out, Instr* ins) {
     assert(out.len() < OFFSET_STRING_BYTES);
 }
 
-fn void emit_fault(Output* out, int ind, int line, String reason, String name) {
-    pad(out, ind);
-    if (name.len == 0) {
-        out.appendf("rez3asm_fault(%d, \"%s\", nullptr);\n", line, reason);
-        return;
+fn String fault_code(String reason) {
+    switch (reason) {
+        case "dead mediator": return "RZA_FAULT_DEAD_MEDIATOR";
+        case "out of bounds": return "RZA_FAULT_OUT_OF_BOUNDS";
+        case "arithmetic overflow": return "RZA_FAULT_ARITHMETIC_OVERFLOW";
+        case "division": return "RZA_FAULT_DIVISION";
+        case "shift": return "RZA_FAULT_SHIFT";
+        case "invalid view": return "RZA_FAULT_VIEW";
+        case "async queue full": return "RZA_FAULT_ASYNC_QUEUE";
+        default: unreachable();
     }
-    out.appendf("rez3asm_fault(%d, \"%s\", \"%s\");\n", line, reason, name);
+}
+
+fn void emit_coded_fault(Output* out, int ind, String code, int line,
+        String reason, String name) {
+    pad(out, ind);
+    String subject = name.len == 0 ? "nullptr" : cat({ "\"", name, "\"" });
+    out.appendf("rez3asm_fault(%s, %d, \"%s\", %s);\n", code, line, reason, subject);
+    pad(out, ind);
+    out.append_string("goto rza_fault;\n");
+}
+
+fn void emit_fault(Output* out, int ind, int line, String reason, String name) {
+    emit_coded_fault(out, ind, fault_code(reason), line, reason, name);
+}
+
+fn void emit_diagnostic_support(Output* out) {
+    out.append_string("static RzaResult g_result;\n");
+    if (g_lib_mode) {
+        out.append_string("static RzaDiagnosticHandler g_diag;\n");
+        out.append_string("static void *g_diag_context;\n");
+    }
+    out.append_string("static void rez3asm_diagnostic(uint32_t fault, int line,\n");
+    out.append_string("    const char *operation, const char *subject) {\n");
+    out.append_string("    RzaDiagnostic diagnostic = {\n");
+    out.append_string("        fault, (uint32_t)line, operation, subject\n");
+    out.append_string("    };\n");
+    if (g_lib_mode) {
+        out.append_string("    if (g_diag != nullptr) g_diag(diagnostic, g_diag_context);\n");
+    } else {
+        out.append_string("    (void)diagnostic;\n");
+        out.append_string("    if (fault == RZA_ABORT) {\n");
+        out.append_string("        fprintf(\n");
+        out.append_string("            stderr, \"ABORT line %d: cascade %s: \"\n");
+        out.append_string("            \"dead mediator %s\\n\",\n");
+        out.append_string("            line, operation, subject);\n");
+        out.append_string("    } else if (fault == RZA_FAULT_ASYNC_PENDING) {\n");
+        out.append_string("        fprintf(stderr, \"FAULT line %d: async task %s \"\n");
+        out.append_string("            \"already pending\\n\", line, subject);\n");
+        out.append_string("    } else if (fault == RZA_FAULT_ARENA) {\n");
+        out.append_string("        fprintf(stderr, \"FAULT line %d: arena overflow \"\n");
+        out.append_string("            \"(%s %s)\\n\", line, operation, subject);\n");
+        out.append_string("    } else if (subject != nullptr) {\n");
+        out.append_string("        fprintf(stderr, \"FAULT line %d: %s %s\\n\",\n");
+        out.append_string("            line, operation, subject);\n");
+        out.append_string("    } else {\n");
+        out.append_string("        fprintf(stderr, \"FAULT line %d: %s\\n\", line, operation);\n");
+        out.append_string("    }\n");
+    }
+    out.append_string("}\n\n");
+    out.append_string("static void rez3asm_fault(uint32_t fault, int line,\n");
+    out.append_string("    const char *operation, const char *subject) {\n");
+    out.append_string("    if (g_result.code != RZA_OK) return;\n");
+    out.append_string("    g_result = (RzaResult){ fault, (uint32_t)line };\n");
+    out.append_string("    rez3asm_diagnostic(fault, line, operation, subject);\n");
+    out.append_string("}\n\n");
+    out.append_string("[[maybe_unused]] static void rez3asm_abort(\n");
+    out.append_string("    int line, const char *cascade, const char *name) {\n");
+    out.append_string("    rez3asm_diagnostic(RZA_ABORT, line, cascade, name);\n");
+    out.append_string("}\n\n");
+}
+
+fn void emit_host_support(Output* out) {
+    if (!g_lib_mode) return;
+    out.append_string("static bool g_active;\nstatic bool g_boot_started;\n");
+    out.append_string("static RzaResult rez3asm_entry_result(void) {\n");
+    out.append_string("    return (RzaResult){ RZA_FAULT_ENTRY_STATE, 0 };\n}\n\n");
+    out.append_string("static bool rez3asm_host_enter(void) {\n");
+    out.append_string("    if (g_active) return false;\n");
+    out.append_string("    g_active = true;\n");
+    out.append_string("    g_result = (RzaResult){0};\n");
+    out.append_string("    return true;\n}\n\n");
+    out.append_string("static RzaResult rez3asm_host_leave(void) {\n");
+    out.append_string("    g_active = false;\n    return g_result;\n}\n\n");
 }
 
 fn void emit_fault_support(Output* out) {
-    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_fault(\n");
-    out.append_string("    int line, const char *reason, const char *name\n");
-    out.append_string(") {\n");
-    out.append_string("    if (name != nullptr) {\n");
-    out.append_string("        fprintf(stderr, \"FAULT line %d: %s %s\\n\",");
-    out.append_string(" line, reason, name);\n");
-    out.append_string("    } else {\n");
-    out.append_string("        fprintf(stderr, \"FAULT line %d: %s\\n\", line, reason);\n");
-    out.append_string("    }\n");
-    out.append_string("    exit(1);\n");
-    out.append_string("}\n\n");
-    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_frame_fault(\n");
-    out.append_string("    int line, const char *name\n");
-    out.append_string(") {\n");
-    out.append_string("    fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\",\n");
-    out.append_string("        line, name);\n");
-    out.append_string("    exit(1);\n");
-    out.append_string("}\n\n");
-    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_arena_fault(\n");
-    out.append_string("    int line, const char *kind, const char *name\n");
-    out.append_string(") {\n");
-    out.append_string("    fprintf(stderr, \"FAULT line %d: arena overflow (%s %s)\\n\",\n");
-    out.append_string("        line, kind, name);\n");
-    out.append_string("    exit(1);\n");
-    out.append_string("}\n\n");
-    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_pending_fault(\n");
-    out.append_string("    int line, const char *name\n");
-    out.append_string(") {\n");
-    out.append_string("    fprintf(stderr, \"FAULT line %d: async task %s already pending\\n\",\n");
-    out.append_string("        line, name);\n");
-    out.append_string("    exit(1);\n");
-    out.append_string("}\n\n");
-    out.append_string("[[maybe_unused]] static void rez3asm_abort(\n");
-    out.append_string("    int line, const char *cascade, const char *name\n");
-    out.append_string(") {\n");
-    out.append_string("    fprintf(stderr, \"ABORT line %d: cascade %s: dead mediator %s\\n\",\n");
-    out.append_string("        line, cascade, name);\n");
-    out.append_string("}\n\n");
+    emit_diagnostic_support(out);
+    emit_host_support(out);
 }
 
 fn void emit_dynamic_bounds_guard(Output* out, int ind, Instr* ins) {
@@ -635,9 +676,8 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
             out.append_string(");\n");
             pad(out, ind);
             out.appendf("if (!%s) {\n", frames[ins.x].cname);
-            pad(out, ind + 1);
-            out.appendf("rez3asm_frame_fault(%d, \"%s\");\n",
-                        ins.line, frames[ins.x].name);
+            emit_coded_fault(out, ind + 1, "RZA_FAULT_FRAME", ins.line,
+                             "frame allocation", frames[ins.x].name);
             pad(out, ind);
             out.append_string("}\n");
         case Op.RES:
@@ -646,9 +686,8 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
                         cells[ins.x].cname, fexpr(ins.y), ins.a);
             pad(out, ind);
             out.appendf("if (!%s) {\n", cells[ins.x].cname);
-            pad(out, ind + 1);
-            out.appendf("rez3asm_arena_fault(%d, \"cell\", \"%s\");\n",
-                        ins.line, cells[ins.x].name);
+            emit_coded_fault(out, ind + 1, "RZA_FAULT_ARENA", ins.line,
+                             "cell", cells[ins.x].name);
             pad(out, ind);
             out.append_string("}\n");
             emit_hoisted_meds(out, ind, ins.x);
@@ -695,8 +734,8 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
     Cascade* ca = &cascades[ins.a];
     pad(out, ind);
     out.appendf("if (ac_pending_%d) {\n", ca.seq);
-    pad(out, ind + 1);
-    out.appendf("rez3asm_pending_fault(%d, \"%s\");\n", ca.line, ca.name);
+    emit_coded_fault(out, ind + 1, "RZA_FAULT_ASYNC_PENDING", ca.line,
+                     "async task", ca.name);
     pad(out, ind);
     out.append_string("}\n");
     for (int i = 0; i < ca.med_count; i++) {
@@ -712,15 +751,28 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
         out.append_string("}\n");
     }
     pad(out, ind);
+    out.appendf("if (ac_out_gen_%d == UINT32_MAX) {\n", ca.seq);
+    emit_coded_fault(out, ind + 1, "RZA_FAULT_ASYNC_QUEUE", ca.line,
+                     "async output generation exhausted", "");
+    pad(out, ind);
+    out.append_string("}\n");
+    pad(out, ind);
+    out.appendf("ac_out_gen_%d++;\n", ca.seq);
+    pad(out, ind);
+    out.appendf("if (%s == nullptr) {\n", cells[ca.out_cell].cname);
+    pad(out, ind + 1);
     out.appendf("%s = rez_cell_z(%s, 8);\n",
                 cells[ca.out_cell].cname, fexpr(ca.out_frame));
     pad(out, ind);
+    out.append_string("}\n");
+    pad(out, ind);
     out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
-    pad(out, ind + 1);
-    out.appendf("rez3asm_arena_fault(%d, \"out\", \"%s\");\n",
-                ca.line, cells[ca.out_cell].name);
+    emit_coded_fault(out, ind + 1, "RZA_FAULT_ARENA", ca.line,
+                     "out", cells[ca.out_cell].name);
     pad(out, ind);
     out.append_string("}\n");
+    pad(out, ind);
+    out.appendf("memset(%s, 0, 8);\n", cells[ca.out_cell].cname);
     emit_clear_meds(out, ind, ca.out_cell);
     uint rd, wr;
     scan_regs(ins.func, &rd, &wr);
@@ -798,9 +850,8 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
                 cells[ca.out_cell].cname, fexpr(ca.out_frame));
     pad(out, ind);
     out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
-    pad(out, ind + 1);
-    out.appendf("rez3asm_arena_fault(%d, \"out\", \"%s\");\n",
-                ca.line, cells[ca.out_cell].name);
+    emit_coded_fault(out, ind + 1, "RZA_FAULT_ARENA", ca.line,
+                     "out", cells[ca.out_cell].name);
     pad(out, ind);
     out.append_string("}\n");
     emit_hoisted_meds(out, ind, ca.out_cell);
@@ -852,14 +903,18 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
     }
 }
 
-fn void emit_async_publish(Output* out, int ind, int cell) {
+fn void emit_async_publish(Output* out, int ind, int cell, int seq) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
         if (meds[mi].view_source >= 0) continue;
         pad(out, ind);
-        out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
-                    meds[mi].cname, fexpr(meds[mi].owner),
-                    fexpr(cells[cell].home), cells[cell].cname, cells[cell].size);
+        out.appendf("%s = rez_issue_cell_versioned(\n", meds[mi].cname);
+        pad(out, ind + 1);
+        out.appendf("%s, %s, %s, %d, &ac_out_gen_%d\n",
+                    fexpr(meds[mi].owner), fexpr(cells[cell].home),
+                    cells[cell].cname, cells[cell].size, seq);
+        pad(out, ind);
+        out.append_string(");\n");
     }
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
@@ -902,7 +957,8 @@ fn void emit_async_callback(Output* out, int ci) {
                 ca.med_count, ca.seq);
     out.appendf("static AcState_%d ac_state_%d;\n", ca.seq, ca.seq);
     out.appendf("static bool ac_pending_%d;\n", ca.seq);
-    out.appendf("static bool ac_run_%d(void *context) {\n", ca.seq);
+    out.appendf("static uint32_t ac_out_gen_%d = 1;\n", ca.seq);
+    out.appendf("static RzaResult ac_run_%d(void *context) {\n", ca.seq);
     out.append_string("    (void)context;\n");
     uint mask = scan_casc_regs(ca);
     for (int r = 0; r < 16; r++) {
@@ -918,13 +974,17 @@ fn void emit_async_callback(Output* out, int ci) {
         out.appendf("        rez3asm_abort(%d, \"%s\", \"%s\");\n",
                     ca.line, ca.name, meds[mi].name);
         out.appendf("        ac_pending_%d = false;\n", ca.seq);
-        out.append_string("        return false;\n");
+        out.appendf("        return (RzaResult){ RZA_ABORT, %d };\n", ca.line);
         out.append_string("    }\n");
     }
     emit_casc_instructions(out, 1, ca);
     out.appendf("    ac_pending_%d = false;\n", ca.seq);
-    emit_async_publish(out, 1, ca.out_cell);
-    out.append_string("    return true;\n");
+    emit_async_publish(out, 1, ca.out_cell, ca.seq);
+    emit_drain_result_check(out);
+    out.append_string("    return (RzaResult){0};\n");
+    out.append_string("rza_fault:\n");
+    out.appendf("    ac_pending_%d = false;\n", ca.seq);
+    out.append_string("    return g_result;\n");
     out.append_string("}\n\n");
 }
 
@@ -946,21 +1006,37 @@ fn String async_drain_expr() {
     return "rez_async_drain(&g_async)";
 }
 
+fn void emit_drain_result_check(Output* out) {
+    out.append_string("    if (g_result.code != RZA_OK) goto rza_fault;\n");
+}
+
 fn void emit_async_drain(Output* out) {
-    if (program_has_async()) {
-        out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
-    }
+    if (!program_has_async()) return;
+    out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
+    emit_drain_result_check(out);
 }
 
 fn void emit_proc_drain(Output* out, bool lifecycle) {
     if (!program_has_async() && (!g_lib_mode || !lifecycle)) return;
     out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
+    emit_drain_result_check(out);
 }
 
 fn void emit_async_callbacks(Output* out) {
     for (sz i = 0; i < cascades.len(); i++) {
         if (cascades[i].is_async) emit_async_callback(out, (int)i);
     }
+}
+
+fn void emit_async_cancel_support(Output* out) {
+    out.append_string("[[maybe_unused]] static void rez3asm_cancel_async(void) {\n");
+    out.append_string("    rez_async_cancel(&g_async);\n");
+    for (sz i = 0; i < cascades.len(); i++) {
+        if (cascades[i].is_async) {
+            out.appendf("    ac_pending_%d = false;\n", cascades[i].seq);
+        }
+    }
+    out.append_string("}\n\n");
 }
 
 fn void emit_async_single_drain(Output* out) {
@@ -970,23 +1046,26 @@ fn void emit_async_single_drain(Output* out) {
         if (cascades[i].is_async) seq = cascades[i].seq;
     }
     assert(seq > 0);
-    out.append_string("[[maybe_unused]] static uint64_t rez3asm_async_drain_single(void) {\n");
-    out.append_string("    uint64_t completed = 0;\n");
+    out.append_string("[[maybe_unused]] static RzaAwaitResult\n");
+    out.append_string("rez3asm_async_drain_single(void) {\n");
+    out.append_string("    RzaAwaitResult drained = {0};\n");
     out.append_string("    assert(g_async.count <= REZ_ASYNC_MAX);\n");
     out.append_string("    while (g_async.count > 0) {\n");
     out.append_string("        RezAsyncTask task = g_async.tasks[g_async.head];\n");
-    out.append_string("        bool success;\n");
+    out.append_string("        RzaResult status;\n");
     out.appendf("        assert(task.run == ac_run_%d);\n", seq);
     out.append_string("        assert(task.context != nullptr);\n");
     out.append_string("        g_async.tasks[g_async.head] = (RezAsyncTask){0};\n");
     out.append_string("        g_async.head = (g_async.head + 1) % REZ_ASYNC_MAX;\n");
     out.append_string("        g_async.count--;\n");
-    out.appendf("        success = ac_run_%d(task.context);\n", seq);
-    out.append_string("        if (success) completed++;\n");
+    out.appendf("        status = ac_run_%d(task.context);\n", seq);
+    out.append_string("        if (status.code == RZA_OK) drained.completed++;\n");
+    out.append_string("        if (status.code != RZA_OK && status.code != RZA_ABORT) {\n");
+    out.append_string("            drained.result = status;\n");
+    out.append_string("            rez_async_cancel(&g_async);\n");
+    out.append_string("            return drained;\n        }\n");
     out.append_string("    }\n");
-    out.append_string("    g_async.head = 0;\n");
-    out.append_string("    return completed;\n");
-    out.append_string("}\n\n");
+    out.append_string("    g_async.head = 0;\n    return drained;\n}\n\n");
 }
 
 
@@ -1008,17 +1087,16 @@ fn void emit_casc_end(Output* out, int ind, Instr* ins) {
 
 fn void emit_call(Output* out, int ind, Instr* ins) {
     pad(out, ind);
-    if (proc_frame_free(ins.x)) {
-        out.appendf("%s();\n", procs[ins.x].cname);
-        return;
-    }
-    if (g_lib_mode) { out.appendf("rza_%s();\n", procs[ins.x].name); }
-    else { out.appendf("%s();\n", procs[ins.x].cname); }
+    out.appendf("if (!%s()) goto rza_fault;\n", procs[ins.x].cname);
 }
 
 fn void emit_await(Output* out, int ind, Instr* ins) {
     pad(out, ind);
-    out.appendf("r%d = (int64_t)%s;\n", ins.a, async_drain_expr());
+    out.appendf("RzaAwaitResult awaited_%d = %s;\n", ins.line, async_drain_expr());
+    pad(out, ind);
+    out.appendf("r%d = (int64_t)awaited_%d.completed;\n", ins.a, ins.line);
+    pad(out, ind);
+    out.appendf("if (awaited_%d.result.code != RZA_OK) goto rza_fault;\n", ins.line);
 }
 
 fn bool is_async_block(int block) {
@@ -1161,24 +1239,25 @@ fn bool proc_frame_free(int pi) {
 }
 
 fn void emit_proc_entry(Output* out, Proc* p) {
-    if (g_lib_mode) {
-        out.appendf("void rza_%s(void) {\n", p.name);
-    } else {
-        out.appendf("[[maybe_unused]] static void %s(void) {\n", p.cname);
-    }
+    out.appendf("[[maybe_unused]] static bool %s(void) {\n", p.cname);
 }
 
 fn void emit_proc_frame_reset(Output* out, Proc* p) {
-    out.appendf("    if (!rez_frame_reset(&%s, f_field, A_%s, %d)) {\n"
-                "        rez3asm_frame_fault(%d, \"%s\");\n"
-                "    }\n",
-                frames[p.frame].cname, frames[p.frame].cname,
-                frames[p.frame].cap, p.line, p.name);
+    out.appendf("    if (!rez_frame_reset(&%s, f_field, A_%s, %d)) {\n",
+                frames[p.frame].cname, frames[p.frame].cname, frames[p.frame].cap);
+    emit_coded_fault(out, 2, "RZA_FAULT_FRAME", p.line, "frame allocation", p.name);
+    out.append_string("    }\n");
 }
 
 fn void emit_proc_frame_decay(Output* out, Proc* p) {
     emit_decay_subtree(out, 1, p.frame);
     out.appendf("    rez_decay(&%s);\n", frames[p.frame].cname);
+}
+
+fn void emit_cancel_on_fault(Output* out, int ind) {
+    if (!program_has_async()) return;
+    pad(out, ind);
+    out.append_string("rez3asm_cancel_async();\n");
 }
 
 fn void emit_proc_body(Output* out, int pi, bool lifecycle) {
@@ -1190,20 +1269,42 @@ fn void emit_proc_body(Output* out, int pi, bool lifecycle) {
     emit_body(out, pi + 1);
     emit_proc_drain(out, lifecycle);
     emit_writeonly_silence(out, 1, rd, wr);
+    emit_drain_result_check(out);
     if (lifecycle) emit_proc_frame_decay(out, p);
-    out.append_string("}\n");
+    out.append_string("    return true;\n");
+    out.append_string("rza_fault:\n");
+    emit_cancel_on_fault(out, 1);
+    if (lifecycle) emit_proc_frame_decay(out, p);
+    out.append_string("    return false;\n}\n");
+}
+
+fn void emit_host_enter(Output* out) {
+    out.append_string("    if (!rez3asm_host_enter()) return rez3asm_entry_result();\n");
+}
+
+fn void emit_proc_wrapper(Output* out, Proc* p) {
+    out.appendf("RzaResult rza_%s(void) {\n", p.name);
+    emit_host_enter(out);
+    out.appendf("    (void)%s();\n", p.cname);
+    out.append_string("    return rez3asm_host_leave();\n}\n\n");
 }
 
 fn void emit_proc_host(Output* out, int pi) {
     Proc* p = &procs[pi];
-    emit_proc_entry(out, p);
+    out.appendf("RzaResult rza_%s(void) {\n", p.name);
+    emit_host_enter(out);
     emit_proc_frame_reset(out, p);
-    out.appendf("    %s();\n", p.cname);
+    out.appendf("    (void)%s();\n", p.cname);
     if (!program_has_async()) {
         out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
     }
+    emit_drain_result_check(out);
     emit_proc_frame_decay(out, p);
-    out.append_string("}\n");
+    out.append_string("    return rez3asm_host_leave();\n");
+    out.append_string("rza_fault:\n");
+    emit_cancel_on_fault(out, 1);
+    emit_proc_frame_decay(out, p);
+    out.append_string("    return rez3asm_host_leave();\n}\n\n");
 }
 
 fn void emit_proc(Output* out, int pi) {
@@ -1215,11 +1316,7 @@ fn void emit_proc(Output* out, int pi) {
     assert(frames[p.frame].is_procframe);
     assert(frames[p.frame].cap <= ARENA_FRAME_MAX);
     if (proc_frame_free(pi)) {
-        if (g_lib_mode) {
-            out.appendf("static void %s(void) {\n", p.cname);
-        } else {
-            emit_proc_entry(out, p);
-        }
+        emit_proc_entry(out, p);
         emit_proc_body(out, pi, false);
         if (g_lib_mode) emit_proc_host(out, pi);
         return;
@@ -1227,16 +1324,17 @@ fn void emit_proc(Output* out, int pi) {
     if (!proc_has_crc32c(pi)) {
         emit_proc_entry(out, p);
         emit_proc_body(out, pi, true);
+        if (g_lib_mode) emit_proc_wrapper(out, p);
         return;
     }
     String base = g_lib_mode ? cat({ "rza_", p.name }) : p.cname;
     String portable = crc_variant_name(base, "portable");
     String hardware = crc_variant_name(base, "sse42");
-    out.appendf("static void %s(void) {\n", portable);
+    out.appendf("static bool %s(void) {\n", portable);
     emit_crc_direct = false;
     emit_proc_body(out, pi, true);
     out.append_string("#if REZ_CRC32C_X86\n");
-    out.appendf("__attribute__((target(\"sse4.2\")))\nstatic void %s(void) {\n",
+    out.appendf("__attribute__((target(\"sse4.2\")))\nstatic bool %s(void) {\n",
                 hardware);
     emit_crc_direct = true;
     emit_proc_body(out, pi, true);
@@ -1244,56 +1342,52 @@ fn void emit_proc(Output* out, int pi) {
     out.append_string("#endif\n");
     emit_proc_entry(out, p);
     out.append_string("#if REZ_CRC32C_X86\n");
-    out.appendf("    if (rez_crc32c_hardware()) {\n        %s();\n        return;\n"
-                "    }\n#endif\n", hardware);
-    out.appendf("    %s();\n", portable);
-    out.append_string("}\n");
+    out.appendf("    if (rez_crc32c_hardware()) return %s();\n#endif\n", hardware);
+    out.appendf("    return %s();\n}\n\n", portable);
+    if (g_lib_mode) emit_proc_wrapper(out, p);
+}
+
+fn void emit_top_core(Output* out, String name) {
+    out.appendf("static bool %s(void) {\n", name);
+    uint rd, wr;
+    scan_regs(0, &rd, &wr);
+    assert(frames[0].is_field);
+    assert(frames[0].cap >= 64 && frames[0].cap <= ARENA_FRAME_MAX);
+    assert(rd <= 0xFFFF && wr <= 0xFFFF);
+    emit_regs_decl(out, 1, rd | wr);
+    out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n",
+                frames[0].cap);
+    emit_coded_fault(out, 2, "RZA_FAULT_FRAME", 0, "frame allocation", "field");
+    out.append_string("    }\n");
+    emit_body(out, 0);
+    if (g_lib_mode) {
+        out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
+    } else {
+        emit_async_drain(out);
+    }
+    emit_writeonly_silence(out, 1, rd, wr);
+    emit_drain_result_check(out);
+    out.append_string("    return true;\n");
+    out.append_string("rza_fault:\n");
+    emit_cancel_on_fault(out, 1);
+    out.append_string("    return false;\n}\n\n");
 }
 
 fn void emit_main(Output* out) {
+    emit_top_core(out, "rez3asm_main");
     out.append_string("int main(void) {\n");
-    uint rd, wr;
-    scan_regs(0, &rd, &wr);
-    assert(frames[0].is_field);
-    assert(frames[0].cap >= 64);
-    assert(frames[0].cap <= ARENA_FRAME_MAX);
-    assert(rd <= 0xFFFF);
-    assert(wr <= 0xFFFF);
-    emit_regs_decl(out, 1, rd | wr);
-    out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n"
-                "        rez3asm_frame_fault(0, \"field\");\n"
-                "    }\n", frames[0].cap);
-    emit_body(out, 0);
-    emit_async_drain(out);
-    emit_writeonly_silence(out, 1, rd, wr);
-    bool last_ret = false;
-    for (sz i = instrs.len(); i > 0; i--) {
-        if (instrs[i - 1].func == 0) {
-            last_ret = instrs[i - 1].op == Op.RET;
-            break;
-        }
-    }
-    if (!last_ret) out.append_string("    return 0;\n");
-    out.append_string("}\n");
+    out.append_string("    (void)rez3asm_main();\n");
+    out.append_string("    return g_result.code == RZA_OK ? 0 : 1;\n}\n");
 }
 
 fn void emit_boot(Output* out) {
-    out.append_string("void rza_boot(void) {\n");
-    uint rd, wr;
-    scan_regs(0, &rd, &wr);
-    assert(frames[0].is_field);
-    assert(frames[0].cap >= 64);
-    assert(frames[0].cap <= ARENA_FRAME_MAX);
-    assert(rd <= 0xFFFF);
-    assert(wr <= 0xFFFF);
-    emit_regs_decl(out, 1, rd | wr);
-    out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n"
-                "        rez3asm_frame_fault(0, \"field\");\n"
-                "    }\n", frames[0].cap);
-    emit_body(out, 0);
-    out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
-    emit_writeonly_silence(out, 1, rd, wr);
-    out.append_string("}\n");
+    emit_top_core(out, "rez3asm_boot");
+    out.append_string("RzaResult rza_boot(void) {\n");
+    out.append_string("    if (g_active || g_boot_started) return rez3asm_entry_result();\n");
+    out.append_string("    g_boot_started = true;\n");
+    emit_host_enter(out);
+    out.append_string("    (void)rez3asm_boot();\n");
+    out.append_string("    return rez3asm_host_leave();\n}\n");
 }
 
 fn void emit_host_api(Output* out) {
@@ -1328,7 +1422,19 @@ fn void emit_host_api(Output* out) {
         out.append_string("}\n");
     }
     out.append_string("uint32_t rza_rez3ext_abi(void) { return REZ3EXT_ABI; }\n");
-    out.appendf("uint64_t rza_await(void) { return %s; }\n", async_drain_expr());
+    out.append_string("void rza_set_diagnostic_handler(\n");
+    out.append_string("    RzaDiagnosticHandler handler, void *context) {\n");
+    out.append_string("    g_diag = handler;\n    g_diag_context = context;\n}\n");
+    out.append_string("RzaAwaitResult rza_await(void) {\n");
+    out.append_string("    if (!rez3asm_host_enter()) {\n");
+    out.append_string("        return (RzaAwaitResult){\n");
+    out.append_string("            .result = { RZA_FAULT_ENTRY_STATE, 0 }\n");
+    out.append_string("        };\n");
+    out.append_string("    }\n");
+    out.appendf("    RzaAwaitResult drained = %s;\n", async_drain_expr());
+    out.append_string("    if (drained.result.code != RZA_OK) rez3asm_cancel_async();\n");
+    out.append_string("    drained.result = rez3asm_host_leave();\n");
+    out.append_string("    return drained;\n}\n");
     out.append_string("void *rza_arena_alloc(RezCavity *cavity, uint64_t size) "
                       "{ return rez_cell_z(cavity, size); }\n");
     out.append_string("void *rza_deref_cell(RezCellMed mediator) "
@@ -1449,15 +1555,16 @@ fn String emit() {
     emit_static_storage(&out);
     out.append_string("RezAsyncQueue g_async;\n\n");
     emit_async_callbacks(&out);
+    emit_async_cancel_support(&out);
     emit_async_single_drain(&out);
     for (sz i = 0; i < procs.len(); i++) {
         if (g_lib_mode && proc_frame_free((int)i)) {
-            out.appendf("static void %s(void);\n", procs[i].cname);
+            out.appendf("static bool %s(void);\n", procs[i].cname);
         }
         if (g_lib_mode) {
-            out.appendf("void rza_%s(void);\n", procs[i].name);
+            out.appendf("RzaResult rza_%s(void);\n", procs[i].name);
         } else {
-            out.appendf("[[maybe_unused]] static void %s(void);\n", procs[i].cname);
+            out.appendf("[[maybe_unused]] static bool %s(void);\n", procs[i].cname);
         }
     }
     if (procs.len() > 0) out.append_string("\n");

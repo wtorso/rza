@@ -2,13 +2,14 @@
  * точки входа сгенерированной библиотеки. Ожидаемый вывод: "42\nharness done".
  */
 #include <stdio.h>
+#include "rez3ext.h"
 
-extern void rza_boot(void);
-extern void rza_greet(void);
+extern RzaResult rza_boot(void);
+extern RzaResult rza_greet(void);
 
 int main(void) {
-    rza_boot();
-    rza_greet();
+    if (rza_boot().code != RZA_OK) return 10;
+    if (rza_greet().code != RZA_OK) return 11;
     printf("harness done\n");
     return 0;
 }

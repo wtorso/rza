@@ -1,0 +1,17 @@
+res state, field, 8
+med state_m, state, field
+mov %r1, 64
+loop:
+acasc bump: state_m -> out
+    load %r0, [state_m + 0]
+    inc %r0
+    store [state_m + 0], %r0
+endc
+await %r0
+dec %r1
+brnz %r1, loop
+med out_m, out, field
+load %r2, [state_m + 0]
+print %r2
+probe out_m
+ret

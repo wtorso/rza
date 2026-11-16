@@ -167,8 +167,8 @@ fn int? check_prefix_hoist_artifact() {
 fn int? check_crc_dispatch_artifact() {
     String generated = emit_artifact("bench/crc32c_hw.rza",
         temp_path("crc-dispatch.c"))!;
-    if (!expect(generated.contains("static void p_checksum_crc0_portable(void)") &&
-            generated.contains("static void p_checksum_crc0_sse42(void)") &&
+    if (!expect(generated.contains("static bool p_checksum_crc0_portable(void)") &&
+            generated.contains("static bool p_checksum_crc0_sse42(void)") &&
             generated.contains("rez_crc32c_u64_x86(r0"),
             "CRC procedure has portable and hardware variants")) return 1;
     return 0;
@@ -181,15 +181,15 @@ fn int? check_async_drain_artifact() {
             "programs without async tasks omit the queue check")) return 1;
     String library = emit_lib_artifact("bench/calls.rza",
         temp_path("sync-library-drain.c"))!;
-    String core = artifact_function(library, "static void p_work(void) {");
-    String wrapper = artifact_function(library, "void rza_work(void) {");
-    String driver = artifact_function(library, "void rza_workload(void) {");
-    String boot = artifact_function(library, "void rza_boot(void) {");
+    String core = artifact_function(library, "static bool p_work(void) {");
+    String wrapper = artifact_function(library, "RzaResult rza_work(void) {");
+    String driver = artifact_function(library, "static bool p_workload(void) {");
+    String boot = artifact_function(library, "static bool rez3asm_boot(void) {");
     if (!expect(!core.contains("g_async.count") &&
-            wrapper.contains("    p_work();\n    if (g_async.count != 0)") &&
-            wrapper.contains("rez_async_drain(&g_async);\n    rez_decay") &&
+            wrapper.contains("    (void)p_work();\n    if (g_async.count != 0)") &&
+            wrapper.contains("rez_async_drain(&g_async);") && wrapper.contains("rez_decay") &&
             driver.contains("g_async.count") && boot.contains("g_async.count"),
-            "library cores omit only internal checks; wrappers retain them")) return 1;
+            "library cores omit internal checks; wrappers retain them")) return 1;
     String asynchronous = emit_artifact("tests/async_fifo.rza",
         temp_path("async-drain.c"))!;
     if (!expect(asynchronous.contains("if (g_async.count != 0) (void)rez_async_drain") &&
@@ -197,23 +197,21 @@ fn int? check_async_drain_artifact() {
             "async programs retain the conditional drain call")) return 1;
     String async_proc = emit_artifact("tests/async_framefree_drain.rza",
         temp_path("async-proc-drain.c"))!;
-    String async_core = artifact_function(async_proc, "static void p_framefree(void) {");
-    String async_main = artifact_function(async_proc, "int main(void) {");
+    String async_core = artifact_function(async_proc, "static bool p_framefree(void) {");
+    String async_main = artifact_function(async_proc, "static bool rez3asm_main(void) {");
     if (!expect(async_core.contains("g_async.count") && async_main.contains("g_async.count"),
             "async programs retain drains in procedures and at top level")) return 1;
     String single = emit_lib_artifact("bench/async_single.rza",
         temp_path("async-single-drain.c"))!;
-    String direct = artifact_function(single,
-        "static uint64_t rez3asm_async_drain_single(void) {");
-    if (!expect(direct.contains("success = ac_run_1(task.context);") &&
-            !direct.contains("success = task.run(task.context);") &&
-            single.contains(
-                "uint64_t rza_await(void) { return rez3asm_async_drain_single(); }"),
+    String direct = artifact_function(single, "rez3asm_async_drain_single(void) {");
+    if (!expect(direct.contains("status = ac_run_1(task.context);") &&
+            !direct.contains("status = task.run(task.context);") &&
+            single.contains("RzaAwaitResult drained = rez3asm_async_drain_single();"),
             "one async callback uses a direct specialized drain")) return 1;
     String queue = emit_lib_artifact("bench/async_queue.rza",
         temp_path("async-queue-drain.c"))!;
     if (!expect(!queue.contains("rez3asm_async_drain_single") &&
-            queue.contains("uint64_t rza_await(void) { return rez_async_drain(&g_async); }"),
+            queue.contains("RzaAwaitResult drained = rez_async_drain(&g_async);"),
             "multiple async callbacks retain the generic drain")) return 1;
     return 0;
 }
@@ -222,49 +220,55 @@ fn int? check_fault_helper_artifact() {
     String checked = emit_artifact("tests/checked_add_overflow.rza",
         temp_path("checked-helper.c"))!;
     if (!expect(text_count(checked, "static void rez3asm_fault(") == 1 &&
-            checked.contains("[[noreturn]] static void rez3asm_fault(") &&
-            checked.contains("rez3asm_fault(2, \"arithmetic overflow\", nullptr);") &&
+            !checked.contains("[[noreturn]]") &&
+            checked.contains("rez3asm_fault(RZA_FAULT_ARITHMETIC_OVERFLOW, 2,") &&
             !checked.contains("fprintf(stderr, \"FAULT line 2: arithmetic overflow"),
             "checked overflow uses the cold helper")) return 1;
     String bounds = emit_artifact("tests/bounds_dynamic.rza",
         temp_path("bounds-helper.c"))!;
-    if (!expect(bounds.contains("rez3asm_fault(6, \"out of bounds\", \"x_m\");") &&
+    if (!expect(bounds.contains("rez3asm_fault(RZA_FAULT_OUT_OF_BOUNDS, 6,") &&
             !bounds.contains("fprintf(stderr, \"FAULT line 6: out of bounds"),
             "dynamic bounds use the cold helper")) return 1;
     String asynchronous = emit_artifact("tests/async_repeat.rza",
         temp_path("async-cold-helpers.c"))!;
-    if (!expect(asynchronous.contains("rez3asm_arena_fault(1, \"cell\", \"x\");") &&
-            asynchronous.contains("rez3asm_frame_fault(0, \"field\");") &&
-            asynchronous.contains("rez3asm_pending_fault(5, \"bump\");") &&
-            asynchronous.contains("rez3asm_arena_fault(5, \"out\", \"out\");") &&
-            asynchronous.contains("rez3asm_fault(5, \"async queue full\", nullptr);") &&
+    if (!expect(asynchronous.contains("rez3asm_fault(RZA_FAULT_ARENA, 1, \"cell\", \"x\");") &&
+            asynchronous.contains("rez3asm_fault(RZA_FAULT_FRAME, 0,") &&
+            asynchronous.contains("rez3asm_fault(RZA_FAULT_ASYNC_PENDING, 5,") &&
+            asynchronous.contains("rez3asm_fault(RZA_FAULT_ARENA, 5, \"out\", \"out\");") &&
+            asynchronous.contains("rez3asm_fault(RZA_FAULT_ASYNC_QUEUE, 5,") &&
             asynchronous.contains("rez3asm_abort(5, \"bump\", \"x_m\");") &&
             !asynchronous.contains("fprintf(stderr, \"FAULT line 5:") &&
             !asynchronous.contains("fprintf(stderr, \"ABORT line 5:"),
             "async ownership and queue diagnostics use cold helpers")) return 1;
+    String library = emit_lib_artifact("tests/lib_result.rza",
+        temp_path("controlled-library.c"))!;
+    if (!expect(!library.contains("exit(") && !library.contains("fprintf(") &&
+            library.contains("RzaResult rza_fail(void)"),
+            "library returns faults without process output or termination")) return 1;
     return 0;
 }
 
 fn int? check_frame_free_artifact() {
     String hello = emit_lib_artifact("tests/lib_hello.rza",
         temp_path("frame-free-hello.c"))!;
-    if (!expect(hello.contains("static void p_greet(void) {") &&
+    if (!expect(hello.contains("static bool p_greet(void) {") &&
             text_count(hello, "rez_frame_reset(&f_P_greet") == 1 &&
-            text_count(hello, "rez_decay(&f_P_greet") == 1,
-            "frame-free procedure retains one host lifecycle")) return 1;
+            text_count(hello, "rez_decay(&f_P_greet") == 2,
+            "frame-free host cleans its frame on success and fault")) return 1;
     if (!expect(hello.contains("{ return rez_deref_cell(mediator); }") &&
             !hello.contains("{ return rez_deref_cell_inline(mediator); }"),
             "public deref wrapper keeps the portable helper")) return 1;
     String ring = emit_lib_artifact("bench/ring.rza",
         temp_path("frame-free-ring.c"))!;
-    if (!expect(text_count(ring, "p_push();") == 2 &&
+    if (!expect(text_count(ring, "if (!p_push()) goto rza_fault;") == 1 &&
             !ring.contains("rza_push();"),
             "internal calls bypass empty proc lifecycle")) return 1;
     String raised = emit_lib_artifact("tests/lib_raise.rza",
         temp_path("frame-owning-raise.c"))!;
-    if (!expect(!raised.contains("static void p_setup(void) {") &&
+    if (!expect(raised.contains("static bool p_setup(void) {") &&
+            raised.contains("RzaResult rza_setup(void) {") &&
             text_count(raised, "rez_frame_reset(&f_P_setup") == 1,
-            "frame-owning procedure keeps the original emitter")) return 1;
+            "frame-owning procedure keeps core and host wrappers separate")) return 1;
     String[] sources = { "tests/cascade.rza", "bench/table.rza", "bench/parser.rza" };
     for (sz i = 0; i < sources.len; i++) {
         String generated = emit_artifact(sources[i], temp_path("deref-negative.c"))!;

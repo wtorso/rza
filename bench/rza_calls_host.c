@@ -16,10 +16,10 @@
 
 uint32_t rza_rez3ext_abi(void);
 void *rza_deref_cell(RezCellMed mediator);
-void rza_boot(void);
-void rza_reset(void);
-void rza_work(void);
-void rza_workload(void);
+RzaResult rza_boot(void);
+RzaResult rza_reset(void);
+RzaResult rza_work(void);
+RzaResult rza_workload(void);
 RezCellMed rza_med_state_m(void);
 
 static uint64_t read_state(void) {
@@ -32,28 +32,32 @@ static uint64_t read_state(void) {
 
 void workload_prepare(void) {
     if (rza_rez3ext_abi() != REZ3EXT_ABI) exit(2);
-    rza_boot();
+    if (rza_boot().code != RZA_OK) exit(1);
 }
 
 #if defined(CALLS_INTERNAL)
 uint64_t workload_step(void) {
-    rza_workload();
+    if (rza_workload().code != RZA_OK) exit(1);
     return read_state();
 }
 #elif defined(CALLS_ABI_DIRECT)
 uint64_t workload_step(void) {
-    rza_reset();
+    if (rza_reset().code != RZA_OK) exit(1);
     CALLS_NO_UNROLL
-    for (uint64_t iteration = 0; iteration < CALL_COUNT; iteration++) rza_work();
+    for (uint64_t iteration = 0; iteration < CALL_COUNT; iteration++) {
+        if (rza_work().code != RZA_OK) exit(1);
+    }
     return read_state();
 }
 #elif defined(CALLS_ABI_INDIRECT)
-static void (*volatile work_target)(void) = rza_work;
+static RzaResult (*volatile work_target)(void) = rza_work;
 
 uint64_t workload_step(void) {
-    rza_reset();
+    if (rza_reset().code != RZA_OK) exit(1);
     CALLS_NO_UNROLL
-    for (uint64_t iteration = 0; iteration < CALL_COUNT; iteration++) work_target();
+    for (uint64_t iteration = 0; iteration < CALL_COUNT; iteration++) {
+        if (work_target().code != RZA_OK) exit(1);
+    }
     return read_state();
 }
 #else
