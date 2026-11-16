@@ -323,6 +323,33 @@ fn void emit_fault_support(Output* out) {
     out.append_string("    }\n");
     out.append_string("    exit(1);\n");
     out.append_string("}\n\n");
+    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_frame_fault(\n");
+    out.append_string("    int line, const char *name\n");
+    out.append_string(") {\n");
+    out.append_string("    fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\",\n");
+    out.append_string("        line, name);\n");
+    out.append_string("    exit(1);\n");
+    out.append_string("}\n\n");
+    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_arena_fault(\n");
+    out.append_string("    int line, const char *kind, const char *name\n");
+    out.append_string(") {\n");
+    out.append_string("    fprintf(stderr, \"FAULT line %d: arena overflow (%s %s)\\n\",\n");
+    out.append_string("        line, kind, name);\n");
+    out.append_string("    exit(1);\n");
+    out.append_string("}\n\n");
+    out.append_string("[[maybe_unused]] [[noreturn]] static void rez3asm_pending_fault(\n");
+    out.append_string("    int line, const char *name\n");
+    out.append_string(") {\n");
+    out.append_string("    fprintf(stderr, \"FAULT line %d: async task %s already pending\\n\",\n");
+    out.append_string("        line, name);\n");
+    out.append_string("    exit(1);\n");
+    out.append_string("}\n\n");
+    out.append_string("[[maybe_unused]] static void rez3asm_abort(\n");
+    out.append_string("    int line, const char *cascade, const char *name\n");
+    out.append_string(") {\n");
+    out.append_string("    fprintf(stderr, \"ABORT line %d: cascade %s: dead mediator %s\\n\",\n");
+    out.append_string("        line, cascade, name);\n");
+    out.append_string("}\n\n");
 }
 
 fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
@@ -521,10 +548,8 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
             pad(out, ind);
             out.appendf("if (!%s) {\n", frames[ins.x].cname);
             pad(out, ind + 1);
-            out.appendf("fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\");\n",
+            out.appendf("rez3asm_frame_fault(%d, \"%s\");\n",
                         ins.line, frames[ins.x].name);
-            pad(out, ind + 1);
-            out.append_string("exit(1);\n");
             pad(out, ind);
             out.append_string("}\n");
         case Op.RES:
@@ -534,10 +559,8 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
             pad(out, ind);
             out.appendf("if (!%s) {\n", cells[ins.x].cname);
             pad(out, ind + 1);
-            out.appendf("fprintf(stderr, \"FAULT line %d: arena overflow (cell %s)\\n\");\n",
+            out.appendf("rez3asm_arena_fault(%d, \"cell\", \"%s\");\n",
                         ins.line, cells[ins.x].name);
-            pad(out, ind + 1);
-            out.append_string("exit(1);\n");
             pad(out, ind);
             out.append_string("}\n");
             emit_hoisted_meds(out, ind, ins.x);
@@ -583,10 +606,7 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
     pad(out, ind);
     out.appendf("if (ac_pending_%d) {\n", ca.seq);
     pad(out, ind + 1);
-    out.appendf("fprintf(stderr, \"FAULT line %d: async task %s already pending\\n\");\n",
-                ca.line, ca.name);
-    pad(out, ind + 1);
-    out.append_string("exit(1);\n");
+    out.appendf("rez3asm_pending_fault(%d, \"%s\");\n", ca.line, ca.name);
     pad(out, ind);
     out.append_string("}\n");
     for (int i = 0; i < ca.med_count; i++) {
@@ -594,8 +614,8 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
         pad(out, ind);
         out.appendf("if (!rez_deref_cell(%s)) {\n", meds[mi].cname);
         pad(out, ind + 1);
-        out.appendf("fprintf(stderr, \"ABORT line %d: cascade %s: "
-                    "dead mediator %s\\n\");\n", ca.line, ca.name, meds[mi].name);
+        out.appendf("rez3asm_abort(%d, \"%s\", \"%s\");\n",
+                    ca.line, ca.name, meds[mi].name);
         pad(out, ind + 1);
         out.appendf("goto casc_end_%d;\n", ca.seq);
         pad(out, ind);
@@ -607,10 +627,8 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
     pad(out, ind);
     out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
     pad(out, ind + 1);
-    out.appendf("fprintf(stderr, \"FAULT line %d: arena overflow (out %s)\\n\");\n",
+    out.appendf("rez3asm_arena_fault(%d, \"out\", \"%s\");\n",
                 ca.line, cells[ca.out_cell].name);
-    pad(out, ind + 1);
-    out.append_string("exit(1);\n");
     pad(out, ind);
     out.append_string("}\n");
     emit_clear_meds(out, ind, ca.out_cell);
@@ -634,10 +652,7 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
     pad(out, ind);
     out.appendf("if (!rez_async_enqueue(&g_async, ac_run_%d, "
                 "&ac_state_%d, &ac_pending_%d)) {\n", ca.seq, ca.seq, ca.seq);
-    pad(out, ind + 1);
-    out.appendf("fprintf(stderr, \"FAULT line %d: async queue full\\n\");\n", ca.line);
-    pad(out, ind + 1);
-    out.append_string("exit(1);\n");
+    emit_fault(out, ind + 1, ca.line, "async queue full", "");
     pad(out, ind);
     out.append_string("}\n");
 }
@@ -680,8 +695,8 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
         pad(out, ind);
         out.appendf("if (!p_%s) {\n", meds[mi].name);
         pad(out, ind + 1);
-        out.appendf("fprintf(stderr, \"ABORT line %d: cascade %s: "
-                    "dead mediator %s\\n\");\n", ca.line, ca.name, meds[mi].name);
+        out.appendf("rez3asm_abort(%d, \"%s\", \"%s\");\n",
+                    ca.line, ca.name, meds[mi].name);
         pad(out, ind + 1);
         out.appendf("goto casc_end_%d;\n", ca.seq);
         pad(out, ind);
@@ -694,10 +709,8 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
     pad(out, ind);
     out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
     pad(out, ind + 1);
-    out.appendf("fprintf(stderr, \"FAULT line %d: arena overflow (out %s)\\n\");\n",
+    out.appendf("rez3asm_arena_fault(%d, \"out\", \"%s\");\n",
                 ca.line, cells[ca.out_cell].name);
-    pad(out, ind + 1);
-    out.append_string("exit(1);\n");
     pad(out, ind);
     out.append_string("}\n");
     emit_hoisted_meds(out, ind, ca.out_cell);
@@ -807,8 +820,8 @@ fn void emit_async_callback(Output* out, int ci) {
         out.appendf("    void *p_%s = rez_deref_cell(ac_state_%d.meds[%d]);\n",
                     meds[mi].name, ca.seq, i);
         out.appendf("    if (!p_%s) {\n", meds[mi].name);
-        out.appendf("        fprintf(stderr, \"ABORT line %d: cascade %s: "
-                    "dead mediator %s\\n\");\n", ca.line, ca.name, meds[mi].name);
+        out.appendf("        rez3asm_abort(%d, \"%s\", \"%s\");\n",
+                    ca.line, ca.name, meds[mi].name);
         out.appendf("        ac_pending_%d = false;\n", ca.seq);
         out.append_string("        return false;\n");
         out.append_string("    }\n");
@@ -1062,8 +1075,7 @@ fn void emit_proc_entry(Output* out, Proc* p) {
 
 fn void emit_proc_frame_reset(Output* out, Proc* p) {
     out.appendf("    if (!rez_frame_reset(&%s, f_field, A_%s, %d)) {\n"
-                "        fprintf(stderr, \"FAULT line %d: frame allocation %s\\n\");\n"
-                "        exit(1);\n"
+                "        rez3asm_frame_fault(%d, \"%s\");\n"
                 "    }\n",
                 frames[p.frame].cname, frames[p.frame].cname,
                 frames[p.frame].cap, p.line, p.name);
@@ -1154,8 +1166,7 @@ fn void emit_main(Output* out) {
     assert(wr <= 0xFFFF);
     emit_regs_decl(out, 1, rd | wr);
     out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n"
-                "        fprintf(stderr, \"FAULT line 0: frame allocation field\\n\");\n"
-                "        exit(1);\n"
+                "        rez3asm_frame_fault(0, \"field\");\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
     emit_async_drain(out);
@@ -1182,8 +1193,7 @@ fn void emit_boot(Output* out) {
     assert(wr <= 0xFFFF);
     emit_regs_decl(out, 1, rd | wr);
     out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n"
-                "        fprintf(stderr, \"FAULT line 0: frame allocation field\\n\");\n"
-                "        exit(1);\n"
+                "        rez3asm_frame_fault(0, \"field\");\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
     out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());

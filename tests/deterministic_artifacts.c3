@@ -218,6 +218,17 @@ fn int? check_fault_helper_artifact() {
     if (!expect(bounds.contains("rez3asm_fault(6, \"out of bounds\", \"x_m\");") &&
             !bounds.contains("fprintf(stderr, \"FAULT line 6: out of bounds"),
             "dynamic bounds use the cold helper")) return 1;
+    String asynchronous = emit_artifact("tests/async_repeat.rza",
+        temp_path("async-cold-helpers.c"))!;
+    if (!expect(asynchronous.contains("rez3asm_arena_fault(1, \"cell\", \"x\");") &&
+            asynchronous.contains("rez3asm_frame_fault(0, \"field\");") &&
+            asynchronous.contains("rez3asm_pending_fault(5, \"bump\");") &&
+            asynchronous.contains("rez3asm_arena_fault(5, \"out\", \"out\");") &&
+            asynchronous.contains("rez3asm_fault(5, \"async queue full\", nullptr);") &&
+            asynchronous.contains("rez3asm_abort(5, \"bump\", \"x_m\");") &&
+            !asynchronous.contains("fprintf(stderr, \"FAULT line 5:") &&
+            !asynchronous.contains("fprintf(stderr, \"ABORT line 5:"),
+            "async ownership and queue diagnostics use cold helpers")) return 1;
     return 0;
 }
 
