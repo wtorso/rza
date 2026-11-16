@@ -13,7 +13,8 @@ void *rza_deref_cell(RezCellMed mediator);
 int main(void) {
     if (rza_rez3ext_abi() != 5) return 10;
     if (rza_boot().code != RZA_OK) return 14;
-    if (rza_await().completed != 0) return 11;
+    RzaAwaitResult awaited = rza_await();
+    if (awaited.result.code != RZA_OK || awaited.completed != 0) return 11;
     int64_t value = -1;
     memcpy(&value, rza_deref_cell(rza_med_x_m()), sizeof(value));
     if (value != 1) return 12;

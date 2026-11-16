@@ -656,7 +656,9 @@ run_viol viol_layout_scope STRUCT tests/viol_layout_scope.stderr
 run_viol viol_layout_index STRUCT tests/viol_layout_index.stderr
 run_good views
 run_good view_sync
+run_dead view_sync_skipped "FAULT line 8: dead mediator local_m"
 run_good view_async_out
+run_good view_unconstructed
 run_dead view_fault_range "FAULT line 4: invalid view bad_m"
 run_dead view_fault_access "FAULT line 5: out of bounds dynamic_m"
 run_dead view_fault_dead "FAULT line 6: dead mediator dead_view_m"
@@ -776,6 +778,8 @@ run_lib lib_hello
 run_lib lib_typed
 run_lib lib_result
 run_lib lib_boot_fault
+run_lib lib_sync_fault
+run_lib lib_view_reconstruct
 run_lib_compile crc32c_name_collision
 run_lib_compile lib_scope
 run_lib_compile lib_fault_name
@@ -800,8 +804,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=201
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=200; fi
+EXPECTED_PASS=205
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=204; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

@@ -1,0 +1,10 @@
+res raw, field, 16
+med raw_m, raw, field
+casc slice: raw_m -> out[field]
+    mov %r0, 0
+    brz %r0, skip_view
+    view local_m, raw_m, 0, 8
+skip_view:
+    load %r1, [local_m + 0]
+endc
+ret

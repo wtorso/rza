@@ -1,0 +1,15 @@
+res x, field, 8
+med x_m, x, field
+acasc bump: x_m -> out
+    load %r0, [x_m + 0]
+    inc %r0
+    store [x_m + 0], %r0
+endc
+await %r0
+med out_m, out, field
+mov %r0, 0
+brz %r0, skip
+view empty_m, out_m, 0, 0
+skip:
+probe empty_m
+ret

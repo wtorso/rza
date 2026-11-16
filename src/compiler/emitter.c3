@@ -468,6 +468,15 @@ fn void emit_hoist_guard(Output* out, int ind, Instr* ins) {
     out.append_string("}\n");
 }
 
+fn void emit_casc_view_guard(Output* out, int ind, Instr* ins, bool in_casc) {
+    if (!in_casc || meds[ins.x].cascade < 0) return;
+    pad(out, ind);
+    out.appendf("if (!p_%s) {\n", meds[ins.x].name);
+    emit_fault(out, ind + 1, ins.line, "dead mediator", meds[ins.x].name);
+    pad(out, ind);
+    out.append_string("}\n");
+}
+
 fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     DString* oex = load_offset_scratch.acquire(OFFSET_STRING_BYTES);
     assert(oex != null);
@@ -489,6 +498,7 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
         out.append_string("}\n");
         ind++;
     }
+    emit_casc_view_guard(out, ind, ins, in_casc);
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
     if (ins.flag) {
@@ -522,6 +532,7 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
         out.append_string("}\n");
         ind++;
     }
+    emit_casc_view_guard(out, ind, ins, in_casc);
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
     if (ins.flag) {
@@ -641,9 +652,9 @@ fn void emit_view_build(Output* out, int ind, int mi) {
 	pad(out, ind + 1);
 	out.appendf("%s,\n", meds[source].cname);
 	pad(out, ind + 1);
-	out.appendf("%s,\n", view_snapshot_name(mi, "off"));
+	out.appendf("%s,\n", view_snapshot_name(mi, "next_off"));
 	pad(out, ind + 1);
-	out.appendf("%s,\n", view_snapshot_name(mi, "len"));
+	out.appendf("%s,\n", view_snapshot_name(mi, "next_len"));
 	pad(out, ind + 1);
 	out.appendf("%d, &%s\n", stride, meds[mi].cname);
 	pad(out, ind);
@@ -655,16 +666,23 @@ fn void emit_view_build(Output* out, int ind, int mi) {
 
 fn void emit_view(Output* out, int ind, int mi, bool in_casc) {
 	pad(out, ind);
-	out.appendf("%s = %s;\n", view_snapshot_name(mi, "off"),
+	out.appendf("%s = %s;\n", view_snapshot_name(mi, "next_off"),
 	            view_operand_expr(meds[mi].view_offset));
 	pad(out, ind);
-	out.appendf("%s = %s;\n", view_snapshot_name(mi, "len"),
+	out.appendf("%s = %s;\n", view_snapshot_name(mi, "next_len"),
 	            view_operand_expr(meds[mi].view_length));
 	emit_view_build(out, ind, mi);
+	pad(out, ind);
+	out.appendf("%s = %s;\n", view_snapshot_name(mi, "off"),
+	            view_snapshot_name(mi, "next_off"));
+	pad(out, ind);
+	out.appendf("%s = %s;\n", view_snapshot_name(mi, "len"),
+	            view_snapshot_name(mi, "next_len"));
+	pad(out, ind);
+	out.appendf("%s = true;\n", view_snapshot_name(mi, "init"));
 	if (!in_casc) return;
 	pad(out, ind);
-	out.appendf("[[maybe_unused]] void *p_%s = %s.cell;\n",
-	            meds[mi].name, meds[mi].cname);
+	out.appendf("p_%s = %s.cell;\n", meds[mi].name, meds[mi].cname);
 }
 
 fn void emit_own(Output* out, int ind, Instr* ins) {
@@ -826,6 +844,8 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
         emit_acasc_enqueue(out, ind, ins);
         return;
     }
+    pad(out, ind);
+    out.appendf("bool casc_ok_%d = false;\n", ca.seq);
     for (int i = 0; i < ca.med_count; i++) {
         int mi = ca.med_idxs[i];
         assert(mi >= 0);
@@ -847,17 +867,13 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
         pad(out, ind);
         out.append_string("}\n");
     }
+    for (sz i = 0; i < meds.len(); i++) {
+        if (meds[i].cascade != ca.seq - 1) continue;
+        pad(out, ind);
+        out.appendf("[[maybe_unused]] void *p_%s = nullptr;\n", meds[i].name);
+    }
     if (ca.out_cell < 0) return;
-    pad(out, ind);
-    out.appendf("%s = rez_cell_z(%s, 8);\n",
-                cells[ca.out_cell].cname, fexpr(ca.out_frame));
-    pad(out, ind);
-    out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
-    emit_coded_fault(out, ind + 1, "RZA_FAULT_ARENA", ca.line,
-                     "out", cells[ca.out_cell].name);
-    pad(out, ind);
-    out.append_string("}\n");
-    emit_hoisted_meds(out, ind, ca.out_cell);
+    emit_clear_meds(out, ind, ca.out_cell);
 }
 
 fn void emit_mov(Output* out, int ind, Instr* ins) {
@@ -907,6 +923,41 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
     }
 }
 
+fn void emit_async_publish_view(Output* out, int ind, int cell, int mi) {
+    int source = meds[mi].view_source;
+    int ci = meds[mi].cell;
+    int stride = cells[ci].layout >= 0 ? layouts[cells[ci].layout].size_bytes : 1;
+    String source_name = meds[source].view_source >= 0
+        ? view_snapshot_name(source, "pub") : meds[source].cname;
+    pad(out, ind);
+    out.appendf("RezCellMed %s;\n", view_snapshot_name(mi, "pub"));
+    pad(out, ind);
+    out.appendf("rez_cell_med_clear(&%s);\n", view_snapshot_name(mi, "pub"));
+    pad(out, ind);
+    out.appendf("if (%s) {\n", view_snapshot_name(mi, "init"));
+    pad(out, ind + 1);
+    out.append_string("if (!rez_view_cell(\n");
+    pad(out, ind + 2);
+    out.appendf("%s,\n", source_name);
+    pad(out, ind + 2);
+    out.appendf("%s,\n", view_snapshot_name(mi, "off"));
+    pad(out, ind + 2);
+    out.appendf("%s,\n", view_snapshot_name(mi, "len"));
+    pad(out, ind + 2);
+    out.appendf("%d, &%s\n", stride, view_snapshot_name(mi, "pub"));
+    pad(out, ind + 1);
+    out.append_string(")) {\n");
+    emit_clear_meds(out, ind + 2, cell);
+    emit_fault(out, ind + 2, meds[mi].line, "invalid view", meds[mi].name);
+    pad(out, ind + 1);
+    out.append_string("}\n");
+    pad(out, ind + 1);
+    out.appendf("rez_cell_med_copy(&%s, &%s);\n",
+                meds[mi].cname, view_snapshot_name(mi, "pub"));
+    pad(out, ind);
+    out.append_string("}\n");
+}
+
 fn void emit_async_publish(Output* out, int ind, int cell, int seq) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
@@ -922,7 +973,7 @@ fn void emit_async_publish(Output* out, int ind, int cell, int seq) {
     }
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
-        if (meds[mi].view_source >= 0) emit_view_build(out, ind, mi);
+        if (meds[mi].view_source >= 0) emit_async_publish_view(out, ind, cell, mi);
     }
 }
 
@@ -1081,10 +1132,35 @@ fn void emit_casc_end(Output* out, int ind, Instr* ins) {
     assert(ca.block >= 0);
     assert(ca.block < (int)blocks.len());
     assert(ca.name.len > 0);
+    if (ca.is_async) {
+        pad(out, ind);
+        out.appendf("casc_end_%d:\n", ca.seq);
+        pad(out, ind + 1);
+        out.append_string("(void)0;\n");
+        pad(out, ind);
+        out.append_string("}\n");
+        return;
+    }
+    pad(out, ind);
+    out.appendf("casc_ok_%d = true;\n", ca.seq);
     pad(out, ind);
     out.appendf("casc_end_%d:\n", ca.seq);
     pad(out, ind + 1);
     out.append_string("(void)0;\n");
+    pad(out, ind);
+    out.appendf("if (casc_ok_%d) {\n", ca.seq);
+    pad(out, ind + 1);
+    out.appendf("%s = rez_cell_z(%s, 8);\n",
+                cells[ca.out_cell].cname, fexpr(ca.out_frame));
+    pad(out, ind + 1);
+    out.appendf("if (!%s) {\n", cells[ca.out_cell].cname);
+    emit_coded_fault(out, ind + 2, "RZA_FAULT_ARENA", ca.line,
+                     "out", cells[ca.out_cell].name);
+    pad(out, ind + 1);
+    out.append_string("}\n");
+    emit_hoisted_meds(out, ind + 1, ca.out_cell);
+    pad(out, ind);
+    out.append_string("}\n");
     pad(out, ind);
     out.append_string("}\n");
 }
@@ -1458,6 +1534,12 @@ fn void emit_view_snapshot_storage(Output* out, int mi) {
                 view_snapshot_name(mi, "off"));
     out.appendf("[[maybe_unused]] static uint64_t %s;\n",
                 view_snapshot_name(mi, "len"));
+    out.appendf("[[maybe_unused]] static uint64_t %s;\n",
+                view_snapshot_name(mi, "next_off"));
+    out.appendf("[[maybe_unused]] static uint64_t %s;\n",
+                view_snapshot_name(mi, "next_len"));
+    out.appendf("[[maybe_unused]] static bool %s;\n",
+                view_snapshot_name(mi, "init"));
 }
 
 fn void emit_static_storage(Output* out) {

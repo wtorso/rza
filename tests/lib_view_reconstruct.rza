@@ -1,0 +1,18 @@
+res x, field, 8
+med x_m, x, field
+res control, field, 8
+med control_m, control, field
+proc bump:
+    acasc bump: x_m -> out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    await %r0
+    ret
+med out_m, out, field
+proc update_view:
+    load %r0, [control_m + 0]
+    view tail_m, out_m, %r0, 4
+    ret
+ret

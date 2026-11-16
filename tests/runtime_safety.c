@@ -104,6 +104,27 @@ static int32_t check_checked_arithmetic(void) {
     return 0;
 }
 
+static int32_t check_forged_view_metadata(RezCellMed med) {
+    RezCellMed view = {0};
+    RezCellMed forged = med;
+    forged.owner = (RezCavity *)(uintptr_t)1;
+    CHECK(!rez_view_cell(forged, 0, 1, 1, &view));
+    forged = med;
+    forged.home = (RezCavity *)(uintptr_t)3;
+    CHECK(!rez_view_cell(forged, 0, 1, 1, &view));
+    forged = med;
+    forged.allocation = (uint32_t *)(uintptr_t)1;
+    forged.allocation_gen = 1;
+    CHECK(!rez_view_cell(forged, 0, 1, 1, &view));
+    forged = med;
+    forged.allocation_gen = 1;
+    CHECK(!rez_view_cell(forged, 0, 1, 1, &view));
+    forged = med;
+    forged.cell = (void *)UINTPTR_MAX;
+    CHECK(!rez_view_cell(forged, 1, 1, 1, &view));
+    return 0;
+}
+
 static int32_t check_allocation_generation(RezCavity *field, void *cell) {
     uint32_t generation = 1;
     RezCellMed view = {0};
@@ -174,10 +195,7 @@ static int32_t check_crc32c(void) {
 }
 
 int main(void) {
-    RezCavity field = {0};
-    RezCavity proc = {0};
-    RezCavity slot = {0};
-    RezCavity misaligned = {0};
+    RezCavity field = {0}, proc = {0}, slot = {0}, misaligned = {0};
     RezArena empty = {0};
     RezArena misaligned_arena = { .base = misaligned_storage + 1, .cap = 64 };
     RezCellMed med;
@@ -232,6 +250,7 @@ int main(void) {
     CHECK(check_crc32c() == 0);
     CHECK(check_view_ranges(med) == 0);
     CHECK(check_allocation_generation(&field, cell) == 0);
+    CHECK(check_forged_view_metadata(med) == 0);
 
     rez_decay(&field);
     CHECK(rez_deref_cell(med) == nullptr);

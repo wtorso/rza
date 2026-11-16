@@ -20,7 +20,8 @@ int main(void) {
     if (rza_deref_cell(pending) != nullptr) return 16;
     RezCellMed completed = rza_med_out_m();
     if (completed.cell == nullptr) return 12;
-    if (rza_await().completed != 0) return 13;
+    RzaAwaitResult awaited = rza_await();
+    if (awaited.result.code != RZA_OK || awaited.completed != 0) return 13;
     int64_t value = -1;
     memcpy(&value, rza_deref_cell(rza_med_x_m()), sizeof(value));
     if (value != 1) return 14;

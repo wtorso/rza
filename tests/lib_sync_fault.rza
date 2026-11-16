@@ -1,0 +1,8 @@
+res x, field, 8
+med x_m, x, field
+casc fail: x_m -> out[field]
+    mov %r0, 9223372036854775807
+    cadd %r0, %r0, 1
+endc
+med out_m, out, field
+ret

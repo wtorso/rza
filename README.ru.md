@@ -195,7 +195,10 @@ loadb %r0, [payload_m + %r1]
 длина сохраняет runtime bounds checks. Пустые views допустимы, в том числе на
 конце ячейки; вложенные views не могут расширить родителя.
 
-Views наследуют owner, home, lifetime и generation-проверки источника. Async OUT
+Views наследуют owner, home, lifetime и generation-проверки источника. Медиаторы,
+созданные host, должны содержать корректно выровненные metadata и описывать
+фактический размер объекта. Runtime проверяет арифметику и согласованность
+metadata, но не может валидировать произвольные non-null C-адреса. Async OUT
 переиспользует свои фиксированные 8 байт при каждом enqueue и увеличивает
 per-allocation generation, поэтому старые медиаторы и views не видят новую
 публикацию как прежнюю. Views создаются на верхнем уровне, в процедурах и внутри
@@ -316,7 +319,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=201 FAIL=0` на POSIX и `PASS=200 FAIL=0` на Windows.
+Ожидаемый результат: `PASS=205 FAIL=0` на POSIX и `PASS=204 FAIL=0` на Windows.
 На Windows не запускаются только специфичные для Linux проверки исходников
 benchmark; на Linux для них также нужен `rustc`.
 

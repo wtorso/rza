@@ -194,7 +194,10 @@ the offset or parent extent is dynamic. Dynamic lengths retain runtime bounds
 checks. Empty views, including one at the end of a cell, are valid; nested views
 cannot widen their parent.
 
-Views inherit owner, home, lifetime, and generation checks. Async OUT cells reuse
+Views inherit owner, home, lifetime, and generation checks. Host-created
+mediators must contain valid aligned metadata and describe the actual object
+extent. The runtime checks arithmetic and metadata consistency but cannot
+validate arbitrary non-null C addresses. Async OUT cells reuse
 their fixed eight bytes on each enqueue and advance a per-allocation generation,
 so stale mediators and views cannot observe a later publication as if it were
 the old one. Create views at top level, in procedures, or inside synchronous cascades.
@@ -315,7 +318,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=201 FAIL=0` on POSIX and `PASS=200 FAIL=0` on Windows.
+Expected results are `PASS=205 FAIL=0` on POSIX and `PASS=204 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 

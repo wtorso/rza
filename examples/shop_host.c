@@ -10,7 +10,8 @@ void *rza_deref_cell(RezCellMed mediator);
 int main(void) {
     if (rza_rez3ext_abi() != 5) return 1;
     if (rza_boot().code != RZA_OK) return 4;
-    if (rza_await().completed != 0) return 2;
+    RzaAwaitResult awaited = rza_await();
+    if (awaited.result.code != RZA_OK || awaited.completed != 0) return 2;
     if (rza_deref_cell(rza_med_cart_m()) != nullptr) return 3;
     return 0;
 }

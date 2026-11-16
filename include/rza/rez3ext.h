@@ -225,6 +225,24 @@ void rez_cell_med_copy(RezCellMed *destination, const RezCellMed *source) {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
+bool rez_cell_med_metadata_ok(RezCellMed mediator) {
+    if (mediator.owner != nullptr
+            && (uintptr_t)mediator.owner % _Alignof(RezCavity) != 0) return false;
+    if (mediator.home != nullptr
+            && (uintptr_t)mediator.home % _Alignof(RezCavity) != 0) return false;
+    if (mediator.allocation != nullptr) {
+        if ((uintptr_t)mediator.allocation % _Alignof(uint32_t) != 0) return false;
+        if (mediator.allocation_gen == 0) return false;
+    } else {
+        if (mediator.allocation_gen != 0) return false;
+    }
+    return true;
+}
+
+[[maybe_unused]] static inline
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
 void *rez_deref_cell_inline(RezCellMed mediator) {
     if (mediator.cell == nullptr) return nullptr;
     if (mediator.owner == nullptr) return nullptr;
@@ -257,6 +275,7 @@ void *rez_deref_cell_inline(RezCellMed mediator) {
     return width <= mediator.size - offset;
 }
 
+/* The host guarantees the actual object extent; arbitrary addresses are not validated. */
 [[maybe_unused]] static inline
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
@@ -273,12 +292,15 @@ bool rez_view_cell(
     if (out == nullptr) return false;
     rez_cell_med_clear(out);
     if (stride == 0) return false;
+    if (!rez_cell_med_metadata_ok(source)) return false;
     if (rez_deref_cell_inline(source) == nullptr) return false;
     if (source.size % stride != 0) return false;
     elements = source.size / stride;
     if (offset > elements) return false;
     if (length > elements - offset) return false;
     byte_offset = offset * stride;
+    if (byte_offset > UINTPTR_MAX) return false;
+    if ((uintptr_t)source.cell > UINTPTR_MAX - byte_offset) return false;
     source.cell = (char *)source.cell + byte_offset;
     source.size = length * stride;
     rez_cell_med_copy(out, &source);
