@@ -18,6 +18,11 @@ enum OracleOpcode : char {
     CADD,
     CSUB,
     CMUL,
+    DIV,
+    MOD,
+    SHL,
+    SHR,
+    USHR,
     SLT,
     AND,
     LOAD,
@@ -25,6 +30,8 @@ enum OracleOpcode : char {
     PRINT,
     INC,
     DEC,
+    CINC,
+    CDEC,
     LABEL,
     BRZ,
     BRNZ,
@@ -119,7 +126,7 @@ fn int oracle_target_reg(OracleRng* rng) {
 }
 
 fn void oracle_random_op(OracleProgram* program, OracleRng* rng) {
-    int choice = rng.below(15);
+    int choice = rng.below(22);
     OracleOp op = {};
     op.dst = oracle_target_reg(rng);
     op.left = oracle_target_reg(rng);
@@ -137,16 +144,23 @@ fn void oracle_random_op(OracleProgram* program, OracleRng* rng) {
         case 5: op.code = OracleOpcode.CADD;
         case 6: op.code = OracleOpcode.CSUB;
         case 7: op.code = OracleOpcode.CMUL;
-        case 8: op.code = OracleOpcode.SLT;
-        case 9:
+        case 8: op.code = OracleOpcode.DIV;
+        case 9: op.code = OracleOpcode.MOD;
+        case 10: op.code = OracleOpcode.SHL;
+        case 11: op.code = OracleOpcode.SHR;
+        case 12: op.code = OracleOpcode.USHR;
+        case 13: op.code = OracleOpcode.SLT;
+        case 14:
             op.code = OracleOpcode.AND;
             op.literal = 56;
             op.literal_rhs = true;
-        case 10: op.code = OracleOpcode.LOAD;
-        case 11: op.code = OracleOpcode.STORE;
-        case 12: op.code = OracleOpcode.PRINT;
-        case 13: op.code = OracleOpcode.INC;
-        default: op.code = OracleOpcode.DEC;
+        case 15: op.code = OracleOpcode.LOAD;
+        case 16: op.code = OracleOpcode.STORE;
+        case 17: op.code = OracleOpcode.PRINT;
+        case 18: op.code = OracleOpcode.INC;
+        case 19: op.code = OracleOpcode.DEC;
+        case 20: op.code = OracleOpcode.CINC;
+        default: op.code = OracleOpcode.CDEC;
     }
     oracle_push(program, op);
 }
@@ -213,8 +227,13 @@ fn String oracle_source(OracleProgram* program) {
                 source.appendf("mov %%r%d, %%r%d\n", op.dst, op.left);
             case OracleOpcode.ADD: case OracleOpcode.SUB: case OracleOpcode.MUL:
             case OracleOpcode.CADD: case OracleOpcode.CSUB: case OracleOpcode.CMUL:
+            case OracleOpcode.DIV: case OracleOpcode.MOD: case OracleOpcode.SHL:
+            case OracleOpcode.SHR: case OracleOpcode.USHR:
             case OracleOpcode.SLT: case OracleOpcode.AND:
-                String[] names = { "add", "sub", "mul", "cadd", "csub", "cmul", "slt", "and" };
+                String[] names = {
+                    "add", "sub", "mul", "cadd", "csub", "cmul", "div", "mod",
+                    "shl", "shr", "ushr", "slt", "and"
+                };
                 int index = (int)op.code - (int)OracleOpcode.ADD;
                 source.appendf("%s %%r%d, %%r%d, %s\n", names[index],
                     op.dst, op.left, oracle_rhs(op));
@@ -228,6 +247,10 @@ fn String oracle_source(OracleProgram* program) {
                 source.appendf("inc %%r%d\n", op.dst);
             case OracleOpcode.DEC:
                 source.appendf("dec %%r%d\n", op.dst);
+            case OracleOpcode.CINC:
+                source.appendf("cinc %%r%d\n", op.dst);
+            case OracleOpcode.CDEC:
+                source.appendf("cdec %%r%d\n", op.dst);
             case OracleOpcode.LABEL:
                 source.appendf("l%d:\n", i);
             case OracleOpcode.BRZ:
@@ -272,6 +295,39 @@ fn bool oracle_checked(long left, long right, OracleOpcode code, long* result) {
     return false;
 }
 
+fn bool oracle_division(OracleOp op, long[] regs, DString* errors, int line) {
+    long left = regs[op.left];
+    long right = op.literal_rhs ? op.literal : regs[op.right];
+    if (right == 0 || (left == ORACLE_I64_MIN && right == -1)) {
+        oracle_coverage.division_faults++;
+        errors.appendf("FAULT line %d: division\n", line);
+        return true;
+    }
+    regs[op.dst] = op.code == OracleOpcode.DIV ? left / right : left % right;
+    return false;
+}
+
+fn bool oracle_shift(OracleOp op, long[] regs, DString* errors, int line) {
+    long right = op.literal_rhs ? op.literal : regs[op.right];
+    if (right < 0 || right >= 64) {
+        oracle_coverage.shift_faults++;
+        errors.appendf("FAULT line %d: shift\n", line);
+        return true;
+    }
+    uint shift = (uint)right;
+    long left = regs[op.left];
+    if (op.code == OracleOpcode.SHL) {
+        regs[op.dst] = oracle_from_bits((ulong)left << shift);
+        return false;
+    }
+    ulong raw = (ulong)left >> shift;
+    if (op.code == OracleOpcode.SHR && left < 0 && shift > 0) {
+        raw |= ~(ulong)0 << (64 - shift);
+    }
+    regs[op.dst] = oracle_from_bits(raw);
+    return false;
+}
+
 fn bool oracle_memory(OracleOp op, long[] regs, char[] cells, DString* errors, int line) {
     long offset = regs[op.right];
     if (offset < 0 || offset > 56) {
@@ -290,6 +346,13 @@ fn bool oracle_memory(OracleOp op, long[] regs, char[] cells, DString* errors, i
 fn bool oracle_apply(OracleOp op, long[] regs, DString* errors, int line) {
     long left = regs[op.left];
     long right = op.literal_rhs ? op.literal : regs[op.right];
+    if (op.code == OracleOpcode.DIV || op.code == OracleOpcode.MOD) {
+        return oracle_division(op, regs, errors, line);
+    }
+    if (op.code == OracleOpcode.SHL || op.code == OracleOpcode.SHR ||
+            op.code == OracleOpcode.USHR) {
+        return oracle_shift(op, regs, errors, line);
+    }
     if (op.code == OracleOpcode.SLT) {
         regs[op.dst] = left < right ? 1 : 0;
         return false;
@@ -350,6 +413,18 @@ fn OwnershipCase oracle_reference(OracleProgram* program) {
                 regs[op.dst] = oracle_wrap(regs[op.dst], 1, OracleOpcode.ADD);
             case OracleOpcode.DEC:
                 regs[op.dst] = oracle_wrap(regs[op.dst], 1, OracleOpcode.SUB);
+            case OracleOpcode.CINC:
+                if (oracle_checked(regs[op.dst], 1, OracleOpcode.CADD, &regs[op.dst])) {
+                    oracle_coverage.checked_overflows++;
+                    errors.appendf("FAULT line %d: arithmetic overflow\n", line);
+                    return oracle_result(output, errors, 1);
+                }
+            case OracleOpcode.CDEC:
+                if (oracle_checked(regs[op.dst], 1, OracleOpcode.CSUB, &regs[op.dst])) {
+                    oracle_coverage.checked_overflows++;
+                    errors.appendf("FAULT line %d: arithmetic overflow\n", line);
+                    return oracle_result(output, errors, 1);
+                }
             case OracleOpcode.PRINT:
                 output.appendf("%d\n", regs[op.left]);
             case OracleOpcode.BRZ:
@@ -372,10 +447,9 @@ fn OwnershipCase oracle_reference(OracleProgram* program) {
     return oracle_result(output, errors, 0);
 }
 
-fn bool oracle_world_fails(OracleWorld world) {
-    OracleProgram program = oracle_generate(world);
-    OwnershipCase expected = oracle_reference(&program);
-    expected.source = oracle_source(&program);
+fn bool oracle_program_fails(OracleProgram* program) {
+    OwnershipCase expected = oracle_reference(program);
+    expected.source = oracle_source(program);
     int? result = run_ownership_case(expected, "oracle-shrink.rza", false);
     if (catch result) {
         io::eprintn("oracle harness error");
@@ -383,6 +457,11 @@ fn bool oracle_world_fails(OracleWorld world) {
     }
     if (result != 0) io::eprintfn("oracle predicate status=%d", result);
     return result != 0;
+}
+
+fn bool oracle_world_fails(OracleWorld world) {
+    OracleProgram program = oracle_generate(world);
+    return oracle_program_fails(&program);
 }
 
 fn int? oracle_run_case(ulong seed) {
@@ -395,6 +474,51 @@ fn int? oracle_run_case(ulong seed) {
     OracleProgram program = oracle_generate(reduced);
     io::eprintn(oracle_source(&program));
     return 1;
+}
+
+fn int oracle_binary_edge(OracleOpcode code, long left, long right) {
+    OracleProgram program = {};
+    oracle_push(&program, {
+        .code = OracleOpcode.MOV_IMM, .dst = 0, .literal = left, .literal_rhs = true,
+    });
+    oracle_push(&program, {
+        .code = OracleOpcode.MOV_IMM, .dst = 1, .literal = right, .literal_rhs = true,
+    });
+    oracle_push(&program, { .code = code, .dst = 2, .left = 0, .right = 1 });
+    oracle_push(&program, { .code = OracleOpcode.PRINT, .left = 2 });
+    oracle_push(&program, { .code = OracleOpcode.RET });
+    if (!oracle_program_fails(&program)) return 0;
+    io::eprintn(oracle_source(&program));
+    return 1;
+}
+
+fn int oracle_unary_edge(OracleOpcode code, long value) {
+    OracleProgram program = {};
+    oracle_push(&program, {
+        .code = OracleOpcode.MOV_IMM, .dst = 0, .literal = value, .literal_rhs = true,
+    });
+    oracle_push(&program, { .code = code, .dst = 0, .left = 0 });
+    oracle_push(&program, { .code = OracleOpcode.PRINT, .left = 0 });
+    oracle_push(&program, { .code = OracleOpcode.RET });
+    if (!oracle_program_fails(&program)) return 0;
+    io::eprintn(oracle_source(&program));
+    return 1;
+}
+
+fn int? oracle_edges_run() {
+    long min = -9223372036854775807 - 1;
+    long max = 9223372036854775807;
+    if (oracle_binary_edge(OracleOpcode.DIV, min, -1) != 0) return 1;
+    if (oracle_binary_edge(OracleOpcode.MOD, 1, 0) != 0) return 1;
+    if (oracle_binary_edge(OracleOpcode.DIV, min, -2) != 0) return 1;
+    if (oracle_binary_edge(OracleOpcode.MOD, min, -2) != 0) return 1;
+    if (oracle_binary_edge(OracleOpcode.SHL, 1, 64) != 0) return 1;
+    if (oracle_binary_edge(OracleOpcode.SHL, 1, -1) != 0) return 1;
+    if (oracle_binary_edge(OracleOpcode.SHR, min, 63) != 0) return 1;
+    if (oracle_binary_edge(OracleOpcode.USHR, min, 63) != 0) return 1;
+    if (oracle_unary_edge(OracleOpcode.CINC, max) != 0) return 1;
+    if (oracle_unary_edge(OracleOpcode.CDEC, min) != 0) return 1;
+    return 0;
 }
 
 fn int oracle_main() {
@@ -414,10 +538,11 @@ fn int? oracle_run() {
     for (ulong seed = 1; seed <= 64; seed++) {
         if (oracle_run_case(seed)! != 0) return 1;
     }
+    if (oracle_edges_run()! != 0) return 1;
     if (proc_oracle_run()! != 0) return 1;
     if (cascade_oracle_run()! != 0) return 1;
     if (!oracle_coverage_ok()) return 1;
     oracle_coverage_print();
-    io::printn("EXECUTION_ORACLE OK (164 programs)");
+    io::printn("EXECUTION_ORACLE OK (174 programs)");
     return 0;
 }
