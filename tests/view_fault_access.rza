@@ -1,0 +1,6 @@
+res raw, field, 32
+med raw_m, raw, field
+mov %r0, 4
+view dynamic_m, raw_m, 0, %r0
+load %r1, [dynamic_m + 7]
+ret

@@ -1,0 +1,5 @@
+res raw, field, 32
+med raw_m, raw, field
+mov %r0, -1
+view bad_m, raw_m, %r0, 1
+ret

@@ -1,0 +1,7 @@
+cav tmp, field
+res raw, tmp, 8
+med raw_m, raw, tmp
+view dead_view_m, raw_m, 0, 8
+decay tmp
+load %r0, [dead_view_m + 0]
+ret

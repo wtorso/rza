@@ -214,7 +214,7 @@ fn bool parse_layout_use(
 }
 
 fn bool check_typed_access(
-	int cell_index,
+	int mediator_index,
 	String field_name,
 	String opname,
 	int index,
@@ -222,7 +222,7 @@ fn bool check_typed_access(
 	int line,
 	int* field_index
 ) {
-	Cell* cell = &cells[cell_index];
+	Cell* cell = &cells[meds[mediator_index].cell];
 	assert(cell.layout >= 0);
 	if (field_name.len == 0) {
 		viol(line, "STRUCT", cat({ "typed cell requires field selector in ", opname }));
@@ -239,7 +239,8 @@ fn bool check_typed_access(
 		viol(line, "STRUCT", cat({ "opcode does not match layout field ", field_name }));
 		return false;
 	}
-	if (index_reg < 0 && (index < 0 || index >= cell.element_count)) {
+	int extent = meds[mediator_index].extent;
+	if (index_reg < 0 && (index < 0 || (extent >= 0 && index >= extent))) {
 		viol(line, "STRUCT", cat({ opname, " element index out of bounds" }));
 		return false;
 	}

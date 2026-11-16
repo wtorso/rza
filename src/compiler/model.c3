@@ -96,6 +96,12 @@ struct Cell {
 	int med_count;
 }
 
+struct ViewOperand {
+	bool is_immediate;
+	int reg;
+	long immediate;
+}
+
 struct Med {
 	String name;
 	int line;
@@ -107,6 +113,10 @@ struct Med {
 	uint home_gen;
 	String cname;
 	int scope;
+	int view_source; // исходный медиатор, -1 = полная ячейка
+	int extent; // байты или элементы; -1 = динамическая длина
+	ViewOperand view_offset;
+	ViewOperand view_length;
 }
 
 struct Proc {
@@ -149,6 +159,7 @@ enum Op : char {
 	CAV,
 	RES,
 	MED,
+	VIEW,
 	RAISE,
 	DECAY,
 	PROBE,

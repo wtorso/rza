@@ -1,0 +1,26 @@
+res x, field, 8
+med x_m, x, field
+mov %r2, 2
+loop:
+acasc bump: x_m -> out
+    load %r0, [x_m + 0]
+    inc %r0
+    store [x_m + 0], %r0
+endc
+await %r0
+slt %r3, %r2, 2
+brnz %r3, published
+med out_m, out, field
+view tail_m, out_m, 4, 4
+view nested_m, tail_m, 1, 2
+published:
+probe tail_m
+mov %r0, 3
+loadb %r1, [tail_m + %r0]
+print %r1
+mov %r0, 1
+loadb %r1, [nested_m + %r0]
+print %r1
+dec %r2
+brnz %r2, loop
+ret

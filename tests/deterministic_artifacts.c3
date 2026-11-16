@@ -26,6 +26,10 @@ const String TYPED_ARTIFACT_SOURCE = "layout Entry: key:i64, value:i64\n"
     "mov %r0, 1\nstore [entries_m + %r0].value, %r0\n"
     "load %r1, [entries_m + 0].key\nprint %r1\nret\n";
 
+const String VIEW_ARTIFACT_SOURCE = "res raw, field, 16\nmed raw_m, raw, field\n"
+    "mov %r0, 8\nview dynamic_m, raw_m, 0, %r0\n"
+    "load %r1, [dynamic_m + 0]\nprint %r1\nret\n";
+
 fn String? emit_artifact(String source, String output) {
     String[] command = { compiler_path(), source, "--emit-c", "-o", output };
     ProcessResult result = run_simple(command)!;
@@ -98,6 +102,15 @@ fn int? check_paths_and_indexed() {
     if (!expect(typed_first == typed_second &&
             typed_first.starts_with(source_prefix(TYPED_ARTIFACT_SOURCE)),
             "typed artifact paths or hash")) return 1;
+    write_file(one, VIEW_ARTIFACT_SOURCE)!;
+    write_file(two, VIEW_ARTIFACT_SOURCE)!;
+    String view_first = emit_artifact(one, temp_path("view-first.c"))!;
+    String view_second = emit_artifact(two, temp_path("view-second.c"))!;
+    if (!expect(view_first == view_second &&
+            view_first.starts_with(source_prefix(VIEW_ARTIFACT_SOURCE)) &&
+            view_first.contains("rez_view_cell(") &&
+            view_first.contains("rez_cell_bounds(m_dynamic_m, 0, 8)"),
+            "view artifact paths, hash, or dynamic bounds")) return 1;
     char[] indexed = read_file("tests/indexed.rza", artifact_source_buf[..])!;
     String first_c = dstring::temp(emit_artifact("tests/indexed.rza",
         temp_path("indexed-first.c"))!).str_view();

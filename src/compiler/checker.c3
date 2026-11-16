@@ -621,7 +621,9 @@ fn void op_med(String rest, int line) {
 		.gen = frames[cells[ci].owner].gen,
 		.home_gen = frames[cells[ci].home].gen,
 		.cname = cname_for("m_", name),
-		.scope = cur_proc
+		.scope = cur_proc,
+		.view_source = -1,
+		.extent = cells[ci].layout >= 0 ? cells[ci].element_count : cells[ci].size
 	};
 	meds.push(m);
 	int mi = (int)meds.len() - 1;
@@ -629,6 +631,93 @@ fn void op_med(String rest, int line) {
 	cells[ci].med_idxs[cells[ci].med_count] = mi;
 	cells[ci].med_count++;
 	add_instr({ .op = Op.MED, .line = line, .x = mi });
+}
+
+fn bool parse_view_operand(String text, int line, ViewOperand* operand) {
+	*operand = { .reg = -1 };
+	if (is_int(text)) {
+		operand.is_immediate = true;
+		return parse_i64(text, line, &operand.immediate);
+	}
+	if (text.len > 0 && text[0] == '%') {
+		operand.reg = parse_reg(text, line);
+		return operand.reg >= 0;
+	}
+	viol(line, "STRUCT", cat({ "bad view operand ", text, " (want i64 or register)" }));
+	return false;
+}
+
+fn bool view_range_valid(int source, String name, ViewOperand offset,
+		ViewOperand length, int line) {
+	int ci = meds[source].cell;
+	int max = cells[ci].layout >= 0 ? cells[ci].element_count : cells[ci].size;
+	if (offset.is_immediate && (offset.immediate < 0 || offset.immediate > max)) {
+		viol(line, "STRUCT", cat({ "view range out of bounds ", name }));
+		return false;
+	}
+	if (length.is_immediate && (length.immediate < 0 || length.immediate > max)) {
+		viol(line, "STRUCT", cat({ "view range out of bounds ", name }));
+		return false;
+	}
+	if (meds[source].extent < 0 || !offset.is_immediate || !length.is_immediate) return true;
+	if (offset.immediate > meds[source].extent
+			|| length.immediate > meds[source].extent - offset.immediate) {
+		viol(line, "STRUCT", cat({ "view range out of bounds ", name }));
+		return false;
+	}
+	return true;
+}
+
+fn void op_view(String rest, int line) {
+	assert(line > 0);
+	assert(rest.len <= SOURCE_BYTES_MAX);
+	String[4] buf;
+	if (!split_ops_exact(rest, 4, line, "view", &buf)) return;
+	String name = buf[0];
+	if (!check_name(name, line)) return;
+	if (!name.ends_with("_m")) {
+		viol(line, "STRUCT", cat({ "mediator name ", name, " must end with _m" }));
+		return;
+	}
+	int source = find_med(buf[1], cur_proc);
+	if (source == -2) {
+		scope_viol(line, "mediator", buf[1]);
+		return;
+	}
+	if (source < 0) {
+		viol(line, "STRUCT", cat({ "view via unknown mediator ", buf[1] }));
+		return;
+	}
+	ViewOperand offset;
+	ViewOperand length;
+	if (!parse_view_operand(buf[2], line, &offset)) return;
+	if (!parse_view_operand(buf[3], line, &length)) return;
+	if (!view_range_valid(source, name, offset, length, line)) return;
+	if (!check_dup(name, line, cur_proc)) return;
+	if (med_map.has_key(name)) {
+		viol(line, "DUP", cat({ "duplicate mediator ", name }));
+		return;
+	}
+	if (at_capacity(meds.len(), line, "mediators")) return;
+	int ci = meds[source].cell;
+	if (cells[ci].med_count >= CELL_MED_MAX) {
+		viol(line, "STRUCT", "too many mediators for one cell");
+		return;
+	}
+	Med m = {
+		.name = name, .line = line, .name_column = source_column(name),
+		.cell = ci, .owner = meds[source].owner, .issuer = meds[source].issuer,
+		.gen = meds[source].gen, .home_gen = meds[source].home_gen,
+		.cname = cname_for("m_", name), .scope = cur_proc,
+		.view_source = source, .view_offset = offset, .view_length = length,
+		.extent = length.is_immediate ? (int)length.immediate : -1
+	};
+	meds.push(m);
+	int mi = (int)meds.len() - 1;
+	med_map.set(name, mi);
+	cells[ci].med_idxs[cells[ci].med_count] = mi;
+	cells[ci].med_count++;
+	add_instr({ .op = Op.VIEW, .line = line, .x = mi });
 }
 
 fn void op_raise(String rest, int line) {
@@ -817,7 +906,7 @@ fn int resolve_mem_med(
 	int ci = meds[mi].cell;
 	if (cells[ci].layout >= 0) {
 		if (!check_typed_access(
-			ci,
+			mi,
 			field_name,
 			opname,
 			*off,
@@ -831,8 +920,9 @@ fn int resolve_mem_med(
 			return -1;
 		}
 		int width = opname == "loadb" || opname == "storeb" ? 1 : 8;
-		int size  = cells[ci].size;
-		if (*off_reg < 0 && (*off < 0 || *off > size || width > size - *off)) {
+		int size  = meds[mi].extent;
+		bool fixed_bad = *off >= 0 && size >= 0 && (*off > size || width > size - *off);
+		if (*off_reg < 0 && (*off < 0 || fixed_bad)) {
 			viol(line, "STRUCT", cat({ opname, " out of bounds via ", mname }));
 			return -1;
 		}
@@ -1341,6 +1431,8 @@ fn void parse_instr(String line, int n, bool in_casc) {
 		op_res(rest, n);
 	} else if (op == "med") {
 		op_med(rest, n);
+	} else if (op == "view") {
+		op_view(rest, n);
 	} else if (op == "raise") {
 		op_raise(rest, n);
 	} else if (op == "decay") {

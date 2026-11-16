@@ -1,0 +1,4 @@
+res raw, field, 8
+med raw_m, raw, field
+view raw_v_m, raw_m, 7, 2
+ret

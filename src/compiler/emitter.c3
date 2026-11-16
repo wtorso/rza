@@ -181,6 +181,13 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
             case Op.STORE:
                 *rd |= 1u << ins.a;
                 if (ins.c >= 0) *rd |= 1u << ins.c;
+            case Op.VIEW:
+                if (!meds[ins.x].view_offset.is_immediate) {
+                    *rd |= 1u << meds[ins.x].view_offset.reg;
+                }
+                if (!meds[ins.x].view_length.is_immediate) {
+                    *rd |= 1u << meds[ins.x].view_length.reg;
+                }
             case Op.MOV:
                 if (!ins.flag && ins.a == ins.b) break;
                 *wr |= 1u << ins.a;
@@ -230,11 +237,11 @@ fn void emit_writeonly_silence(Output* out, int ind, uint rd, uint wr) {
     }
 }
 
-// Глобальный медиатор инициализируется при создании res или OUT.
+// Полные глобальные медиаторы инициализируются при создании res или OUT.
 fn void emit_hoisted_meds(Output* out, int ind, int cell) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
-        if (meds[mi].scope != 0) continue;
+        if (meds[mi].scope != 0 || meds[mi].view_source >= 0) continue;
         pad(out, ind);
         out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
                     meds[mi].cname, fexpr(meds[mi].owner),
@@ -352,20 +359,51 @@ fn void emit_fault_support(Output* out) {
     out.append_string("}\n\n");
 }
 
+fn void emit_dynamic_bounds_guard(Output* out, int ind, Instr* ins) {
+    Cell* cell = validated_access_cell(ins);
+    int width = ins.flag ? 1 : 8;
+    pad(out, ind);
+    if (cell.layout >= 0 && ins.c >= 0) {
+        int stride = layouts[cell.layout].size_bytes;
+        out.appendf("if (r%d < 0 || (uint64_t)r%d >= %s.size / %d) {\n",
+                    ins.c, ins.c, meds[ins.x].cname, stride);
+    } else {
+        long offset = ins.b;
+        if (cell.layout >= 0) {
+            int stride = layouts[cell.layout].size_bytes;
+            offset = offset * stride + layout_fields[ins.y].offset_bytes;
+        }
+        if (ins.c >= 0) {
+            out.appendf("if (!rez_cell_bounds(%s, (uint64_t)r%d, %d)) {\n",
+                        meds[ins.x].cname, ins.c, width);
+        } else {
+            out.appendf("if (!rez_cell_bounds(%s, %d, %d)) {\n",
+                        meds[ins.x].cname, offset, width);
+        }
+    }
+    emit_fault(out, ind + 1, ins.line, "out of bounds", meds[ins.x].name);
+    pad(out, ind);
+    out.append_string("}\n");
+}
+
 fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
+    int extent = meds[ins.x].extent;
+    if (extent < 0) {
+        emit_dynamic_bounds_guard(out, ind, ins);
+        return;
+    }
     if (ins.c < 0) return;
     Cell* cell = validated_access_cell(ins);
     pad(out, ind);
     if (cell.layout >= 0) {
-        out.appendf("if (r%d < 0 || (uint64_t)r%d >= %d) {\n",
-                    ins.c, ins.c, cell.element_count);
+        out.appendf("if (r%d < 0 || (uint64_t)r%d >= %d) {\n", ins.c, ins.c, extent);
     } else {
         int width = ins.flag ? 1 : 8;
-        assert(cell.size > 0 && width > 0);
-        if (cell.size < width) {
+        assert(width > 0);
+        if (extent < width) {
             out.append_string("if (1) {\n");
         } else {
-            out.appendf("if ((uint64_t)r%d > %d) {\n", ins.c, cell.size - width);
+            out.appendf("if ((uint64_t)r%d > %d) {\n", ins.c, extent - width);
         }
     }
     emit_fault(out, ind + 1, ins.line, "out of bounds", meds[ins.x].name);
@@ -534,6 +572,56 @@ fn void emit_label(Output* out, int ind, Instr* ins) {
     out.appendf("%s:\n", label_cname(ins.block, ins.s1));
 }
 
+fn String view_operand_expr(ViewOperand operand) {
+	if (operand.immediate == -9223372036854775807 - 1 && operand.is_immediate) {
+		return "(uint64_t)INT64_MIN";
+	}
+	DString out = dstring::new(workmem);
+	defer out.free();
+	if (operand.is_immediate) {
+		out.appendf("(uint64_t)%d", operand.immediate);
+	} else {
+		out.appendf("(uint64_t)r%d", operand.reg);
+	}
+	return out.copy_str(workmem);
+}
+
+fn String view_snapshot_name(int mi, String kind) {
+	return cat({ "v", kind, "_", meds[mi].cname });
+}
+
+fn void emit_view_build(Output* out, int ind, int mi) {
+	int source = meds[mi].view_source;
+	assert(source >= 0 && source < (int)meds.len());
+	int ci = meds[mi].cell;
+	int stride = cells[ci].layout >= 0 ? layouts[cells[ci].layout].size_bytes : 1;
+	pad(out, ind);
+	out.append_string("if (!rez_view_cell(\n");
+	pad(out, ind + 1);
+	out.appendf("%s,\n", meds[source].cname);
+	pad(out, ind + 1);
+	out.appendf("%s,\n", view_snapshot_name(mi, "off"));
+	pad(out, ind + 1);
+	out.appendf("%s,\n", view_snapshot_name(mi, "len"));
+	pad(out, ind + 1);
+	out.appendf("%d, &%s\n", stride, meds[mi].cname);
+	pad(out, ind);
+	out.append_string(")) {\n");
+	emit_fault(out, ind + 1, meds[mi].line, "invalid view", meds[mi].name);
+	pad(out, ind);
+	out.append_string("}\n");
+}
+
+fn void emit_view(Output* out, int ind, int mi) {
+	pad(out, ind);
+	out.appendf("%s = %s;\n", view_snapshot_name(mi, "off"),
+	            view_operand_expr(meds[mi].view_offset));
+	pad(out, ind);
+	out.appendf("%s = %s;\n", view_snapshot_name(mi, "len"),
+	            view_operand_expr(meds[mi].view_length));
+	emit_view_build(out, ind, mi);
+}
+
 fn void emit_own(Output* out, int ind, Instr* ins) {
     switch (ins.op) {
         case Op.CAV:
@@ -576,6 +664,8 @@ fn void emit_own(Output* out, int ind, Instr* ins) {
                         cells[ci].cname, cells[ci].size);
             pad(out, ind);
             out.append_string(");\n");
+        case Op.VIEW:
+            emit_view(out, ind, ins.x);
         case Op.RAISE:
             pad(out, ind);
             out.appendf("/* raise %s -> %s (line %d): static-only; "
@@ -765,10 +855,15 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
 fn void emit_async_publish(Output* out, int ind, int cell) {
     for (int i = 0; i < cells[cell].med_count; i++) {
         int mi = cells[cell].med_idxs[i];
+        if (meds[mi].view_source >= 0) continue;
         pad(out, ind);
         out.appendf("%s = rez_issue_cell(%s, %s, %s, %d);\n",
                     meds[mi].cname, fexpr(meds[mi].owner),
                     fexpr(cells[cell].home), cells[cell].cname, cells[cell].size);
+    }
+    for (int i = 0; i < cells[cell].med_count; i++) {
+        int mi = cells[cell].med_idxs[i];
+        if (meds[mi].view_source >= 0) emit_view_build(out, ind, mi);
     }
 }
 
@@ -946,7 +1041,7 @@ fn bool hoist_allowed(Op op) {
     switch (op) {
         case Op.LOAD: case Op.STORE: case Op.MOV: case Op.ALU3: case Op.ALU1:
         case Op.PRINT: case Op.LABEL: case Op.JMP: case Op.BRZ: case Op.BRNZ:
-        case Op.RET: case Op.RAISE: case Op.PROBE:
+        case Op.RET: case Op.RAISE: case Op.PROBE: case Op.VIEW:
             return true;
         default:
             return false;
@@ -987,7 +1082,7 @@ fn void emit_body(Output* out, int func) {
         switch (ins.op) {
             case Op.LABEL:
                 emit_label(out, ind, ins);
-            case Op.CAV: case Op.RES: case Op.MED:
+            case Op.CAV: case Op.RES: case Op.MED: case Op.VIEW:
             case Op.RAISE: case Op.DECAY: case Op.PROBE:
                 emit_own(out, ind, ins);
             case Op.CASC:
@@ -1220,7 +1315,7 @@ fn void emit_host_api(Output* out) {
         assert(meds[i].name.len > 0);
         assert(meds[i].gen > 0);
         out.appendf("RezCellMed rza_med_%s(void) {\n", meds[i].name);
-        if (!cells[ci].async_out) {
+        if (!cells[ci].async_out && meds[i].view_source < 0) {
             out.appendf("    if (!%s.cell) {\n", meds[i].cname);
             out.appendf("        %s = rez_issue_cell(\n", meds[i].cname);
             out.appendf("            %s, %s, %s, %d\n",
@@ -1246,6 +1341,13 @@ fn void emit_proc_frame_storage(Output* out, int pi) {
     if (proc_frame_free(pi)) out.append_string("[[maybe_unused]] ");
     out.appendf("_Alignas(REZ_ALIGNMENT) static char A_%s[%d];\n",
                 frames[procs[pi].frame].cname, frames[procs[pi].frame].cap);
+}
+
+fn void emit_view_snapshot_storage(Output* out, int mi) {
+    out.appendf("[[maybe_unused]] static uint64_t %s;\n",
+                view_snapshot_name(mi, "off"));
+    out.appendf("[[maybe_unused]] static uint64_t %s;\n",
+                view_snapshot_name(mi, "len"));
 }
 
 fn void emit_static_storage(Output* out) {
@@ -1282,6 +1384,7 @@ fn void emit_static_storage(Output* out) {
         if (meds[i].scope == 0) {
             out.appendf("[[maybe_unused]] static RezCellMed %s;\n", meds[i].cname);
         }
+        if (meds[i].view_source >= 0) emit_view_snapshot_storage(out, (int)i);
     }
     for (sz i = 0; i < procs.len(); i++) {
         assert(procs[i].frame >= 0);
