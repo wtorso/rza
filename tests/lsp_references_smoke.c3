@@ -351,6 +351,34 @@ fn int? reference_cascade_checks(Process* child) {
 	return status;
 }
 
+const String VIEW_REF_TEXT = "res raw, field, 16\n"
+    "med raw_m, raw, field\n"
+    "view raw_v_m, raw_m, 0, 8\n"
+    "view nested_m, raw_v_m, 1, 4\n"
+    "probe nested_m\n"
+    "ret\n";
+
+fn int? reference_view_checks(Process* child) {
+    if (set_reference_document(child, VIEW_REF_TEXT, 35)! != 0) return 1;
+    if (expect_references(child, 520, GOOD_URI, 1, 5, true,
+            { { 1, 4, 9 }, { 2, 14, 19 } }, "view source references")! != 0) return 1;
+    if (expect_references(child, 521, GOOD_URI, 2, 6, true,
+            { { 2, 5, 12 }, { 3, 15, 22 } }, "view declaration and nested use")! != 0) {
+        return 1;
+    }
+    if (expect_references(child, 522, GOOD_URI, 4, 8, true,
+            { { 3, 5, 13 }, { 4, 6, 14 } }, "nested view references")! != 0) return 1;
+    Object* response = rename_call(child, 523, GOOD_URI, 2, 6, "slice_m")!;
+    ExpectedLocation[] edits = { { 2, 5, 12 }, { 3, 15, 22 } };
+    if (!expect(rename_edit_matches(response, GOOD_URI, 35, "slice_m", edits),
+            "view rename edits")) return 1;
+    String edited = apply_rename(VIEW_REF_TEXT, response)!;
+    if (set_reference_document(child, edited, 36)! != 0) return 1;
+    if (set_reference_document(child, VIEW_REF_TEXT, 37)! != 0) return 1;
+    return expect_rename_error(child, 524, 1, 5, "raw_v_m", -32803,
+        "view collision rejects versioned rename");
+}
+
 fn String many_calls(int count) {
 	DString text = dstring::temp("proc p:\n    ret\n");
 	for (int i = 0; i < count; i++) text.append_string("call p\n");
@@ -427,6 +455,7 @@ fn int? references_checks(Process* child) {
 	if (reference_cascade_checks(child)! != 0) status = 1;
 	if (reference_limit_checks(child)! != 0) status = 1;
 	if (response_envelope_boundary_checks(child)! != 0) status = 1;
+	if (reference_view_checks(child)! != 0) status = 1;
 	if (rename_checks(child)! != 0) status = 1;
 	return status;
 }

@@ -91,6 +91,11 @@ fn void oracle_lower_features(OracleWorld* best, OraclePredicate fails) {
         candidate.backward_loop = false;
         if (fails(candidate)) *best = candidate;
     }
+    if (best.view_scenario != ViewScenario.NONE) {
+        OracleWorld candidate = *best;
+        candidate.view_scenario = ViewScenario.NONE;
+        if (fails(candidate)) *best = candidate;
+    }
     if (best.nested_calls) {
         OracleWorld candidate = *best;
         candidate.nested_calls = false;

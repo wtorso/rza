@@ -159,6 +159,7 @@ fn CompletionContext completion_context(NavPosition* pos, bool* allow_field) {
 	if (op == "res" && commas == 2) return CompletionContext.LAYOUT;
 	if (op == "med" && commas == 1) return CompletionContext.CELL;
 	if (op == "med" && commas == 2) return CompletionContext.FRAME;
+	if (op == "view" && commas == 1) return CompletionContext.MED;
 	if (op == "raise" && commas == 0) return CompletionContext.CELL;
 	if (op == "raise" && commas == 1) return CompletionContext.FRAME;
 	if (op == "probe") return CompletionContext.MED;

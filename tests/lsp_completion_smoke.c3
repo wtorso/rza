@@ -123,11 +123,22 @@ fn int? completion_limit_checks(Process* child) {
 	return 0;
 }
 
+fn int? completion_view_checks(Process* child) {
+	Object* response = lsp_call_json(child, change_message(VIEW_REF_TEXT, 40))!;
+	(void)response;
+	DString text = dstring::temp("res raw, field, 16\nmed raw_m, raw, field\n"
+		"view raw_v_m, raw_m, 0, 8\nview nested_m, ra\nret\n");
+	response = lsp_call_json(child, change_message(text.str_view(), 41))!;
+	(void)response;
+	return expect_completion(child, 130, 3, 17, { "raw_m", "raw_v_m" }, false);
+}
+
 fn int? completion_checks(Process* child) {
 	if (completion_name_checks(child)! != 0) return 1;
 	if (completion_scope_checks(child)! != 0) return 1;
 	if (completion_limit_checks(child)! != 0) return 1;
 	if (completion_regression_checks(child)! != 0) return 1;
+	if (completion_view_checks(child)! != 0) return 1;
 	return 0;
 }
 

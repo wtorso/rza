@@ -5,6 +5,7 @@ import std::core::dstring;
 import std::io;
 
 const int ORACLE_OPS_MAX = 64;
+bool oracle_view_mutation = false;
 const int ORACLE_STEP_LIMIT = 1024;
 const int128 ORACLE_I64_MAX = 9223372036854775807;
 const int128 ORACLE_I64_MIN = -9223372036854775807 - 1;
@@ -35,7 +36,17 @@ enum OracleOpcode : char {
     LABEL,
     BRZ,
     BRNZ,
+    VIEW,
     RET,
+}
+
+enum ViewScenario : char {
+    NONE,
+    VALID,
+    NESTED,
+    EMPTY,
+    INVALID,
+    NESTED_INVALID,
 }
 
 struct OracleOp {
@@ -44,13 +55,22 @@ struct OracleOp {
     int left;
     int right;
     int target;
+    int med;
     long literal;
+    long view_length;
     bool literal_rhs;
+    bool view_length_immediate;
 }
 
 struct OracleProgram {
     OracleOp[ORACLE_OPS_MAX] ops;
     int len;
+}
+
+struct OracleMed {
+    ulong offset;
+    ulong size;
+    bool valid;
 }
 
 struct OracleWorld {
@@ -69,6 +89,7 @@ struct OracleWorld {
     ProcFaultMode proc_fault;
     CascScenario cascade_scenario;
     int cascade_tasks;
+    ViewScenario view_scenario;
 }
 
 struct OracleRng {
@@ -170,9 +191,58 @@ fn void oracle_random_ops(OracleProgram* program, OracleRng* rng, int count) {
     for (int i = 0; i < count; i++) oracle_random_op(program, rng);
 }
 
+fn void oracle_generate_view(OracleProgram* program, ViewScenario scenario) {
+    if (scenario == ViewScenario.INVALID) {
+        oracle_push(program, {
+            .code = OracleOpcode.MOV_IMM, .dst = 0,
+            .literal = 9223372036854775807, .literal_rhs = true,
+        });
+        oracle_push(program, {
+            .code = OracleOpcode.VIEW, .med = 1, .right = 0,
+            .view_length = 8, .view_length_immediate = true,
+        });
+        return;
+    }
+    if (scenario == ViewScenario.NESTED_INVALID) {
+        oracle_push(program, { .code = OracleOpcode.MOV_IMM, .dst = 0, .literal = 4 });
+        oracle_push(program, {
+            .code = OracleOpcode.VIEW, .med = 1, .literal_rhs = true,
+        });
+        oracle_push(program, {
+            .code = OracleOpcode.VIEW, .med = 2, .left = 1, .literal_rhs = true,
+            .view_length = 8, .view_length_immediate = true,
+        });
+        return;
+    }
+    if (scenario == ViewScenario.EMPTY) {
+        oracle_push(program, {
+            .code = OracleOpcode.VIEW, .med = 1, .literal = 64, .literal_rhs = true,
+            .view_length_immediate = true,
+        });
+        return;
+    }
+    if (scenario == ViewScenario.NONE) return;
+    oracle_push(program, {
+        .code = OracleOpcode.VIEW, .med = 1, .literal = 8, .literal_rhs = true,
+        .view_length = 16, .view_length_immediate = true,
+    });
+    int med = 1;
+    if (scenario == ViewScenario.NESTED) {
+        oracle_push(program, {
+            .code = OracleOpcode.VIEW, .med = 2, .left = 1, .literal = 4,
+            .literal_rhs = true, .view_length = 8, .view_length_immediate = true,
+        });
+        med = 2;
+    }
+    oracle_push(program, { .code = OracleOpcode.MOV_IMM, .dst = 0 });
+    oracle_push(program, { .code = OracleOpcode.LOAD, .dst = 1, .right = 0, .med = med });
+    oracle_push(program, { .code = OracleOpcode.PRINT, .left = 1 });
+}
+
 fn OracleProgram oracle_generate(OracleWorld world) {
     OracleProgram program = {};
     OracleRng rng = { world.seed };
+    oracle_generate_view(&program, world.view_scenario);
     oracle_random_ops(&program, &rng, world.prefix_ops);
     if (world.forward_branch) {
         oracle_push(&program, {
@@ -216,6 +286,17 @@ fn String oracle_rhs(OracleOp op) {
     return string::tformat("%%r%d", op.right);
 }
 
+fn String oracle_med_name(int med) {
+    String[] names = { "cells_m", "view_m", "nested_m" };
+    assert(med >= 0 && med < (int)names.len);
+    return names[med];
+}
+
+fn String oracle_view_length(OracleOp op) {
+    if (op.view_length_immediate) return string::tformat("%d", op.view_length);
+    return string::tformat("%%r%d", op.target);
+}
+
 fn String oracle_source(OracleProgram* program) {
     DString source = dstring::temp("res cells, field, 64\nmed cells_m, cells, field\n");
     for (int i = 0; i < program.len; i++) {
@@ -238,9 +319,11 @@ fn String oracle_source(OracleProgram* program) {
                 source.appendf("%s %%r%d, %%r%d, %s\n", names[index],
                     op.dst, op.left, oracle_rhs(op));
             case OracleOpcode.LOAD:
-                source.appendf("load %%r%d, [cells_m + %%r%d]\n", op.dst, op.right);
+                source.appendf("load %%r%d, [%s + %%r%d]\n", op.dst,
+                    oracle_med_name(op.med), op.right);
             case OracleOpcode.STORE:
-                source.appendf("store [cells_m + %%r%d], %%r%d\n", op.right, op.left);
+                source.appendf("store [%s + %%r%d], %%r%d\n",
+                    oracle_med_name(op.med), op.right, op.left);
             case OracleOpcode.PRINT:
                 source.appendf("print %%r%d\n", op.left);
             case OracleOpcode.INC:
@@ -257,6 +340,9 @@ fn String oracle_source(OracleProgram* program) {
                 source.appendf("brz %%r%d, l%d\n", op.left, op.target);
             case OracleOpcode.BRNZ:
                 source.appendf("brnz %%r%d, l%d\n", op.left, op.target);
+            case OracleOpcode.VIEW:
+                source.appendf("view %s, %s, %s, %s\n", oracle_med_name(op.med),
+                    oracle_med_name(op.left), oracle_rhs(op), oracle_view_length(op));
             case OracleOpcode.RET:
                 source.append("ret\n");
         }
@@ -328,17 +414,43 @@ fn bool oracle_shift(OracleOp op, long[] regs, DString* errors, int line) {
     return false;
 }
 
-fn bool oracle_memory(OracleOp op, long[] regs, char[] cells, DString* errors, int line) {
-    long offset = regs[op.right];
-    if (offset < 0 || offset > 56) {
-        oracle_coverage.bounds_faults++;
-        errors.appendf("FAULT line %d: out of bounds cells_m\n", line);
+fn bool oracle_view(OracleOp op, long[] regs, OracleMed[] meds, DString* errors, int line) {
+    long offset = op.literal_rhs ? op.literal : regs[op.right];
+    long length = op.view_length_immediate ? op.view_length : regs[op.target];
+    OracleMed source = meds[op.left];
+    meds[op.med].valid = false;
+    if (!source.valid || offset < 0 || length < 0 || (ulong)offset > source.size
+            || (ulong)length > source.size - (ulong)offset) {
+        oracle_coverage.view_faults++;
+        errors.appendf("FAULT line %d: invalid view %s\n", line, oracle_med_name(op.med));
         return true;
     }
+    meds[op.med] = {
+        .offset = source.offset + (ulong)offset,
+        .size = (ulong)length,
+        .valid = true,
+    };
+    oracle_coverage.view_constructions++;
+    if (op.left > 0) oracle_coverage.nested_views++;
+    return false;
+}
+
+fn bool oracle_memory(OracleOp op, long[] regs, OracleMed[] meds, char[] cells,
+        DString* errors, int line) {
+    OracleMed med = meds[op.med];
+    long offset = regs[op.right];
+    if (!med.valid || offset < 0 || (ulong)offset > med.size
+            || 8 > med.size - (ulong)offset) {
+        oracle_coverage.bounds_faults++;
+        errors.appendf("FAULT line %d: out of bounds %s\n", line, oracle_med_name(op.med));
+        return true;
+    }
+    ulong physical = med.offset + (ulong)offset;
+    assert(physical <= 56);
     if (op.code == OracleOpcode.LOAD) {
-        libc::memcpy(&regs[op.dst], &cells[(sz)offset], 8);
+        libc::memcpy(&regs[op.dst], &cells[(sz)physical], 8);
     } else {
-        libc::memcpy(&cells[(sz)offset], &regs[op.left], 8);
+        libc::memcpy(&cells[(sz)physical], &regs[op.left], 8);
     }
     return false;
 }
@@ -386,18 +498,25 @@ fn OwnershipCase oracle_result(DString output, DString errors, int status) {
 fn OwnershipCase oracle_reference(OracleProgram* program) {
     long[16] regs = {};
     char[64] cells = {};
-    DString output = dstring::temp();
-    DString errors = dstring::temp();
-    int pc = 0;
-    int steps = 0;
+    OracleMed[3] meds = {};
+    meds[0] = { .size = 64, .valid = true };
+    DString output = dstring::temp(); DString errors = dstring::temp();
+    int pc = 0; int steps = 0;
     while (pc < program.len) {
         assert(steps < ORACLE_STEP_LIMIT);
         steps++;
         OracleOp op = program.ops[pc];
         oracle_coverage.opcodes[(int)op.code]++;
         int line = pc + 3;
+        if (op.code == OracleOpcode.VIEW) {
+            if (oracle_view(op, regs[..], meds[..], &errors, line)) {
+                return oracle_result(output, errors, 1);
+            }
+            pc++;
+            continue;
+        }
         if (op.code == OracleOpcode.LOAD || op.code == OracleOpcode.STORE) {
-            if (oracle_memory(op, regs[..], cells[..], &errors, line)) {
+            if (oracle_memory(op, regs[..], meds[..], cells[..], &errors, line)) {
                 return oracle_result(output, errors, 1);
             }
             pc++;
@@ -450,7 +569,9 @@ fn OwnershipCase oracle_reference(OracleProgram* program) {
 fn bool oracle_program_fails(OracleProgram* program) {
     OwnershipCase expected = oracle_reference(program);
     expected.source = oracle_source(program);
-    int? result = run_ownership_case(expected, "oracle-shrink.rza", false);
+    int? result = oracle_view_mutation
+        ? run_ownership_view_mutation(expected, "oracle-view-mutation.rza")
+        : run_ownership_case(expected, "oracle-shrink.rza", false);
     if (catch result) {
         io::eprintn("oracle harness error");
         return true;
@@ -505,6 +626,49 @@ fn int oracle_unary_edge(OracleOpcode code, long value) {
     return 1;
 }
 
+fn int? oracle_view_mutation_shrink() {
+    OracleWorld world = {
+        .seed = 0xB10E,
+        .prefix_ops = 4,
+        .forward_ops = 2,
+        .loop_ops = 2,
+        .suffix_ops = 4,
+        .loop_trips = 3,
+        .forward_branch = true,
+        .backward_loop = true,
+        .view_scenario = ViewScenario.INVALID,
+    };
+    oracle_view_mutation = true;
+    defer oracle_view_mutation = false;
+    if (!expect(oracle_world_fails(world), "view mutation escapes the oracle")) return 1;
+    OracleWorld reduced = oracle_shrink(world, &oracle_world_fails);
+    OracleProgram program = oracle_generate(reduced);
+    if (!expect(reduced.view_scenario == ViewScenario.INVALID && program.len == 3
+            && !reduced.forward_branch && !reduced.backward_loop,
+            "view mutation shrinks to mov, view and ret")) return 1;
+    return 0;
+}
+
+fn int? oracle_views_run() {
+    for (int scenario = 1; scenario <= 5; scenario++) {
+        OracleWorld world = oracle_world((ulong)(0x7100 + scenario));
+        world.prefix_ops = 0;
+        world.forward_ops = 0;
+        world.loop_ops = 0;
+        world.suffix_ops = 0;
+        world.forward_branch = false;
+        world.backward_loop = false;
+        world.view_scenario = (ViewScenario)scenario;
+        if (!oracle_world_fails(world)) continue;
+        io::eprintfn("view oracle scenario=%d", scenario);
+        OracleProgram program = oracle_generate(world);
+        io::eprintn(oracle_source(&program));
+        return 1;
+    }
+    if (oracle_view_mutation_shrink()! != 0) return 1;
+    return 0;
+}
+
 fn int? oracle_edges_run() {
     long min = -9223372036854775807 - 1;
     long max = 9223372036854775807;
@@ -539,10 +703,11 @@ fn int? oracle_run() {
         if (oracle_run_case(seed)! != 0) return 1;
     }
     if (oracle_edges_run()! != 0) return 1;
+    if (oracle_views_run()! != 0) return 1;
     if (proc_oracle_run()! != 0) return 1;
     if (cascade_oracle_run()! != 0) return 1;
     if (!oracle_coverage_ok()) return 1;
     oracle_coverage_print();
-    io::printn("EXECUTION_ORACLE OK (174 programs)");
+    io::printn("EXECUTION_ORACLE OK (179 programs)");
     return 0;
 }

@@ -2,7 +2,7 @@ module rza_tests;
 
 import std::io;
 
-const int ORACLE_OPCODE_COUNT = 26;
+const int ORACLE_OPCODE_COUNT = 27;
 
 struct OracleCoverage {
     ulong[ORACLE_OPCODE_COUNT] opcodes;
@@ -12,6 +12,9 @@ struct OracleCoverage {
     ulong division_faults;
     ulong shift_faults;
     ulong bounds_faults;
+    ulong view_constructions;
+    ulong nested_views;
+    ulong view_faults;
     ulong branch_taken;
     ulong branch_fallthrough;
     ulong forward_taken;
@@ -75,6 +78,9 @@ fn bool oracle_coverage_ok() {
             "oracle needs taken and untaken branches")) return false;
     if (!expect(oracle_coverage.forward_taken > 0 && oracle_coverage.backward_taken > 0,
             "oracle needs forward and backward taken branches")) return false;
+    if (!expect(oracle_coverage.view_constructions >= 5 && oracle_coverage.nested_views > 0
+            && oracle_coverage.view_faults >= 2,
+            "oracle needs valid, nested, empty and invalid views")) return false;
     OracleOpcode[] required = {
         OracleOpcode.MOV_IMM, OracleOpcode.MOV_REG, OracleOpcode.ADD,
         OracleOpcode.SUB, OracleOpcode.MUL, OracleOpcode.CADD,
@@ -83,7 +89,8 @@ fn bool oracle_coverage_ok() {
         OracleOpcode.SLT, OracleOpcode.AND, OracleOpcode.LOAD, OracleOpcode.STORE,
         OracleOpcode.PRINT, OracleOpcode.INC, OracleOpcode.DEC,
         OracleOpcode.CINC, OracleOpcode.CDEC,
-        OracleOpcode.LABEL, OracleOpcode.BRZ, OracleOpcode.BRNZ, OracleOpcode.RET,
+        OracleOpcode.LABEL, OracleOpcode.BRZ, OracleOpcode.BRNZ,
+        OracleOpcode.VIEW, OracleOpcode.RET,
     };
     assert(required.len == ORACLE_OPCODE_COUNT);
     for (sz i = 0; i < required.len; i++) {
@@ -146,6 +153,9 @@ fn void oracle_coverage_print() {
         oracle_coverage.checked_overflows, oracle_coverage.bounds_faults);
     io::printfn("ORACLE_ARITH division=%d shift=%d",
         oracle_coverage.division_faults, oracle_coverage.shift_faults);
+    io::printfn("ORACLE_VIEWS constructed=%d nested=%d fault=%d",
+        oracle_coverage.view_constructions, oracle_coverage.nested_views,
+        oracle_coverage.view_faults);
     io::printfn("ORACLE_BRANCHES taken=%d fallthrough=%d forward=%d backward=%d",
         oracle_coverage.branch_taken, oracle_coverage.branch_fallthrough,
         oracle_coverage.forward_taken, oracle_coverage.backward_taken);

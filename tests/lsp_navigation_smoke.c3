@@ -136,11 +136,30 @@ fn int? navigation_hover_metadata_checks(Process* child) {
 	return 0;
 }
 
+fn int? navigation_view_checks(Process* child) {
+	Object* response = lsp_call_json(child, change_message(VIEW_REF_TEXT, 40))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "view navigation document")) return 1;
+	response = position_call(child, "textDocument/definition", 150, GOOD_URI, 2, 15)!;
+	if (!expect(location_matches(response, GOOD_URI, 1, 4, 9), "view source definition")) {
+		return 1;
+	}
+	response = position_call(child, "textDocument/definition", 151, GOOD_URI, 3, 16)!;
+	if (!expect(location_matches(response, GOOD_URI, 2, 5, 12), "nested view definition")) {
+		return 1;
+	}
+	response = position_call(child, "textDocument/hover", 152, GOOD_URI, 3, 6)!;
+	String markdown = hover_markdown(response);
+	if (!expect(markdown.contains("view nested_m") && markdown.contains("raw_v_m") &&
+			markdown.contains("4"), "view hover")) return 1;
+	return 0;
+}
+
 fn int? navigation_checks(Process* child) {
 	if (navigation_hover_definition_checks(child)! != 0) return 1;
 	if (navigation_document_switch_checks(child)! != 0) return 1;
 	if (navigation_regression_checks(child)! != 0) return 1;
 	if (navigation_hover_metadata_checks(child)! != 0) return 1;
+	if (navigation_view_checks(child)! != 0) return 1;
 	return 0;
 }
 

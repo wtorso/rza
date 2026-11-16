@@ -51,6 +51,40 @@ fn int? run_ownership_case(OwnershipCase expected, String name, bool inject) {
     return 0;
 }
 
+fn int? run_ownership_view_mutation(OwnershipCase expected, String name) {
+    String source = temp_path(name);
+    write_file(source, expected.source)!;
+    String generated = string::tformat("%s.c", source);
+    ProcessResult transpiled = run_simple({
+        compiler_path(), source, "--emit-c", "-o", generated,
+    })!;
+    if (!expect(transpiled.status == 0, "view mutation emit")) {
+        print_result(transpiled);
+        return 1;
+    }
+    char[] data = read_file(generated, artifact_output_buf[..])!;
+    String text = (String)data;
+    String needle = "if (!rez_view_cell(";
+    sz? found = text.index_of(needle);
+    if (try found) {
+        DString mutated = dstring::temp();
+        mutated.append_string(text[:found]);
+        mutated.append_string("if (false && !rez_view_cell(");
+        mutated.append_string(text[found + needle.len..]);
+        write_file(generated, mutated.str_view())!;
+    }
+    String executable = string::tformat("%s.exe", source);
+    ProcessResult compiled = compile_c(generated, executable)!;
+    if (!expect(compiled.status == 0 && compiled.stderr_text.len == 0,
+            "view mutation C compilation")) {
+        print_result(compiled);
+        return 1;
+    }
+    ProcessResult runtime = run_simple({ executable })!;
+    if (ownership_runtime_matches(runtime, expected)) return 0;
+    return 1;
+}
+
 const int128 OWN_I64_MAX = 9223372036854775807;
 const int128 OWN_I64_MIN = -9223372036854775807 - 1;
 

@@ -256,6 +256,7 @@ fn CompletionContext nav_declaration_context(NavPosition* pos) {
 	if (relative >= end) {
 		if (op == "res" && commas == 0) return CompletionContext.CELL;
 		if (op == "med" && commas == 0) return CompletionContext.MED;
+		if (op == "view" && commas == 0) return CompletionContext.MED;
 		if (op == "proc") return CompletionContext.PROC;
 		if (op == "cav" && commas == 0) return CompletionContext.FRAME;
 		if (op == "layout" && commas == 0) return CompletionContext.LAYOUT;
@@ -370,15 +371,26 @@ fn String nav_hover_text(NavSymbol symbol) {
 		out.appendf("res %s\n```\n", clip_utf8(cells[symbol.index].name, NAV_NAME_MAX));
 		nav_append_cell_summary(&out, symbol.index);
 	} else if (symbol.kind == NavKind.MED) {
-		int ci     = meds[symbol.index].cell;
-		int issuer = meds[symbol.index].issuer;
-		out.appendf(
-			"med %s\n```\nmediator for cell `%s`; issuer frame `%s`; ",
-			clip_utf8(meds[symbol.index].name, NAV_NAME_MAX),
-			clip_utf8(cells[ci].name, NAV_NAME_MAX),
-			clip_utf8(frames[issuer].name, NAV_NAME_MAX)
-		);
-		nav_append_cell_summary(&out, ci);
+		int ci = meds[symbol.index].cell;
+		int source = meds[symbol.index].view_source;
+		if (source >= 0) {
+			out.appendf("view %s\n```\nview of mediator `%s`; ",
+				clip_utf8(meds[symbol.index].name, NAV_NAME_MAX),
+				clip_utf8(meds[source].name, NAV_NAME_MAX));
+			if (meds[symbol.index].extent < 0) {
+				out.append_string("dynamic extent.");
+			} else {
+				out.appendf("extent %d %s.", meds[symbol.index].extent,
+					cells[ci].layout >= 0 ? "elements" : "bytes");
+			}
+		} else {
+			int issuer = meds[symbol.index].issuer;
+			out.appendf("med %s\n```\nmediator for cell `%s`; issuer frame `%s`; ",
+				clip_utf8(meds[symbol.index].name, NAV_NAME_MAX),
+				clip_utf8(cells[ci].name, NAV_NAME_MAX),
+				clip_utf8(frames[issuer].name, NAV_NAME_MAX));
+			nav_append_cell_summary(&out, ci);
+		}
 	} else if (symbol.kind == NavKind.PROC) {
 		out.appendf(
 			"proc %s\n```\ncell-based parameter and result exchange.",
