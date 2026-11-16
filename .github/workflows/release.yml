@@ -115,7 +115,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rza-${{ matrix.target }}
-          path: build/release-verify/first/rza-0.1.0-${{ matrix.target }}.tar.gz
+          path: build/release-verify/first/rza-*.tar.gz
           if-no-files-found: error
           retention-days: 1
 

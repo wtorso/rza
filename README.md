@@ -249,8 +249,9 @@ On Linux, with `rustc` and `objdump` installed, run:
 bash bench/run.sh
 ```
 
-The benchmark compares equivalent CRC32C and hash-table workloads in RZA, C, and
-Rust, records compile and runtime costs separately, and saves disassembly.
+The benchmarks compare CRC32C, hash-table, ring-buffer, parser, and protocol workloads
+in RZA, C, and Rust, with additional RZA-only call and async dispatch measurements.
+Compile and runtime costs are recorded separately, and disassembly is saved.
 See [the benchmark guide](bench/README.md) for toolchain selection, output files,
 and measurement limits. Results apply only to the recorded machine, toolchain,
 and workload; they do not establish a universal advantage over C or Rust.
@@ -276,7 +277,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=176 FAIL=0` on POSIX and `PASS=175 FAIL=0` on Windows.
+Expected results are `PASS=181 FAIL=0` on POSIX and `PASS=180 FAIL=0` on Windows.
 The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
 the full suite also requires `rustc` for those checks.
 

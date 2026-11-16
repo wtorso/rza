@@ -250,8 +250,9 @@ shop. Его вывод совпадает с `examples/shop.expected` и зак
 bash bench/run.sh
 ```
 
-Benchmark сравнивает эквивалентные CRC32C и hash-table workloads на RZA, C и Rust,
-отдельно записывает стоимость компиляции и выполнения и сохраняет disassembly.
+Benchmarks сравнивают CRC32C, hash-table, ring-buffer, parser и protocol workloads
+на RZA, C и Rust; отдельно измеряются RZA-only call и async dispatch. Compile/runtime
+costs записываются раздельно, disassembly сохраняется.
 [Руководство benchmark](bench/README.md) описывает выбор toolchain, выходные файлы
 и границы измерений. Результаты относятся только к записанным машине, toolchain и
 workload; они не доказывают универсальное преимущество над C или Rust.
@@ -277,7 +278,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=176 FAIL=0` на POSIX и `PASS=175 FAIL=0` на Windows.
+Ожидаемый результат: `PASS=181 FAIL=0` на POSIX и `PASS=180 FAIL=0` на Windows.
 На Windows не запускаются только специфичные для Linux проверки исходников
 benchmark; на Linux для них также нужен `rustc`.
 
