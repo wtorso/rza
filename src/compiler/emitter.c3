@@ -22,6 +22,17 @@ struct Output {
     bool overflow;
 }
 
+struct ProcEmitInfo {
+    int first_instr;
+    int last_instr;
+    bool seen;
+    bool has_crc32c;
+    bool frame_free;
+}
+
+ProcEmitInfo[NODE_MAX] proc_emit_info;
+int async_cascade_total = -1;
+
 fn void Output.init(Output* out, sz initial_bytes, sz max_bytes) {
     assert(initial_bytes > 0);
     assert(max_bytes > 0);
@@ -101,12 +112,68 @@ fn void pad(Output* out, int ind) {
     for (int i = 0; i < ind; i++) out.append_string("    ");
 }
 
+fn void prepare_emit_info() {
+    assert(procs.len() <= NODE_MAX);
+    for (sz i = 0; i < procs.len(); i++) {
+        proc_emit_info[i] = { .first_instr = -1, .last_instr = -1, .frame_free = true };
+    }
+    int open_proc = -1;
+    for (sz i = 0; i < instrs.len(); i++) {
+        Instr* ins = &instrs[i];
+        int pi = ins.func - 1;
+        if (pi != open_proc) {
+            if (open_proc >= 0) proc_emit_info[open_proc].last_instr = (int)i - 1;
+            if (pi >= 0) {
+                assert(!proc_emit_info[pi].seen);
+                proc_emit_info[pi].first_instr = (int)i;
+                proc_emit_info[pi].seen = true;
+            }
+            open_proc = pi;
+        }
+        if (pi < 0) continue;
+        if (ins.op == Op.ALU3 && ins.s2 == "crc32c") {
+            proc_emit_info[pi].has_crc32c = true;
+        }
+        switch (ins.op) {
+            case Op.CAV: case Op.RES: case Op.MED: case Op.RAISE: case Op.DECAY:
+            case Op.PROBE: case Op.CASC: case Op.AWAIT: case Op.CALL:
+                proc_emit_info[pi].frame_free = false;
+            default:
+                break;
+        }
+    }
+    if (open_proc >= 0) proc_emit_info[open_proc].last_instr = (int)instrs.len() - 1;
+    for (sz i = 0; i < procs.len(); i++) {
+        assert(proc_emit_info[i].seen);
+        assert(proc_emit_info[i].first_instr >= 0);
+        assert(proc_emit_info[i].last_instr >= proc_emit_info[i].first_instr);
+    }
+    async_cascade_total = 0;
+    for (sz i = 0; i < cascades.len(); i++) {
+        if (cascades[i].is_async) async_cascade_total++;
+    }
+}
+
+fn void func_instr_bounds(int func, int* first, int* end) {
+    if (func == 0) {
+        *first = 0;
+        *end = (int)instrs.len();
+        return;
+    }
+    ProcEmitInfo* info = &proc_emit_info[func - 1];
+    assert(info.seen);
+    *first = info.first_instr;
+    *end = info.last_instr + 1;
+}
+
 // битмаски чтения/записи регистров функции
 fn void scan_regs(int func, uint* rd, uint* wr) {
     *rd = 0; *wr = 0;
-    for (sz i = 0; i < instrs.len(); i++) {
+    int first, end;
+    func_instr_bounds(func, &first, &end);
+    for (int i = first; i < end; i++) {
         Instr* ins = &instrs[i];
-        if (ins.func != func) continue;
+        if (func == 0 && ins.func != 0) continue;
         switch (ins.op) {
             case Op.LOAD:
                 *wr |= 1u << ins.a;
@@ -754,11 +821,8 @@ fn void emit_async_callback(Output* out, int ci) {
 }
 
 fn int async_cascade_count() {
-    int count = 0;
-    for (sz i = 0; i < cascades.len(); i++) {
-        if (cascades[i].is_async) count++;
-    }
-    return count;
+    assert(async_cascade_total >= 0);
+    return async_cascade_total;
 }
 
 fn bool program_has_async() {
@@ -878,13 +942,14 @@ fn bool hoist_allowed(Op op) {
 
 fn void proc_hoist_prepare(int pi) {
     hoist_reset();
-    for (sz i = 0; i < instrs.len(); i++) {
-        if (instrs[i].func == pi + 1 && !hoist_allowed(instrs[i].op)) return;
+    int first, end;
+    func_instr_bounds(pi + 1, &first, &end);
+    for (int i = first; i < end; i++) {
+        if (!hoist_allowed(instrs[i].op)) return;
     }
     bool prefix = true;
-    for (sz i = 0; i < instrs.len(); i++) {
+    for (int i = first; i < end; i++) {
         Instr* ins = &instrs[i];
-        if (ins.func != pi + 1) continue;
         if (ins.op == Op.JMP || ins.op == Op.BRZ || ins.op == Op.BRNZ) prefix = false;
         if (prefix && (ins.op == Op.LOAD || ins.op == Op.STORE)) hoist_med[ins.x] = true;
     }
@@ -898,9 +963,11 @@ fn void emit_body(Output* out, int func) {
     } else {
         proc_hoist_prepare(func - 1);
     }
-    for (sz i = 0; i < instrs.len(); i++) {
+    int first, end;
+    func_instr_bounds(func, &first, &end);
+    for (int i = first; i < end; i++) {
         Instr* ins = &instrs[i];
-        if (ins.func != func || is_async_block(ins.block)) continue;
+        if ((func == 0 && ins.func != 0) || is_async_block(ins.block)) continue;
         assert(ins.line > 0);
         assert(ins.block < (int)blocks.len());
         bool in_casc = blocks[ins.block].kind == 2;
@@ -953,11 +1020,9 @@ fn void emit_body(Output* out, int func) {
 }
 
 fn bool proc_has_crc32c(int pi) {
-    for (sz i = 0; i < instrs.len(); i++) {
-        Instr* ins = &instrs[i];
-        if (ins.func == pi + 1 && ins.op == Op.ALU3 && ins.s2 == "crc32c") return true;
-    }
-    return false;
+    assert(pi >= 0 && pi < (int)procs.len());
+    assert(proc_emit_info[pi].seen);
+    return proc_emit_info[pi].has_crc32c;
 }
 
 fn bool crc_name_used(String candidate) {
@@ -982,19 +1047,9 @@ fn String crc_variant_name(String base, String kind) {
 }
 
 fn bool proc_frame_free(int pi) {
-    if (proc_has_crc32c(pi)) return false;
-    for (sz i = 0; i < instrs.len(); i++) {
-        Instr* ins = &instrs[i];
-        if (ins.func != pi + 1) continue;
-        switch (ins.op) {
-            case Op.CAV: case Op.RES: case Op.MED: case Op.RAISE: case Op.DECAY:
-            case Op.PROBE: case Op.CASC: case Op.AWAIT: case Op.CALL:
-                return false;
-            default:
-                break;
-        }
-    }
-    return true;
+    assert(pi >= 0 && pi < (int)procs.len());
+    assert(proc_emit_info[pi].seen);
+    return proc_emit_info[pi].frame_free && !proc_emit_info[pi].has_crc32c;
 }
 
 fn void emit_proc_entry(Output* out, Proc* p) {
@@ -1268,6 +1323,7 @@ fn String emit() {
     assert(instrs.len() <= NODE_MAX);
     assert(out.max_bytes == OUTPUT_BYTES_MAX);
     assert(out.text.len() == 0);
+    prepare_emit_info();
     out.append_string("/* Source-SHA256: ");
     foreach (byte : source_hash) out.appendf("%02x", (uint)byte);
     out.append_string(" */\n");

@@ -104,6 +104,16 @@ collection order; runtime samples are sorted before reporting. Reports include
 sample values, minimum, maximum, median, and a per-byte or per-step normalization.
 Use medians and inspect variance before drawing conclusions.
 
+## Compile-time scaling
+
+`bash bench/compile_scaling.sh` generates bounded synthetic programs in
+`build/compile-scaling` and measures 64, 128, 256, 512, and 1024 procedures or async
+cascades. It records transpile time and source/artifact sizes for both shapes, plus C23
+backend time for the procedure shape. Override `RZA_SCALING_COUNTS`,
+`RZA_SCALING_REPEATS`, `RZA_SCALING_BACKEND_REPEATS`, `RZA_SCALING_BUILD`, or set
+`RZA_SCALING_BACKEND=0` for a frontend-only run. These measurements detect scaling
+regressions; they do not establish a universal runtime or compile-time advantage.
+
 ## Output and disassembly
 
 With the default build directory:
