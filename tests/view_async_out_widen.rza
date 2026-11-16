@@ -11,7 +11,8 @@ await %r0
 slt %r3, %r2, 2
 brnz %r3, published
 med out_m, out, field
-view tail_m, out_m, 4, 4
+mov %r4, 4
+view tail_m, out_m, %r4, %r4
 published:
 mov %r0, 3
 loadb %r1, [tail_m + %r0]

@@ -708,6 +708,6 @@ fn int? oracle_run() {
     if (cascade_oracle_run()! != 0) return 1;
     if (!oracle_coverage_ok()) return 1;
     oracle_coverage_print();
-    io::printn("EXECUTION_ORACLE OK (179 programs)");
+    io::printn("EXECUTION_ORACLE OK (183 programs)");
     return 0;
 }

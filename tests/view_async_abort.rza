@@ -1,0 +1,37 @@
+res state, field, 8
+med state_m, state, field
+mov %r2, 0
+produce:
+acasc produce: state_m -> produced
+    load %r0, [state_m + 0]
+    inc %r0
+    store [state_m + 0], %r0
+endc
+await %r0
+med produced_m, produced, field
+brz %r2, first_produce
+jmp after
+first_produce:
+inc %r2
+jmp job
+job:
+acasc job: produced_m -> job_out
+    load %r0, [produced_m + 0]
+endc
+slt %r3, %r2, 2
+brz %r3, second_job
+await %r0
+med job_out_m, job_out, field
+mov %r4, 1
+mov %r5, 2
+view tail_m, job_out_m, %r4, %r5
+view nested_m, tail_m, 1, 1
+probe tail_m
+inc %r2
+jmp job
+second_job:
+jmp produce
+after:
+probe tail_m
+probe nested_m
+ret

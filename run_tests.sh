@@ -320,6 +320,55 @@ run_benchmark_sources() {
     ok benchmark_sources
 }
 
+run_async_mutants() {
+    local base="$BUILD/async-mutants"
+    mkdir --parents "$base"
+    if ! $TR tests/lib_async_fault.rza --emit-lib -o "$base/cancel.c" ||
+            ! sed 's/rez_async_cancel(&g_async);/(void)\&g_async;/' \
+                "$base/cancel.c" >"$base/no_cancel.c" ||
+            ! $CC $CFLAGS $LDFLAGS -DGENERATED_RZA=\"$base/no_cancel.c\" \
+                tests/lib_async_fault.harness.c -o "$base/no_cancel.exe"; then
+        bad async_cancel_mutation "build failed"
+        return
+    fi
+    if "$base/no_cancel.exe" >"$base/no_cancel.out" 2>&1; then
+        bad async_cancel_mutation "host accepted execution without cancellation"
+        return
+    fi
+    ok async_cancel_mutation
+
+    if ! $TR tests/view_async_out_widen.rza --emit-c -o "$base/view.c" ||
+            ! sed -e 's/voff_m_tail_m,/0,/' -e 's/vlen_m_tail_m,/8,/' \
+                "$base/view.c" >"$base/widened.c" ||
+            ! $CC $CFLAGS $LDFLAGS "$base/widened.c" -o "$base/widened.exe"; then
+        bad async_view_mutation "build failed"
+        return
+    fi
+    if ! "$base/widened.exe" >"$base/widened.out" 2>&1; then
+        bad async_view_mutation "widened view still faults"
+        return
+    fi
+    ok async_view_mutation
+
+    if ! $TR tests/async_out_reuse.rza --emit-c -o "$base/gen.c" ||
+            ! sed 's/ac_out_gen_1 = 1;/ac_out_gen_1 = 4294967295;/' \
+                "$base/gen.c" >"$base/exhausted.c" ||
+            ! $CC $CFLAGS $LDFLAGS "$base/exhausted.c" -o "$base/exhausted.exe"; then
+        bad async_generation_exhaustion "build failed"
+        return
+    fi
+    if "$base/exhausted.exe" >"$base/exhausted.out" 2>"$base/exhausted.err"; then
+        bad async_generation_exhaustion "generation wrap was accepted"
+        return
+    fi
+    if ! grep --quiet "FAULT line 5: async output generation exhausted" \
+            "$base/exhausted.err"; then
+        bad async_generation_exhaustion "missing generation diagnostic"
+        return
+    fi
+    ok async_generation_exhaustion
+}
+
 run_c3_unit() {
     local c3c_bin="c3c"
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
@@ -355,7 +404,11 @@ run_lib() {
     else
         HARNESS="tests/lib_harness.c"
     fi
-    if ! $CC $CFLAGS $LDFLAGS "$BUILD/$t.lib.c" "$HARNESS" \
+    local -a sources=("$BUILD/$t.lib.c")
+    if [ "$t" = lib_async_fault ]; then
+        sources=(-DGENERATED_RZA=\"$BUILD/$t.lib.c\")
+    fi
+    if ! $CC $CFLAGS $LDFLAGS "${sources[@]}" "$HARNESS" \
             -o "$BUILD/$t.exe" 2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -575,6 +628,7 @@ run_good async_fifo
 run_good async_out_reuse
 run_good async_await_empty
 run_abort async_abort "ABORT line 11: cascade blocked: dead mediator out_m"
+run_abort view_async_abort "ABORT line 18: cascade job: dead mediator produced_m"
 run_abort typed_ownership "ABORT line 39: cascade blocked: dead mediator temp_m"
 run_good async_proc_drain
 run_good async_framefree_drain
@@ -606,7 +660,7 @@ run_dead view_fault_range "FAULT line 4: invalid view bad_m"
 run_dead view_fault_access "FAULT line 5: out of bounds dynamic_m"
 run_dead view_fault_dead "FAULT line 6: dead mediator dead_view_m"
 run_dead view_fault_typed "FAULT line 5: invalid view bad_typed_m"
-run_dead view_async_out_widen "FAULT line 21: out of bounds tail_m"
+run_dead view_async_out_widen "FAULT line 22: out of bounds tail_m"
 run_viol viol_view_range STRUCT tests/viol_view_range.stderr
 run_dead storeb_oob "FAULT line 5: out of bounds x_m"
 run_dead typed_index_negative "FAULT line 5: out of bounds entries_m"
@@ -725,6 +779,8 @@ run_lib lib_abort
 run_lib lib_raise
 run_lib lib_async
 run_lib lib_async_boot
+run_lib lib_async_fault
+run_async_mutants
 run_cli_contract
 run_lsp_smoke
 run_ownership_fuzz
@@ -740,8 +796,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=192
-if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=191; fi
+EXPECTED_PASS=197
+if [ "${OS:-}" = "Windows_NT" ]; then EXPECTED_PASS=196; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

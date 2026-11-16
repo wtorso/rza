@@ -7,7 +7,7 @@ const int CASC_SITES_MAX = 65;
 const int CASC_CELLS_MAX = CASC_SITES_MAX + 2;
 const int CASC_OPS_MAX = 512;
 const int CASC_BODY_MAX = 32;
-const int CASC_SCENARIO_COUNT = 9;
+const int CASC_SCENARIO_COUNT = 10;
 
 enum CascScenario : char {
     SYNC_SUCCESS,
@@ -18,6 +18,7 @@ enum CascScenario : char {
     REPEAT_PENDING,
     QUEUE_FULL,
     ASYNC_BODY_FAULT,
+    ASYNC_CANCEL,
     ASYNC_REENQUEUE,
 }
 
@@ -393,6 +394,32 @@ fn void casc_async_body_fault(CascBuilder* builder, OracleWorld world) {
     casc_emit(builder, { .code = CascOpcode.RET });
 }
 
+fn void casc_async_cancel(CascBuilder* builder) {
+    int good = casc_start(builder, 0, true);
+    casc_body(builder, good, { .code = CascOpcode.LOAD, .dst = 0, .cell = 0 });
+    casc_body(builder, good, { .code = CascOpcode.INC, .dst = 0 });
+    casc_body(builder, good, { .code = CascOpcode.STORE, .left = 0, .cell = 0 });
+    casc_body(builder, good, { .code = CascOpcode.PRINT, .left = 0 });
+    casc_end(builder);
+    casc_med(builder, 2);
+    int bad = casc_start(builder, 0, true);
+    casc_body(builder, bad, { .code = CascOpcode.LOAD, .dst = 0, .cell = 0 });
+    casc_body(builder, bad, {
+        .code = CascOpcode.CADD, .dst = 0, .left = 0,
+        .literal = 9223372036854775807,
+    });
+    casc_end(builder);
+    casc_med(builder, 3);
+    int later = casc_start(builder, 0, true);
+    casc_body(builder, later, { .code = CascOpcode.MOV_IMM, .dst = 0, .literal = 99 });
+    casc_body(builder, later, { .code = CascOpcode.PRINT, .left = 0 });
+    casc_body(builder, later, { .code = CascOpcode.STORE, .left = 0, .cell = 0 });
+    casc_end(builder);
+    casc_med(builder, 4);
+    casc_emit(builder, { .code = CascOpcode.AWAIT, .dst = 15 });
+    casc_emit(builder, { .code = CascOpcode.RET });
+}
+
 fn void casc_async_reenqueue(CascBuilder* builder, OracleWorld world) {
     casc_mov(builder, 15, world.loop_trips);
     int label = builder.program.len;
@@ -436,6 +463,7 @@ fn CascBuilder* cascade_oracle_generate(OracleWorld world) {
         case CascScenario.REPEAT_PENDING: casc_repeat_pending(builder, world);
         case CascScenario.QUEUE_FULL: casc_queue_full(builder, world);
         case CascScenario.ASYNC_BODY_FAULT: casc_async_body_fault(builder, world);
+        case CascScenario.ASYNC_CANCEL: casc_async_cancel(builder);
         case CascScenario.ASYNC_REENQUEUE: casc_async_reenqueue(builder, world);
     }
     assert(casc_validate(builder));
@@ -485,12 +513,35 @@ fn int? cascade_oracle_run_case(ulong seed) {
     return 1;
 }
 
+fn int cascade_cancel_state_checks() {
+    OracleWorld world = { .cascade_scenario = CascScenario.ASYNC_CANCEL };
+    CascBuilder* builder = cascade_oracle_generate(world);
+    CascRuntime state = {
+        .cells = builder.program.cells,
+        .main_alive = true,
+        .output = dstring::temp(),
+        .errors = dstring::temp(),
+    };
+    cascade_oracle_execute(&builder.program, &state);
+    if (!expect(state.status == 1 && state.count == 0 && state.regs[15] == 1,
+            "fault returns completed count and cancels the remaining queue")) return 1;
+    if (!expect(state.cells[0].value == 1 && !state.cells[4].published &&
+            state.output.str_view() == "1\n" &&
+            state.errors.str_view().contains("arithmetic overflow"),
+            "cancelled task neither executes nor publishes output")) return 1;
+    for (int i = 0; i < builder.program.site_count; i++) {
+        if (!expect(!state.pending[i], "fault clears every pending flag")) return 1;
+    }
+    return 0;
+}
+
 fn int? cascade_oracle_run() {
     if (cascade_oracle_shrink_selftest() != 0) return 1;
-    for (ulong seed = 1; seed <= 36; seed++) {
+    for (ulong seed = 1; seed <= 40; seed++) {
         if (cascade_oracle_run_case(seed)! != 0) return 1;
     }
+    if (cascade_cancel_state_checks() != 0) return 1;
     if (!cascade_oracle_coverage_ok()) return 1;
-    io::printn("CASCADE_ORACLE OK (36 programs)");
+    io::printn("CASCADE_ORACLE OK (40 programs)");
     return 0;
 }

@@ -31,9 +31,19 @@ fn bool casc_alive(CascRuntime* state, int cell) {
     return !state.cells[cell].home_main || state.main_alive;
 }
 
+fn void casc_cancel(CascRuntime* state) {
+    oracle_coverage.casc_cancellations++;
+    oracle_coverage.casc_cancelled_tasks += (ulong)state.count;
+    state.queue = {};
+    state.pending = {};
+    state.head = 0;
+    state.count = 0;
+}
+
 fn void casc_fault(CascRuntime* state, int line, String message) {
     state.errors.appendf("FAULT line %d: %s\n", line, message);
     state.status = 1;
+    casc_cancel(state);
 }
 
 fn void casc_abort(CascRuntime* state, CascSite* site, int index) {
@@ -177,7 +187,7 @@ fn long casc_run_queue(CascRuntime* state, CascProgram* program) {
 fn void casc_exec_await(CascRuntime* state, CascProgram* program, CascOp* op) {
     if (state.count == 0) oracle_coverage.casc_empty_awaits++;
     long completed = casc_run_queue(state, program);
-    if (state.status == 0) state.regs[op.dst] = completed;
+    state.regs[op.dst] = completed;
 }
 
 fn void casc_exec_simple(CascRuntime* state, CascProgram* program, CascOp* op) {

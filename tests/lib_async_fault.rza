@@ -1,0 +1,37 @@
+res x, field, 8
+med x_m, x, field
+proc enqueue_fault:
+    acasc good: x_m -> good_out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    med good_out_m, good_out, field
+    mov %r0, 9223372036854775807
+    cadd %r0, %r0, 1
+    ret
+proc recover:
+    acasc recover: x_m -> recover_out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    med recover_out_m, recover_out, field
+    await %r0
+    ret
+proc bad_entry:
+    acasc bad: x_m -> bad_out
+        mov %r1, 0
+        div %r0, %r0, %r1
+    endc
+    med bad_out_m, bad_out, field
+    ret
+proc later_entry:
+    acasc later: x_m -> later_out
+        load %r0, [x_m + 0]
+        inc %r0
+        store [x_m + 0], %r0
+    endc
+    med later_out_m, later_out, field
+    ret
+ret

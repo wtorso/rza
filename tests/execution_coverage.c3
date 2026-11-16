@@ -38,10 +38,12 @@ struct OracleCoverage {
     ulong casc_repeat_faults;
     ulong casc_queue_full_faults;
     ulong casc_body_faults;
+    ulong casc_cancellations;
+    ulong casc_cancelled_tasks;
     ulong casc_out_alive;
     ulong casc_out_dead;
     ulong casc_empty_awaits;
-    ulong[9] cascade_cases;
+    ulong[10] cascade_cases;
     uint casc_snapshot_regs;
     uint casc_caller_regs;
     ulong casc_ret_drains;
@@ -130,6 +132,9 @@ fn bool cascade_oracle_coverage_ok() {
             oracle_coverage.casc_queue_full_faults > 0 &&
             oracle_coverage.casc_body_faults > 0,
             "cascade oracle needs pending, repeat, queue and body faults")) return false;
+    if (!expect(oracle_coverage.casc_cancellations > 0 &&
+            oracle_coverage.casc_cancelled_tasks > 0,
+            "cascade oracle needs queue cancellation")) return false;
     if (!expect(oracle_coverage.casc_out_alive > 0 && oracle_coverage.casc_out_dead > 0,
             "cascade oracle needs live and unpublished outputs")) return false;
     if (!expect(oracle_coverage.casc_empty_awaits > 0,
@@ -140,7 +145,7 @@ fn bool cascade_oracle_coverage_ok() {
     if (!expect(oracle_coverage.casc_ret_drains > 0 &&
             oracle_coverage.casc_reenqueue_clears > 0,
             "cascade oracle needs ret drain and reenqueue clearing")) return false;
-    for (int scenario = 0; scenario < 9; scenario++) {
+    for (int scenario = 0; scenario < 10; scenario++) {
         if (!expect(oracle_coverage.cascade_cases[scenario] == 4,
                 "cascade oracle needs four passing programs per scenario")) return false;
     }
@@ -174,6 +179,8 @@ fn void oracle_coverage_print() {
     io::printfn("ORACLE_CASC_FAULT pending=%d repeat=%d full=%d body=%d",
         oracle_coverage.casc_pending_faults, oracle_coverage.casc_repeat_faults,
         oracle_coverage.casc_queue_full_faults, oracle_coverage.casc_body_faults);
+    io::printfn("ORACLE_CASC_CANCEL calls=%d tasks=%d",
+        oracle_coverage.casc_cancellations, oracle_coverage.casc_cancelled_tasks);
     io::printfn("ORACLE_CASC_OUT alive=%d dead=%d empty_await=%d",
         oracle_coverage.casc_out_alive, oracle_coverage.casc_out_dead,
         oracle_coverage.casc_empty_awaits);
