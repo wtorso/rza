@@ -65,6 +65,9 @@ build_rust ring
 build_rza parser rza_parser_host.c
 build_c parser
 build_rust parser
+build_rza protocol rza_protocol_host.c
+build_c protocol
+build_rust protocol
 build_rza checked_arith rza_checked_host.c
 build_rza checked_arith_wrap rza_checked_host.c
 "$RZA_COMPILER" bench/calls.rza --emit-lib -o "$BUILD/calls.c"
@@ -92,6 +95,9 @@ done
 for name in parser_rza parser_c parser_rust; do
     check_output "$name" parser
 done
+for name in protocol_rza protocol_c protocol_rust; do
+    check_output "$name" protocol
+done
 for name in checked_arith_rza checked_arith_wrap_rza; do
     check_output "$name" checked_arith
 done
@@ -100,6 +106,27 @@ for variant in internal abi_direct abi_indirect; do
 done
 for kind in single queue; do
     check_output "async_${kind}_rza" async
+done
+
+for variant in 1 2 3; do
+    case "$variant" in
+        1) expected=protocol_quota ;;
+        2) expected=protocol_truncated ;;
+        3) expected=protocol_length_attack ;;
+    esac
+    $CC $CFLAGS $LDFLAGS -DPROTOCOL_VARIANT="$variant" "$BUILD/protocol.c" \
+        bench/rza_protocol_host.c bench/bench_check.c -o "$BUILD/protocol_rza_$variant"
+    $CC $CFLAGS $LDFLAGS -DPROTOCOL_VARIANT="$variant" bench/protocol.c \
+        bench/bench_check.c -o "$BUILD/protocol_c_$variant"
+    sed "s/^const VARIANT: u8 = 0;/const VARIANT: u8 = $variant;/" \
+        bench/protocol.rs >"$BUILD/protocol_$variant.rs"
+    $RUSTC --edition=2021 --crate-type=staticlib -D warnings -O \
+        "$BUILD/protocol_$variant.rs" -o "$BUILD/libprotocol_$variant.a"
+    $RUST_CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/libprotocol_$variant.a" \
+        -lpthread -ldl -lm -o "$BUILD/protocol_rust_$variant"
+    for name in protocol_rza protocol_c protocol_rust; do
+        check_output "${name}_$variant" "$expected"
+    done
 done
 
 # Changing only the key mask creates 1024 distinct requests. After 512 inserts

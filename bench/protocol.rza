@@ -1,0 +1,179 @@
+; Stream frames: A5, length 0..8, sequence, flags, payload, little-endian CRC32C.
+layout Byte: value:u8
+layout Control: input_len:i64
+layout Slot: value:i64
+res input, field, Byte[4096]
+res control, field, Control
+res slots, field, Slot[4]
+res scratch, field, 8
+res result, field, 8
+med input_m, input, field
+med control_m, control, field
+med slots_m, slots, field
+med scratch_m, scratch, field
+med result_m, result, field
+
+proc process:
+    casc stream: input_m,control_m,slots_m,scratch_m,result_m -> output[process]
+        mov %r0, 0
+        mov %r1, 0
+        mov %r2, 0
+        mov %r3, 0
+        mov %r4, 0
+        mov %r5, 0
+        mov %r6, 0
+        mov %r7, 0
+        mov %r8, 0
+        mov %r9, 0
+        mov %r10, 0
+        load %r14, [control_m + 0].input_len
+    parse_loop:
+        slt %r12, %r0, %r14
+        brz %r12, drain
+        sub %r12, %r14, %r0
+        slt %r13, %r12, 4
+        brz %r13, header
+        cinc %r4
+        jmp drain
+    header:
+        loadb %r12, [input_m + %r0].value
+        sub %r12, %r12, 165
+        brz %r12, sync_ok
+        cinc %r2
+        cinc %r0
+        jmp parse_loop
+    sync_ok:
+        add %r15, %r0, 1
+        loadb %r11, [input_m + %r15].value
+        slt %r12, %r11, 9
+        brnz %r12, length_ok
+        cinc %r2
+        cinc %r0
+        jmp parse_loop
+    length_ok:
+        add %r15, %r11, 8
+        cadd %r12, %r0, %r15
+        slt %r13, %r14, %r12
+        brz %r13, frame_complete
+        cinc %r4
+        jmp drain
+    frame_complete:
+        mov %r0, %r12
+        sub %r12, %r0, %r11
+        sub %r12, %r12, 6
+        loadb %r12, [input_m + %r12].value
+        sub %r13, %r12, %r10
+        mov %r10, %r12
+        cinc %r10
+        and %r10, %r10, 255
+        brz %r13, sequence_ok
+        cinc %r2
+    sequence_ok:
+        sub %r12, %r0, %r11
+        sub %r12, %r12, 5
+        loadb %r12, [input_m + %r12].value
+        brz %r12, flags_ok
+        cinc %r2
+        jmp parse_loop
+    flags_ok:
+        cadd %r6, %r6, %r11
+        slt %r12, %r6, 1025
+        brnz %r12, quota_ok
+        cinc %r5
+        jmp drain
+    quota_ok:
+        mov %r12, 0
+        store [scratch_m + 0], %r12
+        mov %r12, 0
+    scratch_loop:
+        slt %r13, %r12, %r11
+        brz %r13, scratch_done
+        sub %r15, %r0, %r11
+        sub %r15, %r15, 4
+        add %r15, %r15, %r12
+        loadb %r13, [input_m + %r15].value
+        storeb [scratch_m + %r12], %r13
+        cinc %r12
+        jmp scratch_loop
+    scratch_done:
+        sub %r15, %r0, 4
+        loadb %r12, [input_m + %r15].value
+        mov %r13, %r12
+        cinc %r15
+        loadb %r12, [input_m + %r15].value
+        shl %r12, %r12, 8
+        or %r13, %r13, %r12
+        cinc %r15
+        loadb %r12, [input_m + %r15].value
+        shl %r12, %r12, 16
+        or %r13, %r13, %r12
+        cinc %r15
+        loadb %r12, [input_m + %r15].value
+        shl %r12, %r12, 24
+        or %r13, %r13, %r12
+        mov %r12, 0xffffffff
+        load %r15, [scratch_m + 0]
+        crc32c %r12, %r12, %r15
+        xor %r12, %r12, 0xffffffff
+        sub %r12, %r12, %r13
+        brz %r12, crc_ok
+        cinc %r2
+        jmp parse_loop
+    crc_ok:
+        cinc %r1
+        slt %r12, %r7, 4
+        brz %r12, ring_full
+        add %r12, %r8, %r7
+        and %r12, %r12, 3
+        load %r13, [scratch_m + 0]
+        store [slots_m + %r12].value, %r13
+        cinc %r7
+        jmp after_push
+    ring_full:
+        cinc %r3
+    after_push:
+        mod %r12, %r1, 3
+        brz %r12, pop_one
+        jmp parse_loop
+    pop_one:
+        brz %r7, parse_loop
+        load %r13, [slots_m + %r8].value
+        mov %r12, 0xffffffff
+        crc32c %r12, %r12, %r13
+        xor %r12, %r12, 0xffffffff
+        add %r9, %r9, %r12
+        cinc %r8
+        and %r8, %r8, 3
+        cdec %r7
+        jmp parse_loop
+    drain:
+        brz %r7, finish
+        load %r13, [slots_m + %r8].value
+        mov %r12, 0xffffffff
+        crc32c %r12, %r12, %r13
+        xor %r12, %r12, 0xffffffff
+        add %r9, %r9, %r12
+        cinc %r8
+        and %r8, %r8, 3
+        cdec %r7
+        jmp drain
+    finish:
+        mov %r12, 1000
+        mul %r12, %r1, %r12
+        add %r9, %r9, %r12
+        mov %r12, 1000000
+        mul %r12, %r2, %r12
+        add %r9, %r9, %r12
+        mov %r12, 1000000000
+        mul %r12, %r3, %r12
+        add %r9, %r9, %r12
+        mov %r12, 1000000000000
+        mul %r12, %r4, %r12
+        add %r9, %r9, %r12
+        mov %r12, 1000000000000000
+        mul %r12, %r5, %r12
+        add %r9, %r9, %r12
+        store [result_m + 0], %r9
+    endc
+    ret
+ret

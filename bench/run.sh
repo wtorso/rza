@@ -80,6 +80,9 @@ build_rust ring
 build_rza parser rza_parser_host.c
 build_c parser
 build_rust parser
+build_rza protocol rza_protocol_host.c
+build_c protocol
+build_rust protocol
 build_rza checked_arith rza_checked_host.c
 build_rza checked_arith_wrap rza_checked_host.c
 "$RZA_COMPILER" bench/calls.rza --emit-lib -o "$BUILD/calls.rza.c"
@@ -137,11 +140,12 @@ measure() {
         "${sorted[REPEATS - 1]}" "$total" >>"$RESULTS"
 }
 
-for name in crc32c crc32c_table table ring parser; do
+for name in crc32c crc32c_table table ring parser protocol; do
     case "$name" in
         crc32c*) host=rza_crc_host.c ;;
         ring) host=rza_ring_host.c ;;
         parser) host=rza_parser_host.c ;;
+        protocol) host=rza_protocol_host.c ;;
         *) host=rza_table_host.c ;;
     esac
     measure "transpile_${name}_rza" "$RZA_COMPILER" "bench/$name.rza" \
@@ -218,19 +222,20 @@ measure_runtime() {
 for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza \
         crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
         crc32c_intrinsic_rust table_rza table_c table_rust ring_rza ring_c ring_rust \
-        parser_rza parser_c parser_rust checked_arith_rza checked_arith_wrap_rza \
-        calls_internal_rza calls_abi_direct_rza calls_abi_indirect_rza \
-        async_single_rza async_queue_rza; do
+        parser_rza parser_c parser_rust protocol_rza protocol_c protocol_rust \
+        checked_arith_rza checked_arith_wrap_rza calls_internal_rza calls_abi_direct_rza \
+        calls_abi_indirect_rza async_single_rza async_queue_rza; do
     measure_runtime "$name"
 done
 for artifact in crc32c.rza.c crc32c_flat.rza.c crc32c_table.rza.c crc32c_hw.rza.c \
-        crc32c_hw_unroll.rza.c table.rza.c ring.rza.c parser.rza.c checked_arith.rza.c \
-        checked_arith_wrap.rza.c calls.rza.c async_single.rza.c async_queue.rza.c \
-        crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza crc32c_hw_unroll_rza \
-        crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust crc32c_intrinsic_rust \
-        table_rza table_c table_rust ring_rza ring_c ring_rust parser_rza parser_c \
-        parser_rust checked_arith_rza checked_arith_wrap_rza calls_internal_rza \
-        calls_abi_direct_rza calls_abi_indirect_rza async_single_rza async_queue_rza; do
+        crc32c_hw_unroll.rza.c table.rza.c ring.rza.c parser.rza.c protocol.rza.c \
+        checked_arith.rza.c checked_arith_wrap.rza.c calls.rza.c async_single.rza.c \
+        async_queue.rza.c crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza \
+        crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
+        crc32c_intrinsic_rust table_rza table_c table_rust ring_rza ring_c ring_rust \
+        parser_rza parser_c parser_rust protocol_rza protocol_c protocol_rust \
+        checked_arith_rza checked_arith_wrap_rza calls_internal_rza calls_abi_direct_rza \
+        calls_abi_indirect_rza async_single_rza async_queue_rza; do
     printf 'artifact_bytes %s %s\n' "$artifact" "$(wc -c <"$BUILD/$artifact")" \
         >>"$RESULTS"
 done

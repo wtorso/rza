@@ -50,6 +50,19 @@ when RZA itself is built with Zig.
 - The parser workload runs a start/key/value state machine over 4096 patterned
   bytes. Checked numeric accumulation, invalid transitions, and the final digest
   are identical in RZA, C, and Rust.
+- The protocol workload parses variable-length binary frames with checked offsets,
+  sequence recovery, a 1024-byte payload quota, a four-slot ring with backpressure,
+  and CRC32C over zero-padded eight-byte payloads. The mixed input exercises malformed
+  lengths, bad sequences and bad CRCs. Quota, truncated-input, and initial-length-attack
+  variants run during correctness checks on all three implementations. RZA uses its
+  `crc32c` opcode with runtime feature detection; C and Rust use the portable bitwise
+  implementation here, so backend labels differ and these are not intrinsic-only timings.
+  The digest is `crc_sum + accepted*1000 + invalid*1000000 + dropped*1000000000 +
+  truncated*1000000000000 + quota*1000000000000000`. In mixed/quota/truncated/attack
+  order, the accepted counts are 207/128/454/206, invalid counts 234/0/0/244, dropped
+  counts 135/82/299/134, truncated counts 0/0/1/0, quota counts 1/1/0/1, and CRC sums
+  142667339200, 94053616594, 326184563651, and 163532088806. These components derive
+  the four checked-in expected outputs.
 - The checked-arithmetic pair runs 1024 identical RZA iterations with wrapping or
   checked `add/sub/mul/inc/dec`. Dynamic cell inputs prevent constant folding;
   both variants must return zero. On x86-64, inspection requires `jo` in the

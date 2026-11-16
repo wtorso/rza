@@ -106,6 +106,9 @@ echo "PASS: frame-free mediator dereferences are inlined"
 dump parser_rza rza_parse
 dump parser_c parse
 dump parser_rust parse
+dump protocol_rza rza_process
+dump protocol_c protocol_step
+dump protocol_rust protocol_step
 dump checked_arith_rza rza_workload
 dump checked_arith_wrap_rza rza_workload
 dump calls_internal_rza rza_workload
