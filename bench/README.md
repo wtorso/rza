@@ -65,6 +65,12 @@ when RZA itself is built with Zig.
   also includes driver, frame lifecycle, and loop differences. Each timed step also
   includes one reset and the final mediator/digest read, so `ns/step` is the complete
   1024-update workload, not the latency of one call.
+- The async pair executes 1024 tasks and checks 1024 completions per step. The
+  single-callback variant resets the field for every task; the queue variant performs
+  128 resets with eight FIFO tasks each. Their digest is 2048. Timing includes reset,
+  enqueue, drain, mediator reads, and frame lifecycle; `ns/task` is not isolated indirect
+  branch latency. Single-callback programs use a specialized direct drain, while programs
+  with multiple callbacks retain the generic queue drain. Inspection checks both shapes.
 
 `bench/run.sh` first calls `bench/check.sh`. That script builds every variant,
 compares output with the checked-in expected files, tests the full-table case,

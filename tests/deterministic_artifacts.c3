@@ -188,6 +188,20 @@ fn int? check_async_drain_artifact() {
     String async_main = artifact_function(async_proc, "int main(void) {");
     if (!expect(async_core.contains("g_async.count") && async_main.contains("g_async.count"),
             "async programs retain drains in procedures and at top level")) return 1;
+    String single = emit_lib_artifact("bench/async_single.rza",
+        temp_path("async-single-drain.c"))!;
+    String direct = artifact_function(single,
+        "static uint64_t rez3asm_async_drain_single(void) {");
+    if (!expect(direct.contains("success = ac_run_1(task.context);") &&
+            !direct.contains("success = task.run(task.context);") &&
+            single.contains(
+                "uint64_t rza_await(void) { return rez3asm_async_drain_single(); }"),
+            "one async callback uses a direct specialized drain")) return 1;
+    String queue = emit_lib_artifact("bench/async_queue.rza",
+        temp_path("async-queue-drain.c"))!;
+    if (!expect(!queue.contains("rez3asm_async_drain_single") &&
+            queue.contains("uint64_t rza_await(void) { return rez_async_drain(&g_async); }"),
+            "multiple async callbacks retain the generic drain")) return 1;
     return 0;
 }
 

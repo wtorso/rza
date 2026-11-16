@@ -111,6 +111,8 @@ dump checked_arith_wrap_rza rza_workload
 dump calls_internal_rza rza_workload
 dump calls_abi_direct_rza workload_step
 dump calls_abi_indirect_rza workload_step
+objdump -d "$BUILD/async_single_rza" >"$ASM/async_single_rza.all.asm"
+objdump -d "$BUILD/async_queue_rza" >"$ASM/async_queue_rza.all.asm"
 case "$(uname -m)" in
     x86_64|amd64)
         direct_asm="$ASM/calls_abi_direct_rza.workload_step.asm"
@@ -132,6 +134,31 @@ case "$(uname -m)" in
             exit 1
         fi
         echo "PASS: direct and volatile indirect ABI calls are distinct"
+        single_asm="$ASM/async_single_rza.drain.asm"
+        queue_asm="$ASM/async_queue_rza.drain.asm"
+        awk '/^[[:xdigit:]]+ <rez3asm_async_drain_single[^>]*>:/ && $0 !~ /\.cold>:/ \
+            { found = 1 } found { print } found && /^$/ { exit }' \
+            "$ASM/async_single_rza.all.asm" >"$single_asm"
+        awk '/^[[:xdigit:]]+ <rez_async_drain[^>]*>:/ && $0 !~ /\.cold>:/ \
+            { found = 1 } found { print } found && /^$/ { exit }' \
+            "$ASM/async_queue_rza.all.asm" >"$queue_asm"
+        if [ ! -s "$single_asm" ]; then
+            echo "FATAL: specialized single async drain is absent" >&2
+            exit 1
+        fi
+        single_indirect=$(awk '/call[a-z]*[[:space:]]+\*/ { count++ } \
+            END { print count + 0 }' "$single_asm")
+        queue_indirect=$(awk '/call[a-z]*[[:space:]]+\*/ { count++ } \
+            END { print count + 0 }' "$queue_asm")
+        if [ "$single_indirect" -ne 0 ]; then
+            echo "FATAL: single async drain retains an indirect callback" >&2
+            exit 1
+        fi
+        if [ "$queue_indirect" -lt 1 ]; then
+            echo "FATAL: multi-cascade drain lost its generic callback" >&2
+            exit 1
+        fi
+        echo "PASS: single async dispatch is direct; queue dispatch stays generic"
         ;;
     *)
         echo "NOTE: call-shape inspection is only asserted on x86-64"

@@ -88,6 +88,12 @@ for variant in internal abi_direct abi_indirect; do
         bench/rza_calls_host.c bench/runtime_host.c bench/timer.c \
         -o "$BUILD/calls_${variant}_rza"
 done
+for kind in single queue; do
+    "$RZA_COMPILER" "bench/async_$kind.rza" --emit-lib -o "$BUILD/async_$kind.rza.c"
+    $CC $CFLAGS $LDFLAGS -D"ASYNC_${kind^^}" "$BUILD/async_$kind.rza.c" \
+        bench/rza_async_host.c bench/runtime_host.c bench/timer.c \
+        -o "$BUILD/async_${kind}_rza"
+done
 
 RESULTS="$BUILD/results.txt"
 : >"$RESULTS"
@@ -167,6 +173,18 @@ measure "pipeline_calls_internal_rza" bash -c \
         $CC $CFLAGS $LDFLAGS -DCALLS_INTERNAL $BUILD/calls.rza.c \
         bench/rza_calls_host.c bench/runtime_host.c bench/timer.c \
         -o $BUILD/calls_internal_rza"
+for kind in single queue; do
+    measure "transpile_async_${kind}_rza" "$RZA_COMPILER" "bench/async_$kind.rza" \
+        --emit-lib -o "$BUILD/async_$kind.rza.c"
+    measure "backend_async_${kind}_rza" $CC $CFLAGS $LDFLAGS -D"ASYNC_${kind^^}" \
+        "$BUILD/async_$kind.rza.c" bench/rza_async_host.c bench/runtime_host.c \
+        bench/timer.c -o "$BUILD/async_${kind}_rza"
+    measure "pipeline_async_${kind}_rza" bash -c \
+        "\"$RZA_COMPILER\" bench/async_$kind.rza --emit-lib \
+            -o $BUILD/async_$kind.rza.c && $CC $CFLAGS $LDFLAGS \
+            -DASYNC_${kind^^} $BUILD/async_$kind.rza.c bench/rza_async_host.c \
+            bench/runtime_host.c bench/timer.c -o $BUILD/async_${kind}_rza"
+done
 
 measure_runtime() {
     local name=$1 median
@@ -186,6 +204,10 @@ measure_runtime() {
         awk -v ns="$median" -v batch="$BATCH" \
             'BEGIN { printf "runtime_%s_ns_per_byte=%.3f\n", "'"$metric"'", ns/(batch*4096) }' \
             >>"$RESULTS"
+    elif [[ "$name" == async_* ]]; then
+        awk -v ns="$median" -v batch="$BATCH" \
+            'BEGIN { printf "runtime_%s_ns_per_task=%.3f\n", "'"$name"'", ns/(batch*1024) }' \
+            >>"$RESULTS"
     else
         awk -v ns="$median" -v batch="$BATCH" \
             'BEGIN { printf "runtime_%s_ns_per_step=%.3f\n", "'"$name"'", ns/batch }' \
@@ -197,17 +219,18 @@ for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza \
         crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
         crc32c_intrinsic_rust table_rza table_c table_rust ring_rza ring_c ring_rust \
         parser_rza parser_c parser_rust checked_arith_rza checked_arith_wrap_rza \
-        calls_internal_rza calls_abi_direct_rza calls_abi_indirect_rza; do
+        calls_internal_rza calls_abi_direct_rza calls_abi_indirect_rza \
+        async_single_rza async_queue_rza; do
     measure_runtime "$name"
 done
 for artifact in crc32c.rza.c crc32c_flat.rza.c crc32c_table.rza.c crc32c_hw.rza.c \
         crc32c_hw_unroll.rza.c table.rza.c ring.rza.c parser.rza.c checked_arith.rza.c \
-        checked_arith_wrap.rza.c calls.rza.c crc32c_rza crc32c_flat_rza crc32c_table_rza \
-        crc32c_hw_rza crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust \
-        crc32c_table_rust crc32c_intrinsic_rust table_rza table_c table_rust ring_rza \
-        ring_c ring_rust parser_rza parser_c parser_rust checked_arith_rza \
-        checked_arith_wrap_rza calls_internal_rza calls_abi_direct_rza \
-        calls_abi_indirect_rza; do
+        checked_arith_wrap.rza.c calls.rza.c async_single.rza.c async_queue.rza.c \
+        crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza crc32c_hw_unroll_rza \
+        crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust crc32c_intrinsic_rust \
+        table_rza table_c table_rust ring_rza ring_c ring_rust parser_rza parser_c \
+        parser_rust checked_arith_rza checked_arith_wrap_rza calls_internal_rza \
+        calls_abi_direct_rza calls_abi_indirect_rza async_single_rza async_queue_rza; do
     printf 'artifact_bytes %s %s\n' "$artifact" "$(wc -c <"$BUILD/$artifact")" \
         >>"$RESULTS"
 done

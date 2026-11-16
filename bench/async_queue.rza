@@ -1,0 +1,59 @@
+; Eight FIFO tasks per boot: 1024 state increments and 1024 completions.
+res state, field, 8
+res completed, field, 8
+med state_m, state, field
+med completed_m, completed, field
+
+proc work:
+    acasc task0: state_m -> out0
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out0_m, out0, field
+    acasc task1: state_m -> out1
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out1_m, out1, field
+    acasc task2: state_m -> out2
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out2_m, out2, field
+    acasc task3: state_m -> out3
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out3_m, out3, field
+    acasc task4: state_m -> out4
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out4_m, out4, field
+    acasc task5: state_m -> out5
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out5_m, out5, field
+    acasc task6: state_m -> out6
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out6_m, out6, field
+    acasc task7: state_m -> out7
+        load %r0, [state_m + 0]
+        inc %r0
+        store [state_m + 0], %r0
+    endc
+    med out7_m, out7, field
+    await %r0
+    store [completed_m + 0], %r0
+    ret
+ret

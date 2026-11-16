@@ -72,6 +72,11 @@ for variant in internal abi_direct abi_indirect; do
     $CC $CFLAGS $LDFLAGS -D"CALLS_${variant^^}" "$BUILD/calls.c" \
         bench/rza_calls_host.c bench/bench_check.c -o "$BUILD/calls_${variant}_rza"
 done
+for kind in single queue; do
+    "$RZA_COMPILER" "bench/async_$kind.rza" --emit-lib -o "$BUILD/async_$kind.c"
+    $CC $CFLAGS $LDFLAGS -D"ASYNC_${kind^^}" "$BUILD/async_$kind.c" \
+        bench/rza_async_host.c bench/bench_check.c -o "$BUILD/async_${kind}_rza"
+done
 
 for name in crc32c_rza crc32c_flat_rza crc32c_table_rza crc32c_hw_rza \
         crc32c_hw_unroll_rza crc32c_c crc32c_table_c crc32c_rust crc32c_table_rust \
@@ -92,6 +97,9 @@ for name in checked_arith_rza checked_arith_wrap_rza; do
 done
 for variant in internal abi_direct abi_indirect; do
     check_output "calls_${variant}_rza" calls
+done
+for kind in single queue; do
+    check_output "async_${kind}_rza" async
 done
 
 # Changing only the key mask creates 1024 distinct requests. After 512 inserts

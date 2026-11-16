@@ -753,28 +753,68 @@ fn void emit_async_callback(Output* out, int ci) {
     out.append_string("}\n\n");
 }
 
-fn bool program_has_async() {
+fn int async_cascade_count() {
+    int count = 0;
     for (sz i = 0; i < cascades.len(); i++) {
-        if (cascades[i].is_async) return true;
+        if (cascades[i].is_async) count++;
     }
-    return false;
+    return count;
+}
+
+fn bool program_has_async() {
+    return async_cascade_count() > 0;
+}
+
+fn bool program_single_async() {
+    return async_cascade_count() == 1;
+}
+
+fn String async_drain_expr() {
+    if (program_single_async()) return "rez3asm_async_drain_single()";
+    return "rez_async_drain(&g_async)";
 }
 
 fn void emit_async_drain(Output* out) {
     if (program_has_async()) {
-        out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+        out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
     }
 }
 
 fn void emit_proc_drain(Output* out, bool lifecycle) {
     if (!program_has_async() && (!g_lib_mode || !lifecycle)) return;
-    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+    out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
 }
 
 fn void emit_async_callbacks(Output* out) {
     for (sz i = 0; i < cascades.len(); i++) {
         if (cascades[i].is_async) emit_async_callback(out, (int)i);
     }
+}
+
+fn void emit_async_single_drain(Output* out) {
+    if (!program_single_async()) return;
+    int seq = -1;
+    for (sz i = 0; i < cascades.len(); i++) {
+        if (cascades[i].is_async) seq = cascades[i].seq;
+    }
+    assert(seq > 0);
+    out.append_string("[[maybe_unused]] static uint64_t rez3asm_async_drain_single(void) {\n");
+    out.append_string("    uint64_t completed = 0;\n");
+    out.append_string("    assert(g_async.count <= REZ_ASYNC_MAX);\n");
+    out.append_string("    while (g_async.count > 0) {\n");
+    out.append_string("        RezAsyncTask task = g_async.tasks[g_async.head];\n");
+    out.append_string("        bool success;\n");
+    out.appendf("        assert(task.run == ac_run_%d);\n", seq);
+    out.append_string("        assert(task.context != nullptr);\n");
+    out.append_string("        g_async.tasks[g_async.head] = (RezAsyncTask){0};\n");
+    out.append_string("        g_async.head = (g_async.head + 1) % REZ_ASYNC_MAX;\n");
+    out.append_string("        g_async.count--;\n");
+    out.appendf("        success = ac_run_%d(task.context);\n", seq);
+    out.append_string("        if (success) completed++;\n");
+    out.append_string("    }\n");
+    out.append_string("    g_async.head = 0;\n");
+    out.append_string("    return completed;\n");
+    out.append_string("}\n\n");
 }
 
 
@@ -806,7 +846,7 @@ fn void emit_call(Output* out, int ind, Instr* ins) {
 
 fn void emit_await(Output* out, int ind, Instr* ins) {
     pad(out, ind);
-    out.appendf("r%d = (int64_t)rez_async_drain(&g_async);\n", ins.a);
+    out.appendf("r%d = (int64_t)%s;\n", ins.a, async_drain_expr());
 }
 
 fn bool is_async_block(int block) {
@@ -998,7 +1038,7 @@ fn void emit_proc_host(Output* out, int pi) {
     emit_proc_frame_reset(out, p);
     out.appendf("    %s();\n", p.cname);
     if (!program_has_async()) {
-        out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+        out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
     }
     emit_proc_frame_decay(out, p);
     out.append_string("}\n");
@@ -1091,7 +1131,7 @@ fn void emit_boot(Output* out) {
                 "        exit(1);\n"
                 "    }\n", frames[0].cap);
     emit_body(out, 0);
-    out.append_string("    if (g_async.count != 0) (void)rez_async_drain(&g_async);\n");
+    out.appendf("    if (g_async.count != 0) (void)%s;\n", async_drain_expr());
     emit_writeonly_silence(out, 1, rd, wr);
     out.append_string("}\n");
 }
@@ -1128,7 +1168,7 @@ fn void emit_host_api(Output* out) {
         out.append_string("}\n");
     }
     out.append_string("uint32_t rza_rez3ext_abi(void) { return REZ3EXT_ABI; }\n");
-    out.append_string("uint64_t rza_await(void) { return rez_async_drain(&g_async); }\n");
+    out.appendf("uint64_t rza_await(void) { return %s; }\n", async_drain_expr());
     out.append_string("void *rza_arena_alloc(RezCavity *cavity, uint64_t size) "
                       "{ return rez_cell_z(cavity, size); }\n");
     out.append_string("void *rza_deref_cell(RezCellMed mediator) "
@@ -1240,6 +1280,7 @@ fn String emit() {
     emit_static_storage(&out);
     out.append_string("RezAsyncQueue g_async;\n\n");
     emit_async_callbacks(&out);
+    emit_async_single_drain(&out);
     for (sz i = 0; i < procs.len(); i++) {
         if (g_lib_mode && proc_frame_free((int)i)) {
             out.appendf("static void %s(void);\n", procs[i].cname);
