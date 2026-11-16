@@ -84,6 +84,49 @@ static int32_t check_checked_arithmetic(void) {
     return 0;
 }
 
+static int32_t check_view_ranges(RezCellMed med) {
+    RezCellMed view = {0};
+    RezCellMed nested = {0};
+    RezCellMed invalid = { .size = 77 };
+    char *base = med.cell;
+
+    CHECK(rez_view_cell(med, 1, 6, 1, &view));
+    CHECK(view.cell == base + 1 && view.size == 6);
+    CHECK(view.owner == med.owner && view.home == med.home);
+    CHECK(view.gen == med.gen && view.home_gen == med.home_gen);
+    CHECK(rez_view_cell(view, 2, 3, 1, &nested));
+    CHECK(nested.cell == base + 3 && nested.size == 3);
+    CHECK(rez_view_cell(med, 8, 0, 1, &view));
+    CHECK(view.cell == base + 8 && view.size == 0);
+    CHECK(rez_deref_cell(view) == base + 8);
+    CHECK(rez_cell_bounds(view, 0, 0));
+    CHECK(!rez_cell_bounds(view, 0, 1));
+    CHECK(!rez_cell_bounds(view, UINT64_MAX, 1));
+    CHECK(rez_view_cell(med, 0, 1, 8, &view));
+    CHECK(view.cell == base && view.size == 8);
+    CHECK(rez_view_cell(med, 1, 0, 8, &view));
+    CHECK(view.cell == base + 8 && view.size == 0);
+
+    CHECK(!rez_view_cell(med, 9, 0, 1, &invalid));
+    CHECK(invalid.cell == nullptr && invalid.size == 0);
+    invalid = (RezCellMed){ .size = 77 };
+    CHECK(!rez_view_cell(med, 0, 9, 1, &invalid));
+    CHECK(invalid.cell == nullptr && invalid.size == 0);
+    CHECK(!rez_view_cell(med, 1, UINT64_MAX, 1, &invalid));
+    CHECK(!rez_view_cell(med, UINT64_MAX, 1, 1, &invalid));
+    CHECK(!rez_view_cell(med, INT64_MAX, 1, 1, &invalid));
+    CHECK(!rez_view_cell(med, 0, 1, 0, &invalid));
+    CHECK(!rez_view_cell(med, 0, 1, UINT64_MAX, &invalid));
+    CHECK(!rez_view_cell(med, 0, 1, 1, nullptr));
+    CHECK(!rez_view_cell((RezCellMed){0}, 0, 1, 1, &invalid));
+    CHECK(invalid.cell == nullptr && invalid.size == 0);
+
+    CHECK(rez_view_cell(med, 1, 6, 1, &view));
+    CHECK(!rez_view_cell(view, 0, 1, 4, &invalid));
+    CHECK(invalid.cell == nullptr && invalid.size == 0);
+    return 0;
+}
+
 static int32_t check_crc32c(void) {
     uint64_t word = UINT64_C(0x3837363534333231);
     uint64_t expected = UINT64_C(1619493018) ^ UINT32_MAX;
@@ -150,9 +193,12 @@ int main(void) {
     CHECK(rez_i64_mod(8, 3) == 2);
     CHECK(check_checked_arithmetic() == 0);
     CHECK(check_crc32c() == 0);
+    CHECK(check_view_ranges(med) == 0);
 
     rez_decay(&field);
     CHECK(rez_deref_cell(med) == nullptr);
+    CHECK(!rez_view_cell(med, 0, 1, 1, &med));
+    CHECK(med.cell == nullptr && med.size == 0);
     CHECK(rez_cell_z(&field, 0) == nullptr);
     rez_decay(&proc);
     rez_decay(&slot);

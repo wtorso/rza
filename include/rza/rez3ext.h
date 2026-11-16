@@ -125,6 +125,31 @@ void *rez_deref_cell_inline(RezCellMed mediator) {
     return width <= mediator.size - offset;
 }
 
+[[maybe_unused]] static bool rez_view_cell(
+    RezCellMed source,
+    uint64_t offset,
+    uint64_t length,
+    uint64_t stride,
+    RezCellMed *out
+) {
+    uint64_t elements;
+    uint64_t byte_offset;
+    if (out == nullptr) return false;
+    *out = (RezCellMed){0};
+    if (stride == 0) return false;
+    if (rez_deref_cell_inline(source) == nullptr) return false;
+    if (source.size % stride != 0) return false;
+    elements = source.size / stride;
+    if (offset > elements) return false;
+    if (length > elements - offset) return false;
+    byte_offset = offset * stride;
+    source.cell = (char *)source.cell + byte_offset;
+    source.size = length * stride;
+    *out = source;
+    assert(out->size <= elements * stride);
+    return true;
+}
+
 [[maybe_unused]] static uint64_t rez_i64_bits(int64_t value) {
     uint64_t bits;
     memcpy(&bits, &value, sizeof(bits));
