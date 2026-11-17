@@ -18,7 +18,7 @@ int main(void) {
     int64_t value = -1;
     memcpy(&value, rza_deref_cell(rza_med_x_m()), sizeof(value));
     if (value != 1) return 12;
-    if (rza_deref_cell(rza_med_boot_out_m()) == nullptr) return 13;
+    if (rza_deref_cell(rza_med_boot_out_m()) == NULL) return 13;
     printf("%lld\n", (long long)value);
     return 0;
 }

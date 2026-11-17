@@ -13,13 +13,13 @@ static char callback_operation[64];
 RzaResult rza_succeed(void);
 
 static void on_diagnostic(RzaDiagnostic diagnostic, void *context) {
-    if (context != nullptr) return;
+    if (context != NULL) return;
     callback_count++;
     callback_fault = diagnostic.fault;
     callback_reentry = rza_succeed().code == RZA_FAULT_ENTRY_STATE
         ? RZA_FAULT_ENTRY_STATE : RZA_OK;
     snprintf(callback_operation, sizeof(callback_operation), "%s",
-        diagnostic.operation == nullptr ? "" : diagnostic.operation);
+        diagnostic.operation == NULL ? "" : diagnostic.operation);
 }
 
 uint32_t rza_rez3ext_abi(void);
@@ -33,7 +33,7 @@ void rza_set_diagnostic_handler(RzaDiagnosticHandler handler, void *context);
 static int64_t read_word(RezCellMed mediator, uint64_t offset) {
     int64_t value = INT64_MIN;
     void *cell = rza_deref_cell(mediator);
-    if (cell != nullptr) memcpy(&value, (char *)cell + offset, sizeof(value));
+    if (cell != NULL) memcpy(&value, (char *)cell + offset, sizeof(value));
     return value;
 }
 
@@ -50,7 +50,7 @@ int main(void) {
     CHECK(first.code == RZA_OK);
     printf("first %u %lld\n", first.code, (long long)read_word(rza_med_state_m(), 8));
 
-    rza_set_diagnostic_handler(on_diagnostic, nullptr);
+    rza_set_diagnostic_handler(on_diagnostic, NULL);
     RzaResult fault = rza_fail();
     CHECK(fault.code == RZA_FAULT_ARITHMETIC_OVERFLOW && fault.line == 11);
     CHECK(!rza_frame_fail()->alive);

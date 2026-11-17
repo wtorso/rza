@@ -65,10 +65,10 @@ static_assert(SOURCE_BYTES_MAX > LINE_TEXT_MAX);
 
 // Annex K сохраняет строгие clang/MSVC warnings без глобального CRT define.
 static FILE *open_input(const char *path) {
-    assert(path != nullptr);
+    assert(path != NULL);
 #if defined(_WIN32)
-    FILE *input = nullptr;
-    if (fopen_s(&input, path, "rb") != 0) return nullptr;
+    FILE *input = NULL;
+    if (fopen_s(&input, path, "rb") != 0) return NULL;
     return input;
 #else
     return fopen(path, "rb");
@@ -76,8 +76,8 @@ static FILE *open_input(const char *path) {
 }
 
 static void copy_text(char *dest, size_t cap, const char *src) {
-    assert(dest != nullptr);
-    assert(src != nullptr);
+    assert(dest != NULL);
+    assert(src != NULL);
     assert(cap > 0);
 #if defined(_WIN32)
     errno_t error = strcpy_s(dest, cap, src);
@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
     }
     if (argc == 2) {
         input = open_input(argv[1]);
-        if (input == nullptr) {
+        if (input == NULL) {
             fprintf(stderr, "cannot open %s\n", argv[1]);
             return 2;
         }
@@ -140,16 +140,16 @@ int main(int argc, char **argv) {
 }
 
 static void report(const char *rule, const char *msg, const char *left, const char *right) {
-    assert(rule != nullptr);
-    assert(msg != nullptr);
+    assert(rule != NULL);
+    assert(msg != NULL);
     violations++;
     printf("VIOLATION line %u [%s]: %s %s %s\n",
            (unsigned)lineno, rule, msg, left, right);
 }
 
 static void warnx(const char *msg, const char *name) {
-    assert(msg != nullptr);
-    assert(name != nullptr);
+    assert(msg != NULL);
+    assert(name != NULL);
     printf("warn      line %u: %s %s\n", (unsigned)lineno, msg, name);
 }
 
@@ -159,7 +159,7 @@ static uint32_t next_gen(void) {
 }
 
 static int32_t find_frame(const char *name) {
-    assert(name != nullptr);
+    assert(name != NULL);
     for (uint32_t index = 0; index < nf; index++) {
         if (strcmp(frames[index].name, name) == 0) return (int32_t)index;
     }
@@ -167,7 +167,7 @@ static int32_t find_frame(const char *name) {
 }
 
 static int32_t find_cell(const char *name) {
-    assert(name != nullptr);
+    assert(name != NULL);
     for (uint32_t index = 0; index < nc; index++) {
         if (strcmp(cells[index].name, name) == 0) return (int32_t)index;
     }
@@ -175,7 +175,7 @@ static int32_t find_cell(const char *name) {
 }
 
 static int32_t find_link(const char *name) {
-    assert(name != nullptr);
+    assert(name != NULL);
     for (uint32_t index = 0; index < nl; index++) {
         if (strcmp(links[index].name, name) == 0) return (int32_t)index;
     }
@@ -233,8 +233,8 @@ static void decay(int32_t frame_index) {
 
 static void op_frame(char *name, char *parent) {
     int32_t parent_index = 0;
-    assert(name != nullptr);
-    assert(parent != nullptr);
+    assert(name != NULL);
+    assert(parent != NULL);
     if (find_frame(name) >= 0) {
         report("DUP", "duplicate frame", name, "");
         return;
@@ -267,8 +267,8 @@ static void op_frame(char *name, char *parent) {
 
 static void op_cell(char *name, char *fname) {
     int32_t frame_index;
-    assert(name != nullptr);
-    assert(fname != nullptr);
+    assert(name != NULL);
+    assert(fname != NULL);
     frame_index = find_frame(fname);
     if (frame_index < 0) {
         report("I1", "cell in unknown frame", name, fname);
@@ -291,8 +291,8 @@ static void op_cell(char *name, char *fname) {
 static void op_link(char *name, char *cname, char *issuer) {
     int32_t cell_index;
     int32_t issuer_index;
-    assert(name != nullptr);
-    assert(cname != nullptr);
+    assert(name != NULL);
+    assert(cname != NULL);
     cell_index = find_cell(cname);
     if (cell_index < 0) {
         report("I2", "link to unknown cell", name, cname);
@@ -322,7 +322,7 @@ static void op_link(char *name, char *cname, char *issuer) {
 
 static char *trim(char *text) {
     char *end;
-    assert(text != nullptr);
+    assert(text != NULL);
     while (isspace((unsigned char)*text) != 0) text++;
     end = text + strlen(text);
     while (end > text && isspace((unsigned char)end[-1]) != 0) end--;
@@ -332,8 +332,8 @@ static char *trim(char *text) {
 
 static void check_casc_link(char *name, char *token, bool async) {
     int32_t link_index;
-    assert(name != nullptr);
-    assert(token != nullptr);
+    assert(name != NULL);
+    assert(token != NULL);
     link_index = find_link(token);
     if (link_index < 0) {
         report("I3", "cascade uses unknown link", name, token);
@@ -353,15 +353,15 @@ static void op_casc(char *name, char *list, char *outcell, char *outframe, bool 
     char buffer[LINE_TEXT_MAX + 1u];
     char *cursor;
     uint32_t count = 0;
-    assert(name != nullptr);
-    assert(list != nullptr);
+    assert(name != NULL);
+    assert(list != NULL);
     assert(strlen(list) <= LINE_TEXT_MAX);
     COPY_TEXT(buffer, list);
     cursor = buffer;
     for (;;) {
         char *comma = strchr(cursor, ',');
         char *token;
-        if (comma != nullptr) *comma = '\0';
+        if (comma != NULL) *comma = '\0';
         token = trim(cursor);
         if (*token == '\0') {
             report("STRUCT", "empty cascade link", name, "");
@@ -373,7 +373,7 @@ static void op_casc(char *name, char *list, char *outcell, char *outframe, bool 
         }
         check_casc_link(name, token, async);
         count++;
-        if (comma == nullptr) break;
+        if (comma == NULL) break;
         cursor = comma + 1;
     }
     assert(count > 0);
@@ -391,8 +391,8 @@ static void op_casc(char *name, char *list, char *outcell, char *outframe, bool 
 static void op_raise(char *cname, char *fname) {
     int32_t cell_index;
     int32_t frame_index;
-    assert(cname != nullptr);
-    assert(fname != nullptr);
+    assert(cname != NULL);
+    assert(fname != NULL);
     cell_index = find_cell(cname);
     if (cell_index < 0) {
         report("I4", "raise of unknown cell", cname, "");
@@ -421,7 +421,7 @@ static void op_raise(char *cname, char *fname) {
 
 static void op_leave(char *fname) {
     int32_t frame_index;
-    assert(fname != nullptr);
+    assert(fname != NULL);
     frame_index = find_frame(fname);
     if (frame_index < 0) {
         report("DECAY", "leave of unknown frame", fname, "");
@@ -440,7 +440,7 @@ static void op_leave(char *fname) {
 
 static void op_probe(char *lname) {
     int32_t link_index;
-    assert(lname != nullptr);
+    assert(lname != NULL);
     link_index = find_link(lname);
     if (link_index < 0) {
         warnx("probe of unknown link", lname);
@@ -452,7 +452,7 @@ static void op_probe(char *lname) {
 
 static void op_read(char *lname) {
     int32_t link_index;
-    assert(lname != nullptr);
+    assert(lname != NULL);
     link_index = find_link(lname);
     if (link_index < 0) {
         warnx("read of unknown link", lname);
@@ -466,7 +466,7 @@ static void op_read(char *lname) {
 }
 
 static bool trailing_space(const char *text) {
-    assert(text != nullptr);
+    assert(text != NULL);
     while (*text != '\0') {
         if (isspace((unsigned char)*text) == 0) return false;
         text++;
@@ -486,14 +486,14 @@ static void check_casc_line(char *line, bool async) {
     char *gt;
     int consumed = 0;
     int fields;
-    assert(line != nullptr);
+    assert(line != NULL);
     outframe[0] = '\0';
     if (scan_casc(line, name, rest) != 2) {
         malformed();
         return;
     }
     gt = strchr(rest, '>');
-    if (gt == nullptr) {
+    if (gt == NULL) {
         malformed();
         return;
     }
@@ -513,8 +513,8 @@ static void check_casc_line(char *line, bool async) {
 static uint32_t split_tokens(char *line, char **tokens, uint32_t capacity) {
     char *cursor = line;
     uint32_t count = 0;
-    assert(line != nullptr);
-    assert(tokens != nullptr);
+    assert(line != NULL);
+    assert(tokens != NULL);
     assert(capacity > 0);
     for (uint32_t steps = 0; steps < LINE_TEXT_MAX; steps++) {
         while (isspace((unsigned char)*cursor) != 0) cursor++;
@@ -531,7 +531,7 @@ static uint32_t split_tokens(char *line, char **tokens, uint32_t capacity) {
 }
 
 static bool operands_valid(char **tokens, uint32_t count, uint32_t expected) {
-    assert(tokens != nullptr);
+    assert(tokens != NULL);
     assert(expected > 0);
     if (count != expected + 1) return false;
     for (uint32_t index = 1; index < count; index++) {
@@ -542,7 +542,7 @@ static bool operands_valid(char **tokens, uint32_t count, uint32_t expected) {
 
 static bool await_register_valid(char *token) {
     int32_t value = 0;
-    assert(token != nullptr);
+    assert(token != NULL);
     if (token[0] != '%' || token[1] != 'r' || token[2] == '\0') return false;
     for (uint32_t i = 2; token[i] != '\0'; i++) {
         if (!isdigit((unsigned char)token[i])) return false;
@@ -557,9 +557,9 @@ static void check_line(char *line) {
     char *tokens[4];
     char *comment;
     uint32_t count;
-    assert(line != nullptr);
+    assert(line != NULL);
     comment = strchr(line, '#');
-    if (comment != nullptr) *comment = '\0';
+    if (comment != NULL) *comment = '\0';
     if (scan_command(line, command) != 1) return;
     if (strcmp(command, "casc") == 0 || strcmp(command, "acasc") == 0) {
         check_casc_line(line, command[0] == 'a');
@@ -613,7 +613,7 @@ static void check_line(char *line) {
 
 static bool read_source(FILE *input) {
     size_t count;
-    assert(input != nullptr);
+    assert(input != NULL);
     count = fread(source, 1, SOURCE_BYTES_MAX + 1u, input);
     if (ferror(input) != 0) {
         fprintf(stderr, "cannot read input\n");
@@ -624,7 +624,7 @@ static bool read_source(FILE *input) {
         source_len = 0;
         return true;
     }
-    if (memchr(source, '\0', count) != nullptr) {
+    if (memchr(source, '\0', count) != NULL) {
         report("STRUCT", "NUL in source", "", "");
         source_len = 0;
         return true;

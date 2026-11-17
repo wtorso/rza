@@ -45,21 +45,21 @@ static int cart_load(RezCellMed cart_med, RezCavity *screen) {
 }
 
 static void cart_enter(RezCavity *parent) {
-    assert(parent != nullptr);
+    assert(parent != NULL);
     cart_instance.base = rez_cav_enter(&cart_cavity, parent, cart_arena, 4096);
-    assert(cart_instance.base != nullptr);
+    assert(cart_instance.base != NULL);
     cart_instance.cart = rez_cell_z(cart_instance.base, sizeof(Cart));
-    assert(cart_instance.cart != nullptr);
+    assert(cart_instance.cart != NULL);
 }
 
 static void run_screen(RezCavity *session, RezCellMed cart_med) {
     RezCavity *screen;
     UiState *ui;
-    assert(session != nullptr);
+    assert(session != NULL);
     screen = rez_cav_enter(&screen_cavity, session, screen_arena, 4096);
-    assert(screen != nullptr);
+    assert(screen != NULL);
     ui = rez_cell_z(screen, sizeof(UiState));
-    assert(ui != nullptr);
+    assert(ui != NULL);
     ui->scroll = 340;
     ui->expanded = true;
     if (cart_load(cart_med, screen) != 0) {
@@ -73,13 +73,13 @@ static void run_screen(RezCavity *session, RezCellMed cart_med) {
 
 int main(void) {
     RezCellMed cart_med;
-    assert(rez_cav_enter(&field_cavity, nullptr, field_arena, 65536) != nullptr);
+    assert(rez_cav_enter(&field_cavity, NULL, field_arena, 65536) != NULL);
     assert(rez_cav_enter(
         &session_cavity,
         &field_cavity,
         session_arena,
         16384
-    ) != nullptr);
+    ) != NULL);
     cart_enter(&session_cavity);
     cart_med = rez_issue_cell(
         cart_instance.base,
@@ -90,11 +90,11 @@ int main(void) {
     run_screen(&session_cavity, cart_med);
     printf(
         "after back: mediator %s\n",
-        rez_deref_cell(cart_med) != nullptr ? "ALIVE (cart survived screen)" : "DEAD"
+        rez_deref_cell(cart_med) != NULL ? "ALIVE (cart survived screen)" : "DEAD"
     );
     rez_decay(cart_instance.base);
     rez_decay(&session_cavity);
-    if (rez_deref_cell(cart_med) != nullptr) {
+    if (rez_deref_cell(cart_med) != NULL) {
         printf("unexpected: alive after decay\n");
     } else {
         printf("after decay: mediator DEAD (intent would be dropped + logged)\n");

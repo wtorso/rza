@@ -16,7 +16,7 @@ int main(void) {
     RzaResult repeat = rza_boot();
     CHECK(repeat.code == RZA_FAULT_ENTRY_STATE);
     void *cell = rza_deref_cell(rza_med_state_m());
-    CHECK(cell != nullptr);
+    CHECK(cell != NULL);
     int64_t value = -1;
     memcpy(&value, cell, sizeof(value));
     CHECK(value == 0);

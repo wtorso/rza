@@ -11,7 +11,7 @@ void *rza_deref_cell(RezCellMed mediator);
 int main(void) {
     RzaResult result = rza_boot();
     CHECK(result.code == RZA_FAULT_ARITHMETIC_OVERFLOW && result.line == 5);
-    CHECK(rza_deref_cell(rza_med_out_m()) == nullptr);
+    CHECK(rza_deref_cell(rza_med_out_m()) == NULL);
     printf("fault %u %u\n", result.code, result.line);
     return 0;
 }

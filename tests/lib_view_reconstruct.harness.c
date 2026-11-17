@@ -17,17 +17,17 @@ int main(void) {
     CHECK(rza_bump().code == RZA_OK);
     CHECK(rza_update_view().code == RZA_OK);
     RezCellMed initial = rza_med_tail_m();
-    CHECK(initial.size == 4 && rza_deref_cell(initial) != nullptr);
+    CHECK(initial.size == 4 && rza_deref_cell(initial) != NULL);
     int64_t *control = rza_deref_cell(rza_med_control_m());
-    CHECK(control != nullptr);
+    CHECK(control != NULL);
     *control = -1;
     RzaResult bad = rza_update_view();
     CHECK(bad.code == RZA_FAULT_VIEW && bad.line == 16);
     RzaResult next = rza_bump();
     CHECK(next.code == RZA_OK);
     RezCellMed restored = rza_med_tail_m();
-    CHECK(restored.size == 4 && rza_deref_cell(restored) != nullptr);
-    CHECK(rza_deref_cell(rza_med_out_m()) != nullptr);
+    CHECK(restored.size == 4 && rza_deref_cell(restored) != NULL);
+    CHECK(rza_deref_cell(rza_med_out_m()) != NULL);
     printf("bad %u next %u size %llu\n", bad.code, next.code,
         (unsigned long long)restored.size);
     return 0;

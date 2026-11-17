@@ -15,11 +15,11 @@ int main(void) {
     if (rza_rez3ext_abi() != 5) return 10;
     if (rza_boot().code != RZA_OK) return 17;
     RezCellMed pending = rza_med_out_m();
-    if (pending.cell != nullptr) return 11;
+    if (pending.cell != NULL) return 11;
     if (rza_bump().code != RZA_OK) return 18;
-    if (rza_deref_cell(pending) != nullptr) return 16;
+    if (rza_deref_cell(pending) != NULL) return 16;
     RezCellMed completed = rza_med_out_m();
-    if (completed.cell == nullptr) return 12;
+    if (completed.cell == NULL) return 12;
     RzaAwaitResult awaited = rza_await();
     if (awaited.result.code != RZA_OK || awaited.completed != 0) return 13;
     int64_t value = -1;
@@ -30,9 +30,9 @@ int main(void) {
     if (out_value != 0) return 15;
     printf("%lld\n", (long long)value);
     if (rza_bump().code != RZA_OK) return 19;
-    if (rza_deref_cell(completed) != nullptr) return 20;
+    if (rza_deref_cell(completed) != NULL) return 20;
     RezCellMed republished = rza_med_out_m();
-    if (republished.cell == nullptr) return 21;
+    if (republished.cell == NULL) return 21;
     memcpy(&out_value, rza_deref_cell(republished), sizeof(out_value));
     if (out_value != 0) return 22;
     return 0;

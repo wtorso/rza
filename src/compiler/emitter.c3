@@ -325,7 +325,7 @@ fn String fault_code(String reason) {
 fn void emit_coded_fault(Output* out, int ind, String code, int line,
         String reason, String name) {
     pad(out, ind);
-    String subject = name.len == 0 ? "nullptr" : cat({ "\"", name, "\"" });
+    String subject = name.len == 0 ? "NULL" : cat({ "\"", name, "\"" });
     out.appendf("rez3asm_fault(%s, %d, \"%s\", %s);\n", code, line, reason, subject);
     pad(out, ind);
     out.append_string("goto rza_fault;\n");
@@ -347,7 +347,7 @@ fn void emit_diagnostic_support(Output* out) {
     out.append_string("        fault, (uint32_t)line, operation, subject\n");
     out.append_string("    };\n");
     if (g_lib_mode) {
-        out.append_string("    if (g_diag != nullptr) g_diag(diagnostic, g_diag_context);\n");
+        out.append_string("    if (g_diag != NULL) g_diag(diagnostic, g_diag_context);\n");
     } else {
         out.append_string("    (void)diagnostic;\n");
         out.append_string("    if (fault == RZA_ABORT) {\n");
@@ -361,7 +361,7 @@ fn void emit_diagnostic_support(Output* out) {
         out.append_string("    } else if (fault == RZA_FAULT_ARENA) {\n");
         out.append_string("        fprintf(stderr, \"FAULT line %d: arena overflow \"\n");
         out.append_string("            \"(%s %s)\\n\", line, operation, subject);\n");
-        out.append_string("    } else if (subject != nullptr) {\n");
+        out.append_string("    } else if (subject != NULL) {\n");
         out.append_string("        fprintf(stderr, \"FAULT line %d: %s %s\\n\",\n");
         out.append_string("            line, operation, subject);\n");
         out.append_string("    } else {\n");
@@ -558,7 +558,7 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
     defer rhs.free();
     if (ins.flag && ins.immediate == -9223372036854775807 - 1) {
         rhs.append("INT64_MIN");
-    } else if (ins.flag) { rhs.appendf("%d", ins.immediate); }
+    } else if (ins.flag) { rhs.appendf("%dLL", ins.immediate); }
     else { rhs.appendf("r%d", ins.c); }
     if (ins.s2 == "<") {
         pad(out, ind);
@@ -573,16 +573,14 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
     bool shift = ins.s2 == "<<" || ins.s2 == ">>" || ins.s2 == ">>>";
     if (division) {
         pad(out, ind);
-        out.appendf("if (%s == 0 || (r%d == INT64_MIN && %s == -1)) {\n",
-                    rhs.str_view(), ins.b, rhs.str_view());
+        out.appendf("if (rez_i64_div_invalid(r%d, %s)) {\n", ins.b, rhs.str_view());
         emit_fault(out, ind + 1, ins.line, "division", "");
         pad(out, ind);
         out.append_string("}\n");
     }
     if (shift) {
         pad(out, ind);
-        out.appendf("if (%s < 0 || %s >= 64) {\n",
-                    rhs.str_view(), rhs.str_view());
+        out.appendf("if (rez_i64_shift_invalid(%s)) {\n", rhs.str_view());
         emit_fault(out, ind + 1, ins.line, "shift", "");
         pad(out, ind);
         out.append_string("}\n");
@@ -781,7 +779,7 @@ fn void emit_acasc_enqueue(Output* out, int ind, Instr* ins) {
     pad(out, ind);
     out.appendf("ac_out_gen_%d++;\n", ca.seq);
     pad(out, ind);
-    out.appendf("if (%s == nullptr) {\n", cells[ca.out_cell].cname);
+    out.appendf("if (%s == NULL) {\n", cells[ca.out_cell].cname);
     pad(out, ind + 1);
     out.appendf("%s = rez_cell_z(%s, 8);\n",
                 cells[ca.out_cell].cname, fexpr(ca.out_frame));
@@ -870,7 +868,7 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
     for (sz i = 0; i < meds.len(); i++) {
         if (meds[i].cascade != ca.seq - 1) continue;
         pad(out, ind);
-        out.appendf("[[maybe_unused]] void *p_%s = nullptr;\n", meds[i].name);
+        out.appendf("[[maybe_unused]] void *p_%s = NULL;\n", meds[i].name);
     }
     if (ca.out_cell < 0) return;
     emit_clear_meds(out, ind, ca.out_cell);
@@ -883,7 +881,7 @@ fn void emit_mov(Output* out, int ind, Instr* ins) {
         if (ins.immediate == -9223372036854775807 - 1) {
             out.appendf("r%d = INT64_MIN;\n", ins.a);
         } else {
-            out.appendf("r%d = %d;\n", ins.a, ins.immediate);
+            out.appendf("r%d = %dLL;\n", ins.a, ins.immediate);
         }
     } else {
         out.appendf("r%d = r%d;\n", ins.a, ins.b);
@@ -1109,7 +1107,7 @@ fn void emit_async_single_drain(Output* out) {
     out.append_string("        RezAsyncTask task = g_async.tasks[g_async.head];\n");
     out.append_string("        RzaResult status;\n");
     out.appendf("        assert(task.run == ac_run_%d);\n", seq);
-    out.append_string("        assert(task.context != nullptr);\n");
+    out.append_string("        assert(task.context != NULL);\n");
     out.append_string("        g_async.tasks[g_async.head] = (RezAsyncTask){0};\n");
     out.append_string("        g_async.head = (g_async.head + 1) % REZ_ASYNC_MAX;\n");
     out.append_string("        g_async.count--;\n");
@@ -1413,9 +1411,9 @@ fn void emit_proc(Output* out, int pi) {
     out.appendf("static bool %s(void) {\n", portable);
     emit_crc_direct = false;
     emit_proc_body(out, pi, true);
-    out.append_string("#if REZ_CRC32C_X86\n");
-    out.appendf("__attribute__((target(\"sse4.2\")))\nstatic bool %s(void) {\n",
-                hardware);
+    out.append_string("#if REZ_CRC32C_X86\n#if REZ_CRC32C_GNU\n");
+    out.append_string("__attribute__((target(\"sse4.2\")))\n#endif\n");
+    out.appendf("static bool %s(void) {\n", hardware);
     emit_crc_direct = true;
     emit_proc_body(out, pi, true);
     emit_crc_direct = false;
@@ -1435,7 +1433,7 @@ fn void emit_top_core(Output* out, String name) {
     assert(frames[0].cap >= 64 && frames[0].cap <= ARENA_FRAME_MAX);
     assert(rd <= 0xFFFF && wr <= 0xFFFF);
     emit_regs_decl(out, 1, rd | wr);
-    out.appendf("    if (!rez_frame_reset(f_field, nullptr, A_field, %d)) {\n",
+    out.appendf("    if (!rez_frame_reset(f_field, NULL, A_field, %d)) {\n",
                 frames[0].cap);
     emit_coded_fault(out, 2, "RZA_FAULT_FRAME", 0, "frame allocation", "field");
     out.append_string("    }\n");
@@ -1637,6 +1635,9 @@ fn String emit() {
     out.append_string("#include <stdint.h>\n");
     out.append_string("#include <stdlib.h>\n");
     out.append_string("#include \"rez3ext.h\"\n\n");
+    out.append_string("#if defined(_MSC_VER)\n");
+    out.append_string("/* Generated labels may follow unconditional jumps. */\n");
+    out.append_string("#pragma warning(disable: 4702)\n#endif\n\n");
     emit_fault_support(&out);
     emit_static_storage(&out);
     out.append_string("RezAsyncQueue g_async;\n\n");

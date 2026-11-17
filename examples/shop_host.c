@@ -12,6 +12,6 @@ int main(void) {
     if (rza_boot().code != RZA_OK) return 4;
     RzaAwaitResult awaited = rza_await();
     if (awaited.result.code != RZA_OK || awaited.completed != 0) return 2;
-    if (rza_deref_cell(rza_med_cart_m()) != nullptr) return 3;
+    if (rza_deref_cell(rza_med_cart_m()) != NULL) return 3;
     return 0;
 }

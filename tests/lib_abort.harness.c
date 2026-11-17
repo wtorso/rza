@@ -17,6 +17,6 @@ int main(void) {
     if (rza_worker().code != RZA_OK) return 13;
     if (rza_killer().code != RZA_OK) return 14;
     if (rza_worker().code != RZA_OK) return 15;
-    if (rza_arena_alloc(rza_frame_tmp(), 0) != nullptr) return 10;
+    if (rza_arena_alloc(rza_frame_tmp(), 0) != NULL) return 10;
     return 0;
 }
