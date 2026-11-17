@@ -17,13 +17,13 @@ host-интерфейсы могут меняться.
 
 Для сборки из исходников нужны [C3
 0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1) с `c3c` в `PATH`,
-компилятор C23 (GCC, Clang или Zig), Bash и стандартные командные утилиты. Для
-запуска готового компилятора C3 не нужен, но для компиляции его C23-вывода всё ещё
-нужен C compiler. Rust необязателен и используется только для сравнительных
-программ и benchmark-проверок.
+компилятор C23 (GCC, Clang, Zig или MSVC на Windows), Bash и стандартные командные
+утилиты. Для запуска готового компилятора C3 не нужен, но для компиляции его
+C23-вывода всё ещё нужен C compiler. Rust необязателен и используется только для
+сравнительных программ и benchmark-проверок.
 
 Команды ниже используют POSIX-совместимый shell. CI также собирает и тестирует
-проект на Windows с Bash и Zig. Release-пакеты пока доступны только для Linux
+проект на Windows с Bash, Zig и MSVC. Release-пакеты пока доступны только для Linux
 x86_64 и Windows x86_64. Windows-бинарь использует динамический Microsoft C
 runtime (`VCRUNTIME140.dll`) и `dbghelp.dll`; static CRT не входит в пакет.
 
@@ -328,14 +328,23 @@ benchmark; на Linux для них также нужен `rustc`.
 ```sh
 CC=clang bash run_tests.sh
 CC="zig cc" RUST_CC=clang bash run_tests.sh
+CC=cl bash run_tests.sh
 ```
 
+`CC=cl` выбирает Microsoft `cl.exe` и требует Git Bash внутри x64 Native Tools
+environment для Visual Studio 2022 с Windows SDK. `cc.sh` передаёт `/std:clatest`,
+`/W4`, `/WX` и `/TC`; `clang-cl` — другой frontend и не заменяет эту проверку.
+MSVC не предоставляет GCC-compatible UBSan, поэтому sanitizer-проверки остаются
+на GCC, Clang и Zig. Windows Zig остаётся поддерживаемым с прежними UBSan и
+packaging-проверками.
+
 `RUST_CC` выбирает linker для Rust static libraries, но не заменяет C compiler для
-сгенерированного RZA-кода. CI запускает Linux GCC/Clang/Zig, Windows Zig, а также
-unit, packaging, Extension Host и production-dependency проверки VS Code. Linux Clang
-дополнительно запускает полный suite с ASan и UBSan. Linux
-GCC и Windows дополнительно проверяют воспроизводимые пакеты и staged install.
-Release workflow поддерживает ручной dry run и публикацию из version tags.
+сгенерированного RZA-кода. CI запускает Linux GCC/Clang/Zig, Windows Zig, Windows
+MSVC `cl.exe`, а также unit, packaging, Extension Host и production-dependency
+проверки VS Code. Linux Clang дополнительно запускает полный suite с ASan и UBSan.
+Linux GCC и оба Windows-компилятора дополнительно проверяют воспроизводимые
+пакеты и staged install. Release workflow поддерживает ручной dry run и публикацию
+из version tags.
 
 ## Структура репозитория
 

@@ -181,6 +181,77 @@ jobs:
             exit 1
           fi
 
+  msvc:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install C3 0.8.5_1
+        shell: bash
+        run: |
+          mkdir --parents build/toolchain
+          curl.exe -fL https://github.com/c3lang/c3c/releases/download/v0.8.5_1/c3-windows.zip \
+            -o build/toolchain/c3.zip
+          printf '%s  %s\n' \
+            '8cfdb48d8f9f1bc0d320a3e941c98ccdb8c8c0194564b1a7dd9fd2ab24292081' \
+            build/toolchain/c3.zip | sha256sum --check
+          unzip -q build/toolchain/c3.zip -d build/toolchain
+          c3c_dir=$(dirname "$(find build/toolchain -name c3c.exe -print -quit)")
+          test -n "$c3c_dir"
+          printf '%s\n' "$c3c_dir" >> "$GITHUB_PATH"
+          "$c3c_dir/c3c.exe" --version
+      - name: Full suite and packaging with MSVC
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -property installationPath
+          if (-not $installation) { throw "Visual Studio with MSVC was not found" }
+          $vcvars = Join-Path $installation 'VC\Auxiliary\Build\vcvars64.bat'
+          & cmd.exe /d /s /c "`"$vcvars`" && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') {
+              [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+            }
+          }
+          if ($LASTEXITCODE -ne 0) { throw "vcvars64 failed: $LASTEXITCODE" }
+          if ($env:VSCMD_ARG_TGT_ARCH -ne 'x64') { throw "MSVC target is not x64" }
+          & cl
+          if ($LASTEXITCODE -ne 0) { throw "cl.exe failed: $LASTEXITCODE" }
+          $env:CC = 'cl'
+          $env:MSYS2_ARG_CONV_EXCL = '*'
+          & bash --noprofile --norc -o pipefail -c 'bash run_tests.sh | tee build/msvc-suite.log'
+          if ($LASTEXITCODE -ne 0) { throw "MSVC suite failed: $LASTEXITCODE" }
+          $env:RZA_RELEASE_REQUIRE_CLEAN = '1'
+          & bash --noprofile --norc -o pipefail release/verify.sh
+          if ($LASTEXITCODE -ne 0) { throw "MSVC package verify failed: $LASTEXITCODE" }
+          & bash --noprofile --norc -o pipefail release/cross_check.sh
+          if ($LASTEXITCODE -ne 0) { throw "MSVC cross-check failed: $LASTEXITCODE" }
+      - name: Upload failed MSVC diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msvc-diagnostics-${{ github.run_id }}
+          path: |
+            build/msvc-suite.log
+            build/release-verify/**
+            build/release-cross/**
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Hygiene
+        shell: bash
+        run: |
+          git diff --check
+          test -z "$(git status --porcelain)"
+          shopt -s nullglob
+          dirs=(build/rza-tests-*)
+          if (( ${#dirs[@]} )); then
+            printf 'temporary test directories remain: %s\n' "${dirs[*]}" >&2
+            exit 1
+          fi
+          if tasklist //FI "IMAGENAME eq rez3asm.exe" | grep -q 'rez3asm.exe'; then
+            echo 'LSP process remains' >&2
+            exit 1
+          fi
+
   editor:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

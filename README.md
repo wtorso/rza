@@ -16,13 +16,13 @@ prerelease; the language and host interfaces can still change.
 
 Building from source requires [C3
 0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1) with `c3c` in
-`PATH`, a C23 compiler (GCC, Clang, or Zig), Bash, and standard command-line
-tools. Running a packaged compiler does not require C3, but compiling its C23
-output still requires a C compiler. Rust is optional and is used only for
+`PATH`, a C23 compiler (GCC, Clang, Zig, or MSVC on Windows), Bash, and standard
+command-line tools. Running a packaged compiler does not require C3, but compiling
+its C23 output still requires a C compiler. Rust is optional and is used only for
 comparison programs and benchmark checks.
 
 The commands below use a POSIX-compatible shell. CI also builds and tests the
-project on Windows with Bash and Zig. Release packages are currently provided
+project on Windows with Bash, Zig, and MSVC. Release packages are currently provided
 only for Linux x86_64 and Windows x86_64. The Windows binary uses the dynamic
 Microsoft C runtime (`VCRUNTIME140.dll`) and `dbghelp.dll`; static CRT is not
 included.
@@ -327,14 +327,23 @@ Other supported compiler selections are:
 ```sh
 CC=clang bash run_tests.sh
 CC="zig cc" RUST_CC=clang bash run_tests.sh
+CC=cl bash run_tests.sh
 ```
+
+`CC=cl` selects Microsoft `cl.exe` and requires Git Bash inside the x64 Native
+Tools environment for Visual Studio 2022 with a Windows SDK. `cc.sh` supplies
+`/std:clatest`, `/W4`, `/WX`, and `/TC`; `clang-cl` is a different frontend and
+is not a substitute for this check. MSVC does not provide GCC-compatible UBSan,
+so sanitizer coverage remains with GCC, Clang, and Zig. Windows Zig remains
+supported with its existing UBSan and packaging checks.
 
 `RUST_CC` selects the linker for Rust static libraries; it does not replace the
 C compiler used for generated RZA code. CI runs Linux GCC/Clang/Zig, Windows Zig,
-and VS Code unit, packaging, Extension Host, and production-dependency checks.
-Linux Clang additionally runs the full suite with ASan and UBSan.
-Linux GCC and Windows also verify reproducible packages and staged installation.
-The Release workflow supports manual dry runs and publication from version tags.
+Windows MSVC `cl.exe`, and VS Code unit, packaging, Extension Host, and
+production-dependency checks. Linux Clang additionally runs the full suite with
+ASan and UBSan. Linux GCC and both Windows compilers also verify reproducible
+packages and staged installation. The Release workflow supports manual dry runs and
+publication from version tags.
 
 ## Repository layout
 
