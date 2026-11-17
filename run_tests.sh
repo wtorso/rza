@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # run_tests.sh — полный прогон REZ3-ASM: сборка транспайлера (C3), трансляция,
-# компиляция C23 со строгими warnings, UBSan, запуск и сверка exit/stdout,
+# компиляция C23 с compiler-specific warnings/sanitizers, запуск и сверка exit/stdout,
 # негативные тесты, LSP и fuzz. exit 0 только если всё зелёное.
 set -o nounset
 cd "$(dirname "$0")"
+. ./cc.sh
 
 # компилятор C23 для сгенерированного кода
 if [ -z "${CC:-}" ]; then
@@ -12,33 +13,7 @@ if [ -z "${CC:-}" ]; then
     elif command -v clang >/dev/null 2>&1; then CC="clang"
     else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
 fi
-
-if [ -z "${CFLAGS:-}" ]; then
-    CFLAGS="-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
-    CFLAGS+="-fno-sanitize-recover=undefined -I include/rza -I ."
-fi
-# LNK4217 относится только к clang_rt.ubsan_standalone.lib, не к RZA objects.
-# LLVM runtime должен предшествовать несовместимой MSVC UBSan library.
-LDFLAGS="${LDFLAGS:-}"
-if [ "${OS:-}" = "Windows_NT" ]; then
-    case "$CC" in
-        *clang-cl*)
-            case "$LDFLAGS" in
-                *"/ignore:4217"*) ;;
-                *) LDFLAGS+=" /link /ignore:4217" ;;
-            esac
-            ;;
-        *clang*)
-            clang_resource_dir=$(cygpath -m -s "$($CC -print-resource-dir)")
-            LDFLAGS="-L$clang_resource_dir/lib/windows $LDFLAGS"
-            case "$LDFLAGS" in
-                *"/ignore:4217"*) ;;
-                *) LDFLAGS+=" -Wl,/ignore:4217" ;;
-            esac
-            ;;
-    esac
-fi
-export CC CFLAGS LDFLAGS
+rza_cc_init sanitize include/rza .
 BUILD=".test-build-$$"
 rm --recursive --force "$BUILD"
 mkdir --parents "$BUILD"
@@ -118,7 +93,7 @@ run_good() {
         bad "$t" "transpile failed (want exit 0)"; cat "$BUILD/$t.trerr"
         return
     fi
-    if ! $CC $CFLAGS $LDFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
+    if ! rza_cc "$BUILD/$t.c" -o "$BUILD/$t.exe" \
             2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -150,7 +125,7 @@ run_dead() {
         cat "$BUILD/$t.trerr"
         return
     fi
-    if ! $CC $CFLAGS $LDFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
+    if ! rza_cc "$BUILD/$t.c" -o "$BUILD/$t.exe" \
             2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -185,7 +160,7 @@ run_abort() {
         bad "$t" "transpile failed"; cat "$BUILD/$t.trerr"
         return
     fi
-    if ! $CC $CFLAGS $LDFLAGS "$BUILD/$t.c" -o "$BUILD/$t.exe" \
+    if ! rza_cc "$BUILD/$t.c" -o "$BUILD/$t.exe" \
             2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -326,7 +301,7 @@ run_async_mutants() {
     if ! $TR tests/lib_async_fault.rza --emit-lib -o "$base/cancel.c" ||
             ! sed 's/rez_async_cancel(&g_async);/(void)\&g_async;/' \
                 "$base/cancel.c" >"$base/no_cancel.c" ||
-            ! $CC $CFLAGS $LDFLAGS -DGENERATED_RZA=\"$base/no_cancel.c\" \
+            ! rza_cc -DGENERATED_RZA=\"$base/no_cancel.c\" \
                 tests/lib_async_fault.harness.c -o "$base/no_cancel.exe"; then
         bad async_cancel_mutation "build failed"
         return
@@ -340,7 +315,7 @@ run_async_mutants() {
     if ! $TR tests/view_async_out_widen.rza --emit-c -o "$base/view.c" ||
             ! sed -e 's/voff_m_tail_m,/0,/' -e 's/vlen_m_tail_m,/8,/' \
                 "$base/view.c" >"$base/widened.c" ||
-            ! $CC $CFLAGS $LDFLAGS "$base/widened.c" -o "$base/widened.exe"; then
+            ! rza_cc "$base/widened.c" -o "$base/widened.exe"; then
         bad async_view_mutation "build failed"
         return
     fi
@@ -353,7 +328,7 @@ run_async_mutants() {
     if ! $TR tests/async_out_reuse.rza --emit-c -o "$base/gen.c" ||
             ! sed 's/ac_out_gen_1 = 1;/ac_out_gen_1 = 4294967295;/' \
                 "$base/gen.c" >"$base/exhausted.c" ||
-            ! $CC $CFLAGS $LDFLAGS "$base/exhausted.c" -o "$base/exhausted.exe"; then
+            ! rza_cc "$base/exhausted.c" -o "$base/exhausted.exe"; then
         bad async_generation_exhaustion "build failed"
         return
     fi
@@ -408,7 +383,7 @@ run_lib() {
     if [ "$t" = lib_async_fault ]; then
         sources=(-DGENERATED_RZA=\"$BUILD/$t.lib.c\")
     fi
-    if ! $CC $CFLAGS $LDFLAGS "${sources[@]}" "$HARNESS" \
+    if ! rza_cc "${sources[@]}" "$HARNESS" \
             -o "$BUILD/$t.exe" 2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -442,7 +417,7 @@ run_lib_compile() {
         bad "$t" "transpile --emit-lib failed"; cat "$BUILD/$t.trerr"
         return
     fi
-    if ! $CC $CFLAGS -c "$BUILD/$t.lib.c" -o "$BUILD/$t.lib.o" \
+    if ! rza_cc_compile -c "$BUILD/$t.lib.c" -o "$BUILD/$t.lib.o" \
             2>"$BUILD/$t.ccerr"; then
         bad "$t" "compile failed"; cat "$BUILD/$t.ccerr"
         return
@@ -455,7 +430,7 @@ run_lib_compile() {
 }
 
 run_runtime_safety() {
-    if ! $CC $CFLAGS $LDFLAGS tests/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
+    if ! rza_cc tests/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
             2>"$BUILD/runtime_safety.ccerr"; then
         bad runtime_safety "compile failed"; cat "$BUILD/runtime_safety.ccerr"
         return
@@ -473,7 +448,7 @@ run_runtime_safety() {
 }
 
 run_shop() {
-    if ! $CC $CFLAGS $LDFLAGS tests/reference/shop.c -o "$BUILD/shop.exe" \
+    if ! rza_cc tests/reference/shop.c -o "$BUILD/shop.exe" \
             2>"$BUILD/shop.ccerr"; then
         bad shop "compile failed"; cat "$BUILD/shop.ccerr"
         return
@@ -491,7 +466,7 @@ run_shop() {
 }
 
 run_reference() {
-    if ! $CC $CFLAGS $LDFLAGS tests/reference/rez3check.c \
+    if ! rza_cc tests/reference/rez3check.c \
             -o "$BUILD/rez3check.exe" 2>"$BUILD/rez3check.ccerr"; then
         bad reference "C23 compile failed"; cat "$BUILD/rez3check.ccerr"
         return

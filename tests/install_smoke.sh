@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. ./cc.sh
 
 PREFIX=${PREFIX:-/usr/local}
 mkdir --parents build
@@ -32,7 +33,9 @@ diff --unified tests/cli_help.expected "$work/help.out"
 test ! -s "$work/help.err"
 
 "$installed" examples/hello.rza --emit-c -o "$work/hello.c"
-${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror \
-    -I "$include_dir" "$work/hello.c" -o "$work/$executable_name"
+CFLAGS=""
+LDFLAGS=""
+rza_cc_init release
+rza_cc -I "$include_dir" "$work/hello.c" -o "$work/$executable_name"
 test "$("$work/$executable_name")" = 41
 printf 'INSTALL_SMOKE OK version=%s output=41\n' "$version"

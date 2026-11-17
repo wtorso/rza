@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. ./cc.sh
 
 if [ "$#" -ne 1 ]; then
     echo "usage: bash release/smoke.sh ARCHIVE" >&2
@@ -52,8 +53,10 @@ test "$("$compiler" --version)" = "rez3asm $version"
 diff --unified "$root/tests/cli_help.expected" "$work/help.out"
 test ! -s "$work/help.err"
 "$compiler" "$root/examples/hello.rza" --emit-c -o "$work/hello.c"
-${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror \
-    -I "$root/include/rza" "$work/hello.c" -o "$executable"
+CFLAGS=""
+LDFLAGS=""
+rza_cc_init release
+rza_cc -I "$root/include/rza" "$work/hello.c" -o "$executable"
 test "$("$executable")" = 41
 RZA_COMPILER="$compiler" bash "$root/tests/install_smoke.sh"
 printf 'RELEASE_SMOKE OK package=%s output=41\n' "$package"

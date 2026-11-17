@@ -69,7 +69,7 @@ fn int? run_ownership_view_mutation(OwnershipCase expected, String name) {
     if (try found) {
         DString mutated = dstring::temp();
         mutated.append_string(text[:found]);
-        mutated.append_string("if (false && !rez_view_cell(");
+        mutated.append_string("if (g_async.count > REZ_ASYNC_MAX && !rez_view_cell(");
         mutated.append_string(text[found + needle.len..]);
         write_file(generated, mutated.str_view())!;
     }

@@ -108,13 +108,20 @@ fn ProcessResult? compile_c(String generated, String executable) {
     List{String} command;
     command.init(mem);
     defer command.free();
-    String cc = env_or("CC", "zig cc");
-    String cflags = env_or("CFLAGS",
-        "-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
-        "-fno-sanitize-recover=undefined -I include/rza -I .");
-    command.push_all(cc.tsplit(" ", skip_empty: true));
-    command.push_all(cflags.tsplit(" ", skip_empty: true));
-    command.push_all(env_or("LDFLAGS", "").tsplit(" ", skip_empty: true));
+    String driver = env_or("RZA_CC_DRIVER", "");
+    if (driver.len == 0) {
+        String cc = env_or("CC", "zig cc");
+        String cflags = env_or("CFLAGS",
+            "-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
+            "-fno-sanitize-recover=undefined -I include/rza -I .");
+        command.push_all(cc.tsplit(" ", skip_empty: true));
+        command.push_all(cflags.tsplit(" ", skip_empty: true));
+        command.push_all(env_or("LDFLAGS", "").tsplit(" ", skip_empty: true));
+    } else {
+        String shell = env_or("RZA_CC_SHELL", "bash");
+        command.push(shell);
+        command.push(driver);
+    }
     command.push(generated);
     command.push("-o");
     command.push(executable);
