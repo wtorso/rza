@@ -15,9 +15,9 @@ static int32_t check_generation_exhaustion(void) {
     uint32_t saved;
     void *cell;
 
-    CHECK(rez_frame_reset(&exhausted, nullptr, exhausted_arena, 64));
+    CHECK(rez_frame_reset(&exhausted, NULL, exhausted_arena, 64));
     cell = rez_cell_z(&exhausted, 8);
-    CHECK(cell != nullptr);
+    CHECK(cell != NULL);
     mediator = rez_issue_cell(&exhausted, &exhausted, cell, 8);
     saved = rez_g_gen;
 
@@ -25,15 +25,15 @@ static int32_t check_generation_exhaustion(void) {
     rez_decay(&exhausted);
     CHECK(rez_g_gen == 0);
     CHECK(exhausted.generation == 0);
-    CHECK(rez_deref_cell(mediator) == nullptr);
-    CHECK(!rez_frame_reset(&exhausted, nullptr, exhausted_arena, 64));
-    CHECK(rez_deref_cell(mediator) == nullptr);
+    CHECK(rez_deref_cell(mediator) == NULL);
+    CHECK(!rez_frame_reset(&exhausted, NULL, exhausted_arena, 64));
+    CHECK(rez_deref_cell(mediator) == NULL);
 
     rez_g_gen = UINT32_MAX;
     rez_decay(&exhausted);
     CHECK(rez_g_gen == 0);
     CHECK(exhausted.generation == UINT32_MAX);
-    CHECK(!rez_frame_reset(&exhausted, nullptr, exhausted_arena, 64));
+    CHECK(!rez_frame_reset(&exhausted, NULL, exhausted_arena, 64));
     rez_g_gen = saved;
     return 0;
 }
@@ -85,7 +85,7 @@ static int check_async_queue(void) {
     drained = rez_async_drain(&queue);
     CHECK(drained.completed == 1 && drained.result.code == RZA_FAULT_DIVISION);
     CHECK(completed == 1 && queue.count == 0 && queue.head == 0);
-    for (uint32_t i = 0; i < REZ_ASYNC_MAX; i++) CHECK(queue.tasks[i].run == nullptr);
+    for (uint32_t i = 0; i < REZ_ASYNC_MAX; i++) CHECK(queue.tasks[i].run == NULL);
     return 0;
 }
 
@@ -133,9 +133,9 @@ static int32_t check_allocation_generation(RezCavity *field, void *cell) {
     CHECK(current.allocation == &generation && current.allocation_gen == 1);
     CHECK(rez_deref_cell(current) == cell);
     generation++;
-    CHECK(rez_deref_cell(stale) == nullptr);
+    CHECK(rez_deref_cell(stale) == NULL);
     CHECK(!rez_view_cell(stale, 0, 1, 1, &view));
-    CHECK(view.cell == nullptr && view.size == 0);
+    CHECK(view.cell == NULL && view.size == 0);
     current = rez_issue_cell_versioned(field, field, cell, 8, &generation);
     CHECK(rez_deref_cell(current) == cell);
     CHECK(rez_view_cell(current, 0, 8, 1, &view));
@@ -167,30 +167,50 @@ static int32_t check_view_ranges(RezCellMed med) {
     CHECK(view.cell == base + 8 && view.size == 0);
 
     CHECK(!rez_view_cell(med, 9, 0, 1, &invalid));
-    CHECK(invalid.cell == nullptr && invalid.size == 0);
+    CHECK(invalid.cell == NULL && invalid.size == 0);
     invalid = (RezCellMed){ .size = 77 };
     CHECK(!rez_view_cell(med, 0, 9, 1, &invalid));
-    CHECK(invalid.cell == nullptr && invalid.size == 0);
+    CHECK(invalid.cell == NULL && invalid.size == 0);
     CHECK(!rez_view_cell(med, 1, UINT64_MAX, 1, &invalid));
     CHECK(!rez_view_cell(med, UINT64_MAX, 1, 1, &invalid));
     CHECK(!rez_view_cell(med, INT64_MAX, 1, 1, &invalid));
     CHECK(!rez_view_cell(med, 0, 1, 0, &invalid));
     CHECK(!rez_view_cell(med, 0, 1, UINT64_MAX, &invalid));
-    CHECK(!rez_view_cell(med, 0, 1, 1, nullptr));
+    CHECK(!rez_view_cell(med, 0, 1, 1, NULL));
     CHECK(!rez_view_cell((RezCellMed){0}, 0, 1, 1, &invalid));
-    CHECK(invalid.cell == nullptr && invalid.size == 0);
+    CHECK(invalid.cell == NULL && invalid.size == 0);
 
     CHECK(rez_view_cell(med, 1, 6, 1, &view));
     CHECK(!rez_view_cell(view, 0, 1, 4, &invalid));
-    CHECK(invalid.cell == nullptr && invalid.size == 0);
+    CHECK(invalid.cell == NULL && invalid.size == 0);
     return 0;
 }
 
 static int32_t check_crc32c(void) {
-    uint64_t word = UINT64_C(0x3837363534333231);
+    static const uint64_t words[] = {
+        0,
+        1,
+        UINT64_MAX,
+        UINT64_C(0x8000000000000000),
+        UINT64_C(0x3837363534333231)
+    };
+    uint64_t word = words[4];
     uint64_t expected = UINT64_C(1619493018) ^ UINT32_MAX;
     CHECK(rez_crc32c_u64_fallback(UINT32_MAX, word) == expected);
     CHECK(rez_crc32c_u64(UINT32_MAX, word) == expected);
+#if defined(_MSC_VER) && defined(_M_X64)
+    static_assert(REZ_CRC32C_X86 == 1);
+#endif
+#if REZ_CRC32C_X86
+    if (rez_crc32c_hardware()) {
+        for (uint32_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+            uint32_t state = i * UINT32_C(0x9e3779b9);
+            uint64_t software = rez_crc32c_u64_fallback(state, words[i]);
+            CHECK(rez_crc32c_u64_x86(state, words[i]) == software);
+            CHECK(rez_crc32c_u64(state, words[i]) == software);
+        }
+    }
+#endif
     return 0;
 }
 
@@ -203,11 +223,11 @@ int main(void) {
     void *cell;
 
     static_assert(REZ3EXT_ABI == 5);
-    CHECK(rez_arena_alloc_z(&misaligned_arena, 1) == nullptr);
-    CHECK(!rez_frame_reset(&misaligned, nullptr, misaligned_storage + 1, 64));
+    CHECK(rez_arena_alloc_z(&misaligned_arena, 1) == NULL);
+    CHECK(!rez_frame_reset(&misaligned, NULL, misaligned_storage + 1, 64));
     CHECK(!misaligned.alive);
     CHECK(misaligned.generation == 0);
-    CHECK(rez_frame_reset(&field, nullptr, field_arena, 64));
+    CHECK(rez_frame_reset(&field, NULL, field_arena, 64));
     CHECK(rez_frame_reset(&proc, &field, proc_arena, 64));
     gen = proc.generation;
     saved = rez_g_gen;
@@ -218,25 +238,25 @@ int main(void) {
     CHECK(proc.arena.base == proc_arena);
     rez_g_gen = saved;
 
-    CHECK(rez_cav_enter(&slot, nullptr, slot_arena, 64) == &slot);
+    CHECK(rez_cav_enter(&slot, NULL, slot_arena, 64) == &slot);
     gen = slot.generation;
-    CHECK(rez_cav_enter(&slot, nullptr, slot_arena, 64) == nullptr);
+    CHECK(rez_cav_enter(&slot, NULL, slot_arena, 64) == NULL);
     CHECK(slot.generation == gen);
     rez_decay(&slot);
     CHECK(!slot.alive);
-    CHECK(slot.arena.base == nullptr);
-    CHECK(rez_cav_enter(&slot, nullptr, slot_arena, 64) == &slot);
+    CHECK(slot.arena.base == NULL);
+    CHECK(rez_cav_enter(&slot, NULL, slot_arena, 64) == &slot);
     CHECK(slot.generation != gen);
     CHECK(slot.arena.base == slot_arena);
 
     cell = rez_cell_z(&field, 8);
-    CHECK(cell != nullptr);
+    CHECK(cell != NULL);
     med = rez_issue_cell(&field, &field, cell, 8);
     CHECK(rez_deref_cell(med) == cell);
     CHECK(rez_cell_bounds(med, 0, 8));
     CHECK(!rez_cell_bounds(med, 1, 8));
     CHECK(!rez_cell_bounds(med, UINT64_MAX, 1));
-    CHECK(rez_arena_alloc_z(&empty, 0) == nullptr);
+    CHECK(rez_arena_alloc_z(&empty, 0) == NULL);
     CHECK(rez_i64_add(INT64_MAX, 1) == INT64_MIN);
     CHECK(rez_i64_sub(INT64_MIN, 1) == INT64_MAX);
     CHECK(rez_i64_shr(-2, 1) == -1);
@@ -253,10 +273,10 @@ int main(void) {
     CHECK(check_forged_view_metadata(med) == 0);
 
     rez_decay(&field);
-    CHECK(rez_deref_cell(med) == nullptr);
+    CHECK(rez_deref_cell(med) == NULL);
     CHECK(!rez_view_cell(med, 0, 1, 1, &med));
-    CHECK(med.cell == nullptr && med.size == 0);
-    CHECK(rez_cell_z(&field, 0) == nullptr);
+    CHECK(med.cell == NULL && med.size == 0);
+    CHECK(rez_cell_z(&field, 0) == NULL);
     rez_decay(&proc);
     rez_decay(&slot);
     CHECK(check_async_queue() == 0);

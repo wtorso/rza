@@ -65,7 +65,7 @@ typedef struct {
 __attribute__((always_inline))
 #endif
 void rez_async_regs_clear(int64_t *regs) {
-    assert(regs != nullptr);
+    assert(regs != NULL);
     regs[0] = 0;
     regs[1] = 0;
     regs[2] = 0;
@@ -91,10 +91,10 @@ void rez_async_regs_clear(int64_t *regs) {
     bool *pending
 ) {
     uint32_t index;
-    assert(queue != nullptr);
-    assert(run != nullptr);
-    assert(context != nullptr);
-    assert(pending != nullptr);
+    assert(queue != NULL);
+    assert(run != NULL);
+    assert(context != NULL);
+    assert(pending != NULL);
     assert(queue->count <= REZ_ASYNC_MAX);
     if (*pending || queue->count == REZ_ASYNC_MAX) return false;
     index = (queue->head + queue->count) % REZ_ASYNC_MAX;
@@ -105,7 +105,7 @@ void rez_async_regs_clear(int64_t *regs) {
 }
 
 [[maybe_unused]] static void rez_async_cancel(RezAsyncQueue *queue) {
-    assert(queue != nullptr);
+    assert(queue != NULL);
     assert(queue->count <= REZ_ASYNC_MAX);
     memset(queue->tasks, 0, sizeof(queue->tasks));
     queue->head = 0;
@@ -114,13 +114,13 @@ void rez_async_regs_clear(int64_t *regs) {
 
 [[maybe_unused]] static RzaAwaitResult rez_async_drain(RezAsyncQueue *queue) {
     RzaAwaitResult drained = {0};
-    assert(queue != nullptr);
+    assert(queue != NULL);
     assert(queue->count <= REZ_ASYNC_MAX);
     while (queue->count > 0) {
         RezAsyncTask task = queue->tasks[queue->head];
         RzaResult status;
-        assert(task.run != nullptr);
-        assert(task.context != nullptr);
+        assert(task.run != NULL);
+        assert(task.context != NULL);
         queue->tasks[queue->head] = (RezAsyncTask){0};
         queue->head = (queue->head + 1) % REZ_ASYNC_MAX;
         queue->count--;
@@ -147,8 +147,8 @@ typedef struct {
     uint32_t allocation_gen;
 } RezCellMed;
 
-static_assert(sizeof(((RezCellMed *)nullptr)->gen) == 4);
-static_assert(sizeof(((RezCellMed *)nullptr)->size) == 8);
+static_assert(sizeof(((RezCellMed *)NULL)->gen) == 4);
+static_assert(sizeof(((RezCellMed *)NULL)->size) == 8);
 static_assert(sizeof(RezCellMed) == 56);
 
 [[maybe_unused]] static inline
@@ -156,14 +156,14 @@ static_assert(sizeof(RezCellMed) == 56);
 __attribute__((always_inline))
 #endif
 void rez_cell_med_clear(RezCellMed *mediator) {
-    assert(mediator != nullptr);
-    mediator->cell = nullptr;
-    mediator->owner = nullptr;
-    mediator->home = nullptr;
+    assert(mediator != NULL);
+    mediator->cell = NULL;
+    mediator->owner = NULL;
+    mediator->home = NULL;
     mediator->gen = 0;
     mediator->home_gen = 0;
     mediator->size = 0;
-    mediator->allocation = nullptr;
+    mediator->allocation = NULL;
     mediator->allocation_gen = 0;
 }
 
@@ -172,8 +172,8 @@ void rez_cell_med_clear(RezCellMed *mediator) {
 __attribute__((always_inline))
 #endif
 void rez_cell_med_copy(RezCellMed *destination, const RezCellMed *source) {
-    assert(destination != nullptr);
-    assert(source != nullptr);
+    assert(destination != NULL);
+    assert(source != NULL);
     destination->cell = source->cell;
     destination->owner = source->owner;
     destination->home = source->home;
@@ -191,15 +191,15 @@ void rez_cell_med_copy(RezCellMed *destination, const RezCellMed *source) {
     uint64_t size
 ) {
     RezCellMed mediator;
-    assert(owner != nullptr);
-    assert(home != nullptr);
+    assert(owner != NULL);
+    assert(home != NULL);
     mediator.cell = cell;
     mediator.owner = owner;
     mediator.home = home;
     mediator.gen = owner->generation;
     mediator.home_gen = home->generation;
     mediator.size = size;
-    mediator.allocation = nullptr;
+    mediator.allocation = NULL;
     mediator.allocation_gen = 0;
     assert(mediator.gen == owner->generation);
     assert(mediator.home_gen == home->generation);
@@ -213,7 +213,7 @@ void rez_cell_med_copy(RezCellMed *destination, const RezCellMed *source) {
     uint64_t size,
     uint32_t *allocation
 ) {
-    assert(allocation != nullptr);
+    assert(allocation != NULL);
     assert(*allocation != 0);
     RezCellMed mediator = rez_issue_cell(owner, home, cell, size);
     mediator.allocation = allocation;
@@ -226,11 +226,11 @@ void rez_cell_med_copy(RezCellMed *destination, const RezCellMed *source) {
 __attribute__((always_inline))
 #endif
 bool rez_cell_med_metadata_ok(RezCellMed mediator) {
-    if (mediator.owner != nullptr
+    if (mediator.owner != NULL
             && (uintptr_t)mediator.owner % _Alignof(RezCavity) != 0) return false;
-    if (mediator.home != nullptr
+    if (mediator.home != NULL
             && (uintptr_t)mediator.home % _Alignof(RezCavity) != 0) return false;
-    if (mediator.allocation != nullptr) {
+    if (mediator.allocation != NULL) {
         if ((uintptr_t)mediator.allocation % _Alignof(uint32_t) != 0) return false;
         if (mediator.allocation_gen == 0) return false;
     } else {
@@ -244,16 +244,16 @@ bool rez_cell_med_metadata_ok(RezCellMed mediator) {
 __attribute__((always_inline))
 #endif
 void *rez_deref_cell_inline(RezCellMed mediator) {
-    if (mediator.cell == nullptr) return nullptr;
-    if (mediator.owner == nullptr) return nullptr;
-    if (mediator.home == nullptr) return nullptr;
-    if (!mediator.owner->alive) return nullptr;
-    if (!mediator.home->alive) return nullptr;
-    if (mediator.gen != mediator.owner->generation) return nullptr;
-    if (mediator.home_gen != mediator.home->generation) return nullptr;
-    if (mediator.allocation != nullptr) {
-        if (mediator.allocation_gen == 0) return nullptr;
-        if (mediator.allocation_gen != *mediator.allocation) return nullptr;
+    if (mediator.cell == NULL) return NULL;
+    if (mediator.owner == NULL) return NULL;
+    if (mediator.home == NULL) return NULL;
+    if (!mediator.owner->alive) return NULL;
+    if (!mediator.home->alive) return NULL;
+    if (mediator.gen != mediator.owner->generation) return NULL;
+    if (mediator.home_gen != mediator.home->generation) return NULL;
+    if (mediator.allocation != NULL) {
+        if (mediator.allocation_gen == 0) return NULL;
+        if (mediator.allocation_gen != *mediator.allocation) return NULL;
     }
     assert(mediator.gen != 0);
     assert(mediator.home_gen != 0);
@@ -289,11 +289,11 @@ bool rez_view_cell(
 ) {
     uint64_t elements;
     uint64_t byte_offset;
-    if (out == nullptr) return false;
+    if (out == NULL) return false;
     rez_cell_med_clear(out);
     if (stride == 0) return false;
     if (!rez_cell_med_metadata_ok(source)) return false;
-    if (rez_deref_cell_inline(source) == nullptr) return false;
+    if (rez_deref_cell_inline(source) == NULL) return false;
     if (source.size % stride != 0) return false;
     elements = source.size / stride;
     if (offset > elements) return false;
@@ -339,7 +339,7 @@ bool rez_view_cell(
     int64_t right,
     int64_t *result
 ) {
-    assert(result != nullptr);
+    assert(result != NULL);
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_add_overflow(left, right, result);
 #else
@@ -355,7 +355,7 @@ bool rez_view_cell(
     int64_t right,
     int64_t *result
 ) {
-    assert(result != nullptr);
+    assert(result != NULL);
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_sub_overflow(left, right, result);
 #else
@@ -371,7 +371,7 @@ bool rez_view_cell(
     int64_t right,
     int64_t *result
 ) {
-    assert(result != nullptr);
+    assert(result != NULL);
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(left, right, result);
 #else
@@ -389,28 +389,32 @@ bool rez_view_cell(
 #endif
 }
 
+[[maybe_unused]] static bool rez_i64_div_invalid(int64_t left, int64_t right) {
+    return right == 0 || (left == INT64_MIN && right == -1);
+}
+
 [[maybe_unused]] static int64_t rez_i64_div(int64_t left, int64_t right) {
-    assert(right != 0);
-    if (left == INT64_MIN) assert(right != -1);
+    assert(!rez_i64_div_invalid(left, right));
     return left / right;
 }
 
 [[maybe_unused]] static int64_t rez_i64_mod(int64_t left, int64_t right) {
-    assert(right != 0);
-    if (left == INT64_MIN) assert(right != -1);
+    assert(!rez_i64_div_invalid(left, right));
     return left % right;
 }
 
+[[maybe_unused]] static bool rez_i64_shift_invalid(int64_t shift) {
+    return shift < 0 || shift >= 64;
+}
+
 [[maybe_unused]] static int64_t rez_i64_shl(int64_t value, int64_t shift) {
-    assert(shift >= 0);
-    assert(shift < 64);
+    assert(!rez_i64_shift_invalid(shift));
     return rez_i64_value(rez_i64_bits(value) << (unsigned)shift);
 }
 
 [[maybe_unused]] static int64_t rez_i64_shr(int64_t value, int64_t shift) {
     uint64_t bits;
-    assert(shift >= 0);
-    assert(shift < 64);
+    assert(!rez_i64_shift_invalid(shift));
     if (shift == 0) return value;
     bits = rez_i64_bits(value) >> (unsigned)shift;
     if (value < 0) bits |= ~(uint64_t)0 << (64 - (unsigned)shift);
@@ -418,8 +422,7 @@ bool rez_view_cell(
 }
 
 [[maybe_unused]] static int64_t rez_i64_ushr(int64_t value, int64_t shift) {
-    assert(shift >= 0);
-    assert(shift < 64);
+    assert(!rez_i64_shift_invalid(shift));
     return rez_i64_value(rez_i64_bits(value) >> (unsigned)shift);
 }
 
@@ -427,24 +430,43 @@ bool rez_view_cell(
 #include <cpuid.h>
 #include <smmintrin.h>
 #define REZ_CRC32C_X86 1
+#define REZ_CRC32C_GNU 1
+#elif defined(_M_X64) && defined(_MSC_VER)
+#include <intrin.h>
+#include <nmmintrin.h>
+#define REZ_CRC32C_X86 1
+#define REZ_CRC32C_MSVC 1
 #else
 #define REZ_CRC32C_X86 0
 #endif
 
 #if REZ_CRC32C_X86
 static int rez_crc32c_hw = -1;
+#if REZ_CRC32C_GNU
 __attribute__((target("sse4.2")))
+#endif
 static uint64_t rez_crc32c_u64_x86(uint64_t state, uint64_t word) {
+#if REZ_CRC32C_GNU
     return (uint64_t)_mm_crc32_u64((unsigned int)state, (long long)word);
+#else
+    return (uint64_t)_mm_crc32_u64((unsigned __int64)state, (unsigned __int64)word);
+#endif
 }
 #endif
 
 [[maybe_unused]] static bool rez_crc32c_hardware(void) {
-#if REZ_CRC32C_X86
+#if REZ_CRC32C_GNU
     if (rez_crc32c_hw < 0) {
         unsigned int eax, ebx, ecx, edx;
         __cpuid(1, eax, ebx, ecx, edx);
         rez_crc32c_hw = (ecx & (1U << 19)) != 0;
+    }
+    return rez_crc32c_hw != 0;
+#elif REZ_CRC32C_MSVC
+    if (rez_crc32c_hw < 0) {
+        int registers[4];
+        __cpuid(registers, 1);
+        rez_crc32c_hw = ((unsigned int)registers[2] & (1U << 19)) != 0;
     }
     return rez_crc32c_hw != 0;
 #else
