@@ -1,21 +1,29 @@
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #define _POSIX_C_SOURCE 200809L
+#include <time.h>
+#endif
 
+#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
 #define SAMPLE_MAX 101ULL
 #define BATCH_MAX 1000000ULL
+#define NS_PER_SECOND 1000000000ULL
 
 void workload_prepare(void);
 uint64_t workload_step(void);
 uint32_t workload_backend(void);
 
 static volatile uint64_t observed_result;
+static uint64_t timer_ticks_hz;
 
 static const char *backend_label(uint32_t backend) {
     if (backend == 0) return "software";
@@ -40,10 +48,38 @@ static int compare_u64(const void *left, const void *right) {
     return (a > b) - (a < b);
 }
 
-static uint64_t elapsed_ns(struct timespec start, struct timespec end) {
-    int64_t seconds = (int64_t)end.tv_sec - (int64_t)start.tv_sec;
-    int64_t nanoseconds = (int64_t)end.tv_nsec - (int64_t)start.tv_nsec;
-    return (uint64_t)(seconds * 1000000000LL + nanoseconds);
+static bool timer_init(void) {
+#if defined(_WIN32)
+    LARGE_INTEGER frequency;
+    if (QueryPerformanceFrequency(&frequency) == 0 || frequency.QuadPart <= 0) {
+        return false;
+    }
+    timer_ticks_hz = (uint64_t)frequency.QuadPart;
+#else
+    timer_ticks_hz = NS_PER_SECOND;
+#endif
+    return true;
+}
+
+static bool timer_now(uint64_t *result) {
+#if defined(_WIN32)
+    LARGE_INTEGER counter;
+    if (QueryPerformanceCounter(&counter) == 0 || counter.QuadPart < 0) return false;
+    *result = (uint64_t)counter.QuadPart;
+#else
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return false;
+    *result = (uint64_t)now.tv_sec * NS_PER_SECOND + (uint64_t)now.tv_nsec;
+#endif
+    return true;
+}
+
+static uint64_t elapsed_ns(uint64_t start, uint64_t end) {
+    assert(timer_ticks_hz > 0);
+    uint64_t ticks = end - start;
+    uint64_t seconds = ticks / timer_ticks_hz;
+    uint64_t remainder = ticks % timer_ticks_hz;
+    return seconds * NS_PER_SECOND + remainder * NS_PER_SECOND / timer_ticks_hz;
 }
 
 int run_timer(int argc, char **argv) {
@@ -59,6 +95,7 @@ int run_timer(int argc, char **argv) {
         fprintf(stderr, "usage: %s [samples 1..101 batch 1..1000000]\n", argv[0]);
         return 2;
     }
+    if (!timer_init()) return 3;
     uint64_t samples_ns[SAMPLE_MAX];
     workload_prepare();
     uint64_t result = workload_step();
@@ -71,9 +108,9 @@ int run_timer(int argc, char **argv) {
         }
     }
     for (uint64_t sample = 0; sample < sample_count; sample++) {
-        struct timespec start;
-        struct timespec end;
-        if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) return 3;
+        uint64_t start;
+        uint64_t end;
+        if (!timer_now(&start)) return 3;
         for (uint64_t iteration = 0; iteration < batch_count; iteration++) {
             result = workload_step();
             if (result != expected) {
@@ -82,7 +119,7 @@ int run_timer(int argc, char **argv) {
             }
             observed_result = result;
         }
-        if (clock_gettime(CLOCK_MONOTONIC, &end) != 0) return 3;
+        if (!timer_now(&end)) return 3;
         samples_ns[sample] = elapsed_ns(start, end);
     }
     qsort(samples_ns, (size_t)sample_count, sizeof(samples_ns[0]), compare_u64);

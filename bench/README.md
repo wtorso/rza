@@ -6,9 +6,11 @@ or safer than another.
 
 ## Requirements
 
-- Linux; the timer uses `clock_gettime(CLOCK_MONOTONIC)`.
+- `bench/run.sh` requires Linux; `bench/check.sh` also supports Windows.
 - The RZA build requirements from the repository README.
-- A C23 compiler, `rustc`, `objdump`, `awk`, and `date`.
+- A C23 compiler and `rustc`; full measurement also needs `objdump`, `awk`, and `date`.
+- The timer uses `clock_gettime(CLOCK_MONOTONIC)` on POSIX and
+  `QueryPerformanceCounter` on Windows.
 
 Run from the repository root:
 

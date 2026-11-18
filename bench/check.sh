@@ -7,11 +7,19 @@ if [ "$#" -ne 1 ]; then
     exit 2
 fi
 BUILD=$1
-CC=${CC:-cc}
-CFLAGS=${CFLAGS:--std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I .}
-LDFLAGS=${LDFLAGS:-}
+. ./cc.sh
+rza_cc_init release include/rza .
 RUSTC=${RUSTC:-rustc}
 RUST_CC=${RUST_CC:-$CC}
+RUST_LIBS="-lpthread -ldl -lm"
+RUST_LIB_EXT=a
+if [ "${OS:-}" = "Windows_NT" ]; then
+    RUST_LIBS="-lws2_32 -luserenv -lbcrypt -lntdll"
+    if CC="$RUST_CC" rza_cc_is_msvc || [[ "$RUST_CC" == *clang-cl* ]]; then
+        RUST_LIBS="ws2_32.lib userenv.lib bcrypt.lib ntdll.lib"
+    fi
+    RUST_LIB_EXT=lib
+fi
 if [ -z "${RZA_COMPILER:-}" ]; then
     RZA_COMPILER="./build/bin/rez3asm"
     if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./build/bin/rez3asm.exe"; fi
@@ -21,22 +29,25 @@ mkdir --parents "$BUILD"
 build_rza() {
     local name=$1 host=$2
     "$RZA_COMPILER" "bench/$name.rza" --emit-lib -o "$BUILD/$name.c"
-    $CC $CFLAGS $LDFLAGS "$BUILD/$name.c" "bench/$host" bench/bench_check.c \
+    rza_cc "$BUILD/$name.c" "bench/$host" bench/bench_check.c \
         -o "$BUILD/${name}_rza"
 }
 
 build_c() {
     local name=$1
-    $CC $CFLAGS $LDFLAGS "bench/$name.c" bench/bench_check.c \
-        -o "$BUILD/${name}_c"
+    rza_cc "bench/$name.c" bench/bench_check.c -o "$BUILD/${name}_c"
+}
+
+link_rust() {
+    CC="$RUST_CC" bash ./cc.sh "$@"
 }
 
 build_rust() {
     local name=$1
     $RUSTC --edition=2021 --crate-type=staticlib -D warnings -O "bench/$name.rs" \
-        -o "$BUILD/lib$name.a"
-    $RUST_CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/lib$name.a" \
-        -lpthread -ldl -lm -o "$BUILD/${name}_rust"
+        -o "$BUILD/lib$name.$RUST_LIB_EXT"
+    link_rust bench/bench_check.c "$BUILD/lib$name.$RUST_LIB_EXT" \
+        $RUST_LIBS -o "$BUILD/${name}_rust"
 }
 
 check_output() {
@@ -80,12 +91,12 @@ build_rza checked_arith rza_checked_host.c
 build_rza checked_arith_wrap rza_checked_host.c
 "$RZA_COMPILER" bench/calls.rza --emit-lib -o "$BUILD/calls.c"
 for variant in internal abi_direct abi_indirect; do
-    $CC $CFLAGS $LDFLAGS -D"CALLS_${variant^^}" "$BUILD/calls.c" \
+    rza_cc -D"CALLS_${variant^^}" "$BUILD/calls.c" \
         bench/rza_calls_host.c bench/bench_check.c -o "$BUILD/calls_${variant}_rza"
 done
 for kind in single queue; do
     "$RZA_COMPILER" "bench/async_$kind.rza" --emit-lib -o "$BUILD/async_$kind.c"
-    $CC $CFLAGS $LDFLAGS -D"ASYNC_${kind^^}" "$BUILD/async_$kind.c" \
+    rza_cc -D"ASYNC_${kind^^}" "$BUILD/async_$kind.c" \
         bench/rza_async_host.c bench/bench_check.c -o "$BUILD/async_${kind}_rza"
 done
 
@@ -122,16 +133,16 @@ for variant in 1 2 3; do
         2) expected=protocol_truncated ;;
         3) expected=protocol_length_attack ;;
     esac
-    $CC $CFLAGS $LDFLAGS -DPROTOCOL_VARIANT="$variant" "$BUILD/protocol.c" \
+    rza_cc -DPROTOCOL_VARIANT="$variant" "$BUILD/protocol.c" \
         bench/rza_protocol_host.c bench/bench_check.c -o "$BUILD/protocol_rza_$variant"
-    $CC $CFLAGS $LDFLAGS -DPROTOCOL_VARIANT="$variant" bench/protocol.c \
+    rza_cc -DPROTOCOL_VARIANT="$variant" bench/protocol.c \
         bench/bench_check.c -o "$BUILD/protocol_c_$variant"
     sed "s/^const VARIANT: u8 = 0;/const VARIANT: u8 = $variant;/" \
         bench/protocol.rs >"$BUILD/protocol_$variant.rs"
     $RUSTC --edition=2021 --crate-type=staticlib -D warnings -O \
-        "$BUILD/protocol_$variant.rs" -o "$BUILD/libprotocol_$variant.a"
-    $RUST_CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/libprotocol_$variant.a" \
-        -lpthread -ldl -lm -o "$BUILD/protocol_rust_$variant"
+        "$BUILD/protocol_$variant.rs" -o "$BUILD/libprotocol_$variant.$RUST_LIB_EXT"
+    link_rust bench/bench_check.c "$BUILD/libprotocol_$variant.$RUST_LIB_EXT" \
+        $RUST_LIBS -o "$BUILD/protocol_rust_$variant"
     for name in protocol_rza protocol_c protocol_rust; do
         check_output "${name}_$variant" "$expected"
     done
@@ -145,28 +156,28 @@ sed -e '1i; Full-table variant: 1024 distinct keys; no free slot returns 0.' \
 sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.c >"$BUILD/table_full.c"
 sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.rs >"$BUILD/table_full.rs"
 "$RZA_COMPILER" "$BUILD/table_full.rza" --emit-lib -o "$BUILD/table_full.rza.c"
-$CC $CFLAGS $LDFLAGS "$BUILD/table_full.rza.c" bench/rza_table_host.c \
+rza_cc "$BUILD/table_full.rza.c" bench/rza_table_host.c \
     bench/bench_check.c -o "$BUILD/table_full_rza"
-$CC $CFLAGS $LDFLAGS "$BUILD/table_full.c" bench/bench_check.c \
+rza_cc "$BUILD/table_full.c" bench/bench_check.c \
     -o "$BUILD/table_full_c"
 $RUSTC --edition=2021 -D warnings --crate-type=staticlib -O "$BUILD/table_full.rs" \
-    -o "$BUILD/libtable_full.a"
-$RUST_CC $CFLAGS $LDFLAGS bench/bench_check.c "$BUILD/libtable_full.a" \
-    -lpthread -ldl -lm -o "$BUILD/table_full_rust"
+    -o "$BUILD/libtable_full.$RUST_LIB_EXT"
+link_rust bench/bench_check.c "$BUILD/libtable_full.$RUST_LIB_EXT" \
+    $RUST_LIBS -o "$BUILD/table_full_rust"
 for name in table_full_rza table_full_c table_full_rust; do
     check_output "$name" table_full
 done
 
-$CC $CFLAGS $LDFLAGS bench/crc32c.c bench/crc32c_vector.c \
+rza_cc bench/crc32c.c bench/crc32c_vector.c \
     -o "$BUILD/crc32c_vector"
 check_output crc32c_vector crc32c_vector
-$CC $CFLAGS $LDFLAGS -DCRC32C_TABLE bench/crc32c_table.c bench/crc32c_vector.c \
+rza_cc -DCRC32C_TABLE bench/crc32c_table.c bench/crc32c_vector.c \
     -o "$BUILD/crc32c_table_vector"
 check_output crc32c_table_vector crc32c_vector
 $RUSTC --edition=2021 --test -D warnings -O bench/workloads_test.rs \
     -o "$BUILD/workloads_test"
 "$BUILD/workloads_test"
-$CC $CFLAGS $LDFLAGS bench/timer.c bench/timer_test.c -o "$BUILD/timer_test"
+rza_cc bench/timer.c bench/timer_test.c -o "$BUILD/timer_test"
 "$BUILD/timer_test" >"$BUILD/timer_test.out"
 grep --quiet '^result=42 backend=software ' "$BUILD/timer_test.out"
 grep --quiet '^PASS timer warmup/batch/argument checks$' "$BUILD/timer_test.out"

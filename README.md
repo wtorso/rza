@@ -318,9 +318,9 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=205 FAIL=0` on POSIX and `PASS=204 FAIL=0` on Windows.
-The Windows suite excludes only the Linux-only benchmark-source checks. On Linux
-the full suite also requires `rustc` for those checks.
+Expected results are `PASS=205 FAIL=0` on all supported platforms. Benchmark
+correctness checks require `rustc` and run on POSIX and Windows. The full timing
+script `bench/run.sh` remains Linux-only; Windows runs its correctness and timer tests.
 
 Other supported compiler selections are:
 

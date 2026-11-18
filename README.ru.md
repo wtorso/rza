@@ -319,9 +319,10 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=205 FAIL=0` на POSIX и `PASS=204 FAIL=0` на Windows.
-На Windows не запускаются только специфичные для Linux проверки исходников
-benchmark; на Linux для них также нужен `rustc`.
+Ожидаемый результат: `PASS=205 FAIL=0` на всех поддерживаемых платформах.
+Проверки результатов benchmark требуют `rustc` и запускаются на POSIX и Windows.
+Полный timing-скрипт `bench/run.sh` остаётся Linux-only; на Windows выполняются
+его correctness- и timer-проверки.
 
 Другие поддерживаемые варианты C toolchain:
 
