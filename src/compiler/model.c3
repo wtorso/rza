@@ -129,6 +129,10 @@ struct Proc {
 	int block;
 	String cname;
 	bool called;
+	bool contracted;
+	int[CASC_MED_MAX] med_idxs;
+	bool[CASC_MED_MAX] med_write;
+	int med_count;
 }
 
 struct Cascade {

@@ -584,6 +584,10 @@ fn void op_res(String rest, int line) {
 fn void op_med(String rest, int line) {
 	assert(line > 0);
 	assert(rest.len <= SOURCE_BYTES_MAX);
+	if (cur_proc > 0 && procs[(sz)(cur_proc - 1)].contracted) {
+		viol(line, "STRUCT", "mediator declaration in contracted proc");
+		return;
+	}
 	String[3] buf;
 	if (!split_ops_exact(rest, 3, line, "med", &buf)) return;
 	String name   = buf[0];
@@ -939,6 +943,8 @@ fn int resolve_mem_med(
 		cascade_scope_viol(line, mname);
 		return -1;
 	}
+	bool write = opname == "store" || opname == "storeb";
+	if (!check_proc_med_access(mi, line, opname, write)) return -1;
 	int ci = meds[mi].cell;
 	if (cells[ci].layout >= 0) {
 		if (!check_typed_access(
@@ -1157,6 +1163,71 @@ fn void op_call(String rest, int line) {
 	}
 	procs[pi].called = true;
 	add_instr({ .op = Op.CALL, .line = line, .x = pi });
+}
+
+fn int proc_med_access(int mi, int func) {
+	if (func <= 0) return 1;
+	Proc* p = &procs[(sz)(func - 1)];
+	if (!p.contracted) return 1;
+	for (sz i = 0; i < p.med_count; i++) {
+		if (p.med_idxs[i] == mi) return p.med_write[i] ? 1 : 0;
+	}
+	return -1;
+}
+
+fn bool check_proc_med_access(int mi, int line, String opname, bool write) {
+	int access = proc_med_access(mi, cur_proc);
+	if (access >= 0 && (!write || access > 0)) return true;
+	String kind = access < 0 ? "unlisted" : "read-only";
+	viol(line, "STRUCT", cat({ opname, " via ", kind, " mediator ", meds[mi].name }));
+	return false;
+}
+
+fn void add_proc_capability(Proc* p, String item, int line) {
+	String token = item.trim();
+	sz? separator = token.index_of_char(':');
+	if (catch separator) {
+		viol(line, "STRUCT", "malformed proc contract entry");
+		return;
+	}
+	String name = token[:separator].trim();
+	String capability = token[separator + 1..].trim();
+	if (capability != "ro" && capability != "rw") {
+		viol(line, "STRUCT", cat({ "invalid contract capability ", capability }));
+		return;
+	}
+	if (!check_name(name, line)) return;
+	int mi = find_med(name, 0);
+	if (mi < 0) {
+		viol(line, "STRUCT", cat({ "unknown contract mediator ", name }));
+		return;
+	}
+	for (sz i = 0; i < p.med_count; i++) {
+		if (p.med_idxs[i] == mi) {
+			viol(line, "DUP", cat({ "duplicate contract mediator ", name }));
+			return;
+		}
+	}
+	if (p.med_count >= CASC_MED_MAX) {
+		viol(line, "STRUCT", "proc contract capacity exceeded");
+		return;
+	}
+	p.med_idxs[p.med_count] = mi;
+	p.med_write[p.med_count] = capability == "rw";
+	p.med_count++;
+}
+
+fn void parse_proc_contract(Proc* p, String entries, int line) {
+	String rest = entries.trim();
+	while (rest.len > 0) {
+		sz? comma = rest.index_of_char(',');
+		if (catch comma) {
+			add_proc_capability(p, rest, line);
+			return;
+		}
+		add_proc_capability(p, rest[:comma], line);
+		rest = rest[comma + 1..];
+	}
 }
 
 // --- proc / casc ---------------------------------------------------------------------
@@ -1528,17 +1599,39 @@ fn void open_proc_line(String line, int n, int sp) {
 		viol(n, "STRUCT", cat({ "nested proc ", line[sp..].trim() }));
 		return;
 	}
-	String pnm = line[sp..].trim();
-	if (pnm.len <= 1 || pnm[pnm.len - 1] != ':') {
+	String header = line[sp..].trim();
+	if (header.len <= 1 || header[header.len - 1] != ':') {
 		viol(n, "STRUCT", "malformed proc header");
 		return;
 	}
-	pnm = pnm[:pnm.len - 1].trim();
-	if (!is_name(pnm)) {
-		viol(n, "STRUCT", "malformed proc header");
+	header = header[:header.len - 1].trim();
+	sz? opening = header.index_of_char('(');
+	if (catch opening) {
+		if (!is_name(header)) {
+			viol(n, "STRUCT", "malformed proc header");
+			return;
+		}
+		open_proc(header, n);
 		return;
 	}
-	open_proc(pnm, n);
+	sz closing = header.len - 1;
+	if (header.len < 2 || header[closing] != ')') {
+		viol(n, "STRUCT", "malformed proc contract");
+		return;
+	}
+	String name = header[:opening].trim();
+	if (!is_name(name)) {
+		viol(n, "STRUCT", "malformed proc contract");
+		return;
+	}
+	sz before = procs.len();
+	open_proc(name, n);
+	if (procs.len() == before) return;
+	Proc* p = &procs[before];
+	p.contracted = true;
+	if (closing > opening + 1) {
+		parse_proc_contract(p, header[opening + 1..closing - 1], n);
+	}
 }
 
 fn void run(String text) {

@@ -15,6 +15,7 @@ fn int main(String[] args) {
     if (args[1] == "ownership") return ownership_main();
     if (args[1] == "oracle") return oracle_main();
     if (args[1] == "faults") return faults_main();
+    if (args[1] == "contracts") return proc_contracts_main();
     if (args[1] == "lsp") return lsp_main();
     io::eprintfn("unknown command: %s", args[1]);
     return 2;
