@@ -5,7 +5,7 @@ res result, field, 8
 med input_m, input, field
 med result_m, result, field
 
-proc parse:
+proc parse(input_m: ro, result_m: rw):
     casc parse_bytes: input_m,result_m -> parsed[parse]
         mov %r9, 0
         mov %r0, 0

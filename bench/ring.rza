@@ -8,7 +8,7 @@ med ring_m, ring, field
 med slots_m, slots, field
 med result_m, result, field
 
-proc push:
+proc push(ring_m: rw, slots_m: rw):
     load %r0, [ring_m + 0].count
     slt %r1, %r0, 4
     brz %r1, push_full
@@ -27,7 +27,7 @@ push_full:
 push_done:
     ret
 
-proc pop:
+proc pop(ring_m: rw, slots_m: ro, result_m: rw):
     load %r0, [ring_m + 0].count
     brnz %r0, pop_nonempty
     load %r1, [ring_m + 0].empty
@@ -49,7 +49,7 @@ pop_nonempty:
 pop_done:
     ret
 
-proc ring:
+proc ring(ring_m: rw, slots_m: rw, result_m: rw):
     mov %r0, 0
     store [ring_m + 0].read_pos, %r0
     store [ring_m + 0].count, %r0

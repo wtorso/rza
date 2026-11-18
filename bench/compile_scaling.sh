@@ -41,13 +41,17 @@ mkdir --parents "$BUILD"
 bash build_compiler.sh
 
 generate_procs() {
-    local output=$1 count=$2
-    awk -v count="$count" '
+    local output=$1 count=$2 contracted=${3:-0}
+    awk -v count="$count" -v contracted="$contracted" '
         BEGIN {
             print "res state, field, 8"
             print "med state_m, state, field"
             for (i = 0; i < count; i++) {
-                printf "proc work%d:\n", i
+                if (contracted) {
+                    printf "proc work%d(state_m: rw):\n", i
+                } else {
+                    printf "proc work%d:\n", i
+                }
                 if (i > 0) printf "    call work%d\n", i - 1
                 print "    load %r0, [state_m + 0]"
                 print "    add %r0, %r0, 1"
@@ -108,18 +112,20 @@ RESULTS="$BUILD/results.txt"
         "$REPEATS" "$BACKEND_REPEATS" "$BACKEND" "$COUNTS"
 } >>"$RESULTS"
 
-for shape in procs async; do
+for shape in procs contracts async; do
     for count in $COUNTS; do
         source="$BUILD/${shape}_$count.rza"
         generated="$BUILD/${shape}_$count.c"
-        if [ "$shape" = procs ]; then
-            generate_procs "$source" "$count"
-        else
+        if [ "$shape" = async ]; then
             generate_async "$source" "$count"
+        else
+            contracted=0
+            if [ "$shape" = contracts ]; then contracted=1; fi
+            generate_procs "$source" "$count" "$contracted"
         fi
         measure "transpile_${shape}_$count" "$REPEATS" \
             "$RZA_COMPILER" "$source" --emit-lib -o "$generated"
-        if [ "$BACKEND" -eq 1 ] && [ "$shape" = procs ]; then
+        if [ "$BACKEND" -eq 1 ] && [ "$shape" != async ]; then
             measure "backend_${shape}_$count" "$BACKEND_REPEATS" \
                 $CC $CFLAGS -c "$generated" -o "$BUILD/${shape}_${count}.o"
         fi

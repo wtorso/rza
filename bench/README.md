@@ -36,6 +36,10 @@ when RZA itself is built with Zig.
 
 ## Workloads and correctness
 
+The RZA call, ring, parser, and protocol variants use minimal typed `ro`/`rw`
+procedure contracts. Static contract checking is part of every build; expected
+outputs and attack variants remain identical to their legacy equivalents.
+
 - CRC32C processes 4096 deterministic input bytes with the reflected Castagnoli
   polynomial. It compares RZA inside a cascade, RZA with a lifetime check on each
   byte, portable C, portable Rust, and a Rust SSE4.2 intrinsic implementation.
@@ -130,9 +134,10 @@ Use medians and inspect variance before drawing conclusions.
 ## Compile-time scaling
 
 `bash bench/compile_scaling.sh` generates bounded synthetic programs in
-`build/compile-scaling` and measures 64, 128, 256, 512, and 1024 procedures or async
-cascades. It records transpile time and source/artifact sizes for both shapes, plus C23
-backend time for the procedure shape. Override `RZA_SCALING_COUNTS`,
+`build/compile-scaling` and measures 64, 128, 256, 512, and 1024 legacy procedures,
+equivalent `rw`-contracted procedures, or async cascades. It records transpile time and
+source/artifact sizes for all three shapes, plus C23 backend time for both procedure
+shapes. Override `RZA_SCALING_COUNTS`,
 `RZA_SCALING_REPEATS`, `RZA_SCALING_BACKEND_REPEATS`, `RZA_SCALING_BUILD`, or set
 `RZA_SCALING_BACKEND=0` for a frontend-only run. These measurements detect scaling
 regressions; they do not establish a universal runtime or compile-time advantage.
