@@ -54,8 +54,8 @@ link_rust() {
 
 build_rust() {
     local name=$1
-    $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --crate-type=staticlib -D warnings -O "bench/$name.rs" \
-        -o "$BUILD/lib$name.$RUST_LIB_EXT"
+    $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --crate-type=staticlib \
+        -D warnings -O "bench/$name.rs" -o "$BUILD/lib$name.$RUST_LIB_EXT"
     link_rust bench/bench_check.c "$BUILD/lib$name.$RUST_LIB_EXT" \
         $RUST_LIBS -o "$BUILD/${name}_rust"
 }
@@ -170,8 +170,8 @@ rza_cc "$BUILD/table_full.rza.c" bench/rza_table_host.c \
     bench/bench_check.c -o "$BUILD/table_full_rza"
 rza_cc "$BUILD/table_full.c" bench/bench_check.c \
     -o "$BUILD/table_full_c"
-$RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 -D warnings --crate-type=staticlib -O "$BUILD/table_full.rs" \
-    -o "$BUILD/libtable_full.$RUST_LIB_EXT"
+$RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 -D warnings --crate-type=staticlib \
+    -O "$BUILD/table_full.rs" -o "$BUILD/libtable_full.$RUST_LIB_EXT"
 link_rust bench/bench_check.c "$BUILD/libtable_full.$RUST_LIB_EXT" \
     $RUST_LIBS -o "$BUILD/table_full_rust"
 for name in table_full_rza table_full_c table_full_rust; do
