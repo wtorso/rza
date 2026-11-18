@@ -257,7 +257,12 @@ fn CompletionContext nav_declaration_context(NavPosition* pos) {
 		if (op == "res" && commas == 0) return CompletionContext.CELL;
 		if (op == "med" && commas == 0) return CompletionContext.MED;
 		if (op == "view" && commas == 0) return CompletionContext.MED;
-		if (op == "proc") return CompletionContext.PROC;
+		if (op == "proc") {
+			for (int i = end; i < relative; i++) {
+				if (line[i] == '(') return CompletionContext.MED;
+			}
+			return CompletionContext.PROC;
+		}
 		if (op == "cav" && commas == 0) return CompletionContext.FRAME;
 		if (op == "layout" && commas == 0) return CompletionContext.LAYOUT;
 	}

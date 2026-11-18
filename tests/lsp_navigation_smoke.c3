@@ -248,8 +248,23 @@ fn int? navigation_cascade_out_checks(Process* child) {
 	return 0;
 }
 
+const String CONTRACT_NAV_TEXT = "res input, field, 8\n"
+	"med input_m, input, field\n"
+	"proc convert(input_m: ro):\n"
+	"    load %r0, [input_m + 0]\n    ret\nret\n";
+
+fn int? navigation_contract_checks(Process* child) {
+	Object* response = lsp_call_json(child, change_message(CONTRACT_NAV_TEXT, 6))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "contract document")) return 1;
+	response = position_call(child, "textDocument/definition", 148, GOOD_URI, 2, 15)!;
+	if (!expect(location_matches(response, GOOD_URI, 1, 4, 11),
+			"contract mediator definition")) return 1;
+	return 0;
+}
+
 fn int? navigation_regression_checks(Process* child) {
 	if (navigation_namespace_checks(child)! != 0) return 1;
 	if (navigation_cascade_out_checks(child)! != 0) return 1;
+	if (navigation_contract_checks(child)! != 0) return 1;
 	return 0;
 }

@@ -160,6 +160,21 @@ not cover raw pointers, offsets, or lifetimes manipulated by a C host.
 Procedures start with clean registers. Values are exchanged through cells, not
 parameter registers or a return register. Recursion is rejected.
 
+A parenthesized procedure header optionally declares its mediator capabilities:
+
+```asm
+proc convert(input_m: ro, result_m: rw):
+```
+
+The names refer to existing global mediators and their cell layouts. `ro` permits
+reads, probes, views and cascade inputs; `rw` also permits stores. Access through
+an unlisted mediator and new mediator declarations inside a contracted procedure
+are static violations. Views inherit the source capability. A contracted caller
+must expose every capability required by its callee and cannot escalate `ro` to
+`rw`. Empty `proc pure():` contracts allow no mediator access. Legacy `proc name:`
+headers are unchanged. Contracts hold at most 64 mediators and erase completely
+before C generation.
+
 `add`, `sub`, `mul`, `inc`, and `dec` wrap modulo 2^64. Their checked variants
 `cadd`, `csub`, `cmul`, `cinc`, and `cdec` instead produce `FAULT` on signed
 overflow. Checked arithmetic does not enforce application rules such as a
@@ -318,8 +333,8 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=205 FAIL=0` on POSIX and Windows MSVC, and
-`PASS=204 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
+Expected results are `PASS=206 FAIL=0` on POSIX and Windows MSVC, and
+`PASS=205 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
 and run on POSIX and Windows MSVC. Windows Zig retains its previous scope because
 Rust static-library linking conflicts with Zig compiler-rt weak symbols. The full
 timing script `bench/run.sh` remains Linux-only; MSVC runs correctness and timer tests.
