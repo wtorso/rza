@@ -50,6 +50,8 @@
         "tests/fault_scenarios.c3",
         "tests/fault_smoke.c3",
         "tests/proc_contracts.c3",
+        "tests/contract_model.c3",
+        "tests/contract_fuzz.c3",
         "tests/lsp_smoke.c3",
         "tests/lsp_navigation_smoke.c3",
         "tests/lsp_completion_smoke.c3",

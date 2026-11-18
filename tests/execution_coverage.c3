@@ -188,3 +188,65 @@ fn void oracle_coverage_print() {
         oracle_coverage.casc_snapshot_regs, oracle_coverage.casc_caller_regs,
         oracle_coverage.casc_ret_drains, oracle_coverage.casc_reenqueue_clears);
 }
+
+struct ContractCoverage {
+    ulong[CONTRACT_OP_COUNT] valid_ops;
+    ulong[CONTRACT_OP_COUNT] invalid_ops;
+    ulong valid;
+    ulong invalid;
+    ulong unlisted;
+    ulong readonly;
+    ulong deep_call;
+    ulong outer_call;
+}
+
+ContractCoverage contract_coverage;
+
+fn void contract_coverage_reset() {
+    contract_coverage = {};
+}
+
+fn void contract_coverage_record(ContractWorld* world, ContractExpectation expected) {
+    for (int proc = 0; proc < CONTRACT_PROC_COUNT; proc++) {
+        int op = (int)world.procs[proc].op;
+        if (expected.valid) {
+            contract_coverage.valid_ops[op]++;
+        } else {
+            contract_coverage.invalid_ops[op]++;
+        }
+    }
+    if (expected.valid) {
+        contract_coverage.valid++;
+        return;
+    }
+    contract_coverage.invalid++;
+    if (expected.unlisted) contract_coverage.unlisted++;
+    if (!expected.unlisted) contract_coverage.readonly++;
+    if (expected.call && expected.proc == 1) contract_coverage.deep_call++;
+    if (expected.call && expected.proc == 2) contract_coverage.outer_call++;
+}
+
+fn bool contract_coverage_ok() {
+    if (!expect(contract_coverage.valid == 64 && contract_coverage.invalid == 64,
+            "contract fuzz needs 64 valid and 64 invalid programs")) return false;
+    for (int op = 0; op < CONTRACT_OP_COUNT; op++) {
+        if (!expect(contract_coverage.valid_ops[op] > 0 &&
+                contract_coverage.invalid_ops[op] > 0,
+                "contract fuzz needs valid and invalid coverage for every operation")) {
+            return false;
+        }
+    }
+    if (!expect(contract_coverage.unlisted > 0 && contract_coverage.readonly > 0,
+            "contract fuzz needs unlisted and read-only failures")) return false;
+    if (!expect(contract_coverage.deep_call > 0 && contract_coverage.outer_call > 0,
+            "contract fuzz needs both transitive call edges")) return false;
+    return true;
+}
+
+fn void contract_coverage_print() {
+    io::printfn("CONTRACT_COVERAGE valid=%d invalid=%d unlisted=%d readonly=%d",
+        contract_coverage.valid, contract_coverage.invalid,
+        contract_coverage.unlisted, contract_coverage.readonly);
+    io::printfn("CONTRACT_CALL_EDGES deep=%d outer=%d",
+        contract_coverage.deep_call, contract_coverage.outer_call);
+}
