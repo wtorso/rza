@@ -15,7 +15,7 @@ RUSTC_LINKER_ARGS=()
 RUST_LIBS="-lpthread -ldl -lm"
 RUST_LIB_EXT=a
 if [ "${OS:-}" = "Windows_NT" ]; then
-    RUST_LIBS="ws2_32.lib userenv.lib bcrypt.lib ntdll.lib"
+    RUST_LIBS="ws2_32.lib userenv.lib bcrypt.lib ntdll.lib synchronization.lib"
     RUST_LIB_EXT=lib
     if rza_cc_is_msvc; then
         rust_linker="${VCToolsInstallDir:-}/bin/Hostx64/x64/link.exe"
