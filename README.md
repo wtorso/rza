@@ -169,11 +169,13 @@ proc convert(input_m: ro, result_m: rw):
 The names refer to existing global mediators and their cell layouts. `ro` permits
 reads, probes, views and cascade inputs; `rw` also permits stores. Access through
 an unlisted mediator and new mediator declarations inside a contracted procedure
-are static violations. Views inherit the source capability. A contracted caller
+are static violations. Local views inherit the source capability. A global view is
+a separate mediator: listing its source does not list the view. A contracted caller
 must expose every capability required by its callee and cannot escalate `ro` to
-`rw`. Empty `proc pure():` contracts allow no mediator access. Legacy `proc name:`
-headers are unchanged. Contracts hold at most 64 mediators and erase completely
-before C generation.
+`rw`, including through a call chain. Empty `proc pure():` contracts allow no
+mediator access. Legacy `proc name:` headers are unchanged. Contracts hold at most
+64 mediators and erase completely before C generation. Access diagnostics name the
+procedure; call failures also name the direct callee.
 
 `add`, `sub`, `mul`, `inc`, and `dec` wrap modulo 2^64. Their checked variants
 `cadd`, `csub`, `cmul`, `cinc`, and `cdec` instead produce `FAULT` on signed
