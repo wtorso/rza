@@ -1152,18 +1152,26 @@ fn bool check_proc_call(int caller_index, int callee_index, int line) {
 	if (!caller.contracted) return true;
 	Proc* callee = &procs[(sz)callee_index];
 	if (!callee.contracted) {
-		viol(line, "STRUCT", cat({ "call to uncontracted proc ", callee.name }));
+		viol(line, "STRUCT", cat({
+			"proc ", caller.name, ": call to uncontracted proc ", callee.name,
+		}));
 		return false;
 	}
 	for (sz i = 0; i < callee.med_count; i++) {
 		int mi = callee.med_idxs[i];
 		int access = proc_med_access(mi, caller_index);
 		if (access < 0) {
-			viol(line, "STRUCT", cat({ "call uses unlisted mediator ", meds[mi].name }));
+			viol(line, "STRUCT", cat({
+				"proc ", caller.name, ": call uses unlisted mediator ", meds[mi].name,
+				" (callee ", callee.name, ")",
+			}));
 			return false;
 		}
 		if (callee.med_write[i] && access == 0) {
-			viol(line, "STRUCT", cat({ "call requires rw access to ", meds[mi].name }));
+			viol(line, "STRUCT", cat({
+				"proc ", caller.name, ": call requires rw access to ", meds[mi].name,
+				" (callee ", callee.name, ")",
+			}));
 			return false;
 		}
 	}
@@ -1210,7 +1218,10 @@ fn bool check_proc_med_access(int mi, int line, String opname, bool write) {
 	int access = proc_med_access(mi, cur_proc);
 	if (access >= 0 && (!write || access > 0)) return true;
 	String kind = access < 0 ? "unlisted" : "read-only";
-	viol(line, "STRUCT", cat({ opname, " via ", kind, " mediator ", meds[mi].name }));
+	String proc_name = procs[(sz)(cur_proc - 1)].name;
+	viol(line, "STRUCT", cat({
+		"proc ", proc_name, ": ", opname, " via ", kind, " mediator ", meds[mi].name,
+	}));
 	return false;
 }
 
