@@ -319,10 +319,11 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=205 FAIL=0` на всех поддерживаемых платформах.
-Проверки результатов benchmark требуют `rustc` и запускаются на POSIX и Windows.
-Полный timing-скрипт `bench/run.sh` остаётся Linux-only; на Windows выполняются
-его correctness- и timer-проверки.
+Ожидаемый результат: `PASS=205 FAIL=0` на POSIX и Windows MSVC, `PASS=204 FAIL=0`
+на Windows Zig. Benchmark correctness требует `rustc` и запускается на POSIX и
+Windows MSVC. Windows Zig сохраняет прежний объём из-за конфликта weak symbols
+Rust compiler-builtins и Zig compiler-rt при связывании static library. Полный
+timing-скрипт `bench/run.sh` остаётся Linux-only; MSVC запускает correctness и timer.
 
 Другие поддерживаемые варианты C toolchain:
 

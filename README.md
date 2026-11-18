@@ -318,9 +318,11 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=205 FAIL=0` on all supported platforms. Benchmark
-correctness checks require `rustc` and run on POSIX and Windows. The full timing
-script `bench/run.sh` remains Linux-only; Windows runs its correctness and timer tests.
+Expected results are `PASS=205 FAIL=0` on POSIX and Windows MSVC, and
+`PASS=204 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
+and run on POSIX and Windows MSVC. Windows Zig retains its previous scope because
+Rust static-library linking conflicts with Zig compiler-rt weak symbols. The full
+timing script `bench/run.sh` remains Linux-only; MSVC runs correctness and timer tests.
 
 Other supported compiler selections are:
 

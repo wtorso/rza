@@ -14,10 +14,7 @@ RUST_CC=${RUST_CC:-$CC}
 RUST_LIBS="-lpthread -ldl -lm"
 RUST_LIB_EXT=a
 if [ "${OS:-}" = "Windows_NT" ]; then
-    RUST_LIBS="-lws2_32 -luserenv -lbcrypt -lntdll"
-    if CC="$RUST_CC" rza_cc_is_msvc || [[ "$RUST_CC" == *clang-cl* ]]; then
-        RUST_LIBS="ws2_32.lib userenv.lib bcrypt.lib ntdll.lib"
-    fi
+    RUST_LIBS="ws2_32.lib userenv.lib bcrypt.lib ntdll.lib"
     RUST_LIB_EXT=lib
 fi
 if [ -z "${RZA_COMPILER:-}" ]; then
@@ -39,7 +36,11 @@ build_c() {
 }
 
 link_rust() {
-    CC="$RUST_CC" bash ./cc.sh "$@"
+    local flag flags=""
+    for flag in $CFLAGS; do
+        if [ "$flag" != "/TC" ]; then flags+="${flags:+ }$flag"; fi
+    done
+    CFLAGS="$flags" CC="$RUST_CC" bash ./cc.sh "$@"
 }
 
 build_rust() {

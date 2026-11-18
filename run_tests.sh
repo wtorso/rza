@@ -772,12 +772,15 @@ run_fault_smoke
 run_deterministic_artifacts
 run_tiny_budgets
 run_fuzz
-run_benchmark_sources
+if [ "${OS:-}" != "Windows_NT" ] || rza_cc_is_msvc; then
+    run_benchmark_sources
+fi
 run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
 EXPECTED_PASS=205
+if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=204; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

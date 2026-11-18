@@ -6,11 +6,15 @@ or safer than another.
 
 ## Requirements
 
-- `bench/run.sh` requires Linux; `bench/check.sh` also supports Windows.
+- `bench/run.sh` requires Linux; `bench/check.sh` also supports Windows MSVC.
 - The RZA build requirements from the repository README.
 - A C23 compiler and `rustc`; full measurement also needs `objdump`, `awk`, and `date`.
 - The timer uses `clock_gettime(CLOCK_MONOTONIC)` on POSIX and
   `QueryPerformanceCounter` on Windows.
+
+Windows Zig benchmark checks stop at Rust static-library linking because Zig
+compiler-rt and Rust compiler-builtins define duplicate weak symbols. CI retains
+the previous 204-check scope rather than forcing duplicate-symbol resolution.
 
 Run from the repository root:
 

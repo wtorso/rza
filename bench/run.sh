@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [ "$(uname -s)" != "Linux" ]; then
-    echo "FATAL: bench/run.sh currently requires Linux and clock_gettime" >&2
+    echo "FATAL: bench/run.sh currently requires Linux" >&2
     exit 2
 fi
 BUILD=${RZA_BENCH_BUILD:-build/bench}
