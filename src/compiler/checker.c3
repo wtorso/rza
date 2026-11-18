@@ -699,6 +699,7 @@ fn int resolve_view_source(String name, int line) {
 		viol(line, "STRUCT", cat({ "cascade body addresses non-input mediator ", name }));
 		return -1;
 	}
+	if (!check_proc_med_access(source, line, "view", false)) return -1;
 	return source;
 }
 
@@ -737,6 +738,7 @@ fn void op_view(String rest, int line) {
 		.gen = meds[source].gen, .home_gen = meds[source].home_gen,
 		.cname = cname_for("m_", name), .scope = cur_proc,
 		.cascade = cur_casc,
+		.read_only = proc_med_access(source, cur_proc) == 0,
 		.view_source = source, .view_offset = offset, .view_length = length,
 		.extent = length.is_immediate ? (int)length.immediate : -1
 	};
@@ -835,6 +837,7 @@ fn void op_probe(String rest, int line) {
 		cascade_scope_viol(line, mname);
 		return;
 	}
+	if (!check_proc_med_access(mi, line, "probe", false)) return;
 	add_instr({ .op = Op.PROBE, .line = line, .x = mi });
 }
 
@@ -1143,6 +1146,30 @@ fn void op_br(String rest, int line, bool is_brz) {
 	add_instr({ .op = is_brz ? Op.BRZ : Op.BRNZ, .line = line, .a = r, .s1 = buf[1] });
 }
 
+fn bool check_proc_call(int caller_index, int callee_index, int line) {
+	if (caller_index <= 0) return true;
+	Proc* caller = &procs[(sz)(caller_index - 1)];
+	if (!caller.contracted) return true;
+	Proc* callee = &procs[(sz)callee_index];
+	if (!callee.contracted) {
+		viol(line, "STRUCT", cat({ "call to uncontracted proc ", callee.name }));
+		return false;
+	}
+	for (sz i = 0; i < callee.med_count; i++) {
+		int mi = callee.med_idxs[i];
+		int access = proc_med_access(mi, caller_index);
+		if (access < 0) {
+			viol(line, "STRUCT", cat({ "call uses unlisted mediator ", meds[mi].name }));
+			return false;
+		}
+		if (callee.med_write[i] && access == 0) {
+			viol(line, "STRUCT", cat({ "call requires rw access to ", meds[mi].name }));
+			return false;
+		}
+	}
+	return true;
+}
+
 fn void op_call(String rest, int line) {
 	assert(line > 0);
 	assert(rest.len <= SOURCE_BYTES_MAX);
@@ -1161,6 +1188,7 @@ fn void op_call(String rest, int line) {
 		viol(line, "STRUCT", cat({ "call of unknown procedure ", name }));
 		return;
 	}
+	if (!check_proc_call(cur_proc, pi, line)) return;
 	procs[pi].called = true;
 	add_instr({ .op = Op.CALL, .line = line, .x = pi });
 }
@@ -1169,6 +1197,7 @@ fn int proc_med_access(int mi, int func) {
 	if (func <= 0) return 1;
 	Proc* p = &procs[(sz)(func - 1)];
 	if (!p.contracted) return 1;
+	if (meds[mi].view_source >= 0) return meds[mi].read_only ? 0 : 1;
 	for (sz i = 0; i < p.med_count; i++) {
 		if (p.med_idxs[i] == mi) return p.med_write[i] ? 1 : 0;
 	}
@@ -1352,6 +1381,7 @@ fn void add_casc_input(
 		cascade_scope_viol(line, tok);
 		return;
 	}
+	if (!check_proc_med_access(mdi, line, "cascade", false)) return;
 	if (*count >= CASC_MED_MAX) {
 		viol(line, "STRUCT", "too many cascade inputs");
 		return;

@@ -57,10 +57,13 @@ fn int? contract_invalid_case(String name, String body, String diagnostic) {
     return 0;
 }
 
-fn int? proc_contracts_run() {
-    reset_temp_dir()!;
-    if (contract_valid_case("valid.rza", CONTRACT_VALID, "42")! != 0) return 1;
-    if (contract_valid_case("empty.rza", CONTRACT_EMPTY, "42")! != 0) return 1;
+fn int? contract_valid_body(String name, String body) {
+    DString source = dstring::temp(CONTRACT_PREFIX);
+    source.append(body);
+    return contract_valid_case(name, source.str_view(), "42");
+}
+
+fn int? proc_contracts_direct() {
     if (contract_invalid_case("readonly.rza",
             "proc bad(input_m: ro):\n    store [input_m + 0], %r0\n    ret\nret\n",
             "store via read-only mediator input_m")! != 0) return 1;
@@ -81,6 +84,66 @@ fn int? proc_contracts_run() {
     if (contract_invalid_case("bypass.rza",
             "proc bad(input_m: ro):\n    med alias_m, input, field\n    ret\nret\n",
             "mediator declaration in contracted proc")! != 0) return 1;
+    return 0;
+}
+
+fn int? proc_contracts_views() {
+    if (contract_valid_body("view-write.rza",
+            "proc write_view(input_m: rw):\n"
+            "    view part_m, input_m, 0, 8\n    mov %r0, 42\n"
+            "    store [part_m + 0], %r0\n    ret\n"
+            "call write_view\nload %r1, [input_m + 0]\nprint %r1\nret\n")! != 0) return 1;
+    if (contract_invalid_case("view-readonly.rza",
+            "proc bad(input_m: ro):\n    view part_m, input_m, 0, 1\n"
+            "    storeb [part_m + 0], %r0\n    ret\nret\n",
+            "storeb via read-only mediator part_m")! != 0) return 1;
+    if (contract_invalid_case("probe-unlisted.rza",
+            "proc bad(input_m: ro):\n    probe result_m\n    ret\nret\n",
+            "probe via unlisted mediator result_m")! != 0) return 1;
+    if (contract_invalid_case("view-unlisted.rza",
+            "proc bad(input_m: ro):\n    view part_m, result_m, 0, 1\n    ret\nret\n",
+            "view via unlisted mediator result_m")! != 0) return 1;
+    if (contract_invalid_case("cascade-unlisted.rza",
+            "proc bad(input_m: ro):\n    casc work: result_m -> output[field]\n"
+            "    endc\n    ret\nret\n",
+            "cascade via unlisted mediator result_m")! != 0) return 1;
+    if (contract_invalid_case("cascade-readonly.rza",
+            "proc bad(input_m: ro):\n    casc work: input_m -> output[field]\n"
+            "    store [input_m + 0], %r0\n    endc\n    ret\nret\n",
+            "store via read-only mediator input_m")! != 0) return 1;
+    if (contract_invalid_case("async-readonly.rza",
+            "proc bad(input_m: ro):\n    acasc work: input_m -> output\n"
+            "    store [input_m + 0], %r0\n    endc\n    ret\nret\n",
+            "store via read-only mediator input_m")! != 0) return 1;
+    return 0;
+}
+
+fn int? proc_contracts_calls() {
+    if (contract_valid_body("call-readonly.rza",
+            "proc callee(input_m: ro):\n    load %r0, [input_m + 0]\n    ret\n"
+            "proc caller(input_m: rw):\n    call callee\n    ret\n"
+            "call caller\nmov %r0, 42\nprint %r0\nret\n")! != 0) return 1;
+    if (contract_invalid_case("call-escalation.rza",
+            "proc callee(result_m: rw):\n    store [result_m + 0], %r0\n    ret\n"
+            "proc caller(result_m: ro):\n    call callee\n    ret\nret\n",
+            "call requires rw access to result_m")! != 0) return 1;
+    if (contract_invalid_case("call-unlisted.rza",
+            "proc callee(input_m: ro):\n    load %r0, [input_m + 0]\n    ret\n"
+            "proc caller():\n    call callee\n    ret\nret\n",
+            "call uses unlisted mediator input_m")! != 0) return 1;
+    if (contract_invalid_case("call-legacy.rza",
+            "proc legacy:\n    ret\nproc caller():\n    call legacy\n    ret\nret\n",
+            "call to uncontracted proc legacy")! != 0) return 1;
+    return 0;
+}
+
+fn int? proc_contracts_run() {
+    reset_temp_dir()!;
+    if (contract_valid_case("valid.rza", CONTRACT_VALID, "42")! != 0) return 1;
+    if (contract_valid_case("empty.rza", CONTRACT_EMPTY, "42")! != 0) return 1;
+    if (proc_contracts_direct()! != 0) return 1;
+    if (proc_contracts_views()! != 0) return 1;
+    if (proc_contracts_calls()! != 0) return 1;
     io::printn("PROC_CONTRACTS OK");
     return 0;
 }
