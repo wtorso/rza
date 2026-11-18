@@ -117,6 +117,10 @@ fn int? proc_contracts_views() {
             "proc bad(input_m: ro):\n    view part_m, input_m, 0, 1\n"
             "    storeb [part_m + 0], %r0\n    ret\nret\n",
             "storeb via read-only mediator part_m")! != 0) return 1;
+    if (contract_invalid_case("global-view.rza",
+            "view global_m, input_m, 0, 1\nproc bad(input_m: ro):\n"
+            "    storeb [global_m + 0], %r0\n    ret\nret\n",
+            "storeb via unlisted mediator global_m")! != 0) return 1;
     if (contract_invalid_case("probe-unlisted.rza",
             "proc bad(input_m: ro):\n    probe result_m\n    ret\nret\n",
             "probe via unlisted mediator result_m")! != 0) return 1;

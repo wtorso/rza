@@ -1197,7 +1197,9 @@ fn int proc_med_access(int mi, int func) {
 	if (func <= 0) return 1;
 	Proc* p = &procs[(sz)(func - 1)];
 	if (!p.contracted) return 1;
-	if (meds[mi].view_source >= 0) return meds[mi].read_only ? 0 : 1;
+	if (meds[mi].view_source >= 0 && meds[mi].scope == func) {
+		return meds[mi].read_only ? 0 : 1;
+	}
 	for (sz i = 0; i < p.med_count; i++) {
 		if (p.med_idxs[i] == mi) return p.med_write[i] ? 1 : 0;
 	}
