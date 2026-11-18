@@ -112,7 +112,7 @@ fn int? initialize_checks(Process* child) {
 	if (!expect(
 		(info.get_string(
 			"name"
-		) ?? "") == "rez3-lsp" && (info.get_string("version") ?? "") == "0.2.0",
+		) ?? "") == "rez3-lsp" && (info.get_string("version") ?? "") == "0.3.0",
 		"initialize serverInfo"
 	)) {
 		return 1;

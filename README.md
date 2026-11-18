@@ -9,7 +9,7 @@ C23, leaving native optimization and instruction selection to the C toolchain.
 
 RZA is intended for small kernels that benefit from fixed memory budgets and
 defined fault behavior, not for hiding low-level programming behind a high-level
-syntax. Version [0.2.0](https://github.com/wtorso/rza/releases/tag/v0.2.0) is a
+syntax. Version [0.3.0](https://github.com/wtorso/rza/releases/tag/v0.3.0) is a
 prerelease; the language and host interfaces can still change.
 
 ## Requirements
@@ -81,7 +81,7 @@ rez3asm --version
   flag. Without `-o`, generated C is written to standard output.
 - `--lsp` starts the language server on standard input and output.
 - Sole `--help` prints usage and exits 0; no arguments prints it to stderr and
-  exits 2. Sole `--version` prints `rez3asm 0.2.0` and exits 0.
+  exits 2. Sole `--version` prints `rez3asm 0.3.0` and exits 0.
 
 `build_compiler.sh` creates the compiler but does not install it into `PATH`;
 invoke it by its path or use the installer below.
@@ -112,13 +112,13 @@ RZA_COMPILER=./rez3asm PREFIX="$HOME/.local" bash install.sh
 ### Binary archives
 
 Download the desired archive and `SHA256SUMS` from the
-[0.2.0 release](https://github.com/wtorso/rza/releases/tag/v0.2.0), then verify
+[0.3.0 release](https://github.com/wtorso/rza/releases/tag/v0.3.0), then verify
 and extract it. `--ignore-missing` lets you download only one platform archive:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf rza-0.2.0-linux-x86_64.tar.gz
-cd rza-0.2.0-linux-x86_64
+tar -xzf rza-0.3.0-linux-x86_64.tar.gz
+cd rza-0.3.0-linux-x86_64
 ./rez3asm --version
 ```
 

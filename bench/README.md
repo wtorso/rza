@@ -14,7 +14,7 @@ or safer than another.
 
 Windows Zig benchmark checks stop at Rust static-library linking because Zig
 compiler-rt and Rust compiler-builtins define duplicate weak symbols. CI retains
-the previous 204-check scope rather than forcing duplicate-symbol resolution.
+the remaining checks rather than forcing duplicate-symbol resolution.
 
 Run from the repository root:
 

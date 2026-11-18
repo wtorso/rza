@@ -10,7 +10,7 @@ RZA — низкоуровневый язык и промежуточное пр
 RZA предназначен для небольших вычислительных ядер, которым нужны фиксированные
 бюджеты памяти и определённое поведение при ошибках, а не для скрытия
 низкоуровневого программирования за высокоуровневым синтаксисом. Версия
-[0.2.0](https://github.com/wtorso/rza/releases/tag/v0.2.0) — prerelease; язык и
+[0.3.0](https://github.com/wtorso/rza/releases/tag/v0.3.0) — prerelease; язык и
 host-интерфейсы могут меняться.
 
 ## Требования
@@ -82,7 +82,7 @@ rez3asm --version
 - `--lsp` запускает языковой сервер через standard input и output.
 - Отдельный `--help` выводит справку и возвращает 0; без аргументов справка
   выводится в stderr со статусом 2. Отдельный `--version` выводит
-  `rez3asm 0.2.0` и возвращает 0.
+  `rez3asm 0.3.0` и возвращает 0.
 
 `build_compiler.sh` создаёт компилятор, но не устанавливает его в `PATH`;
 вызывайте его по пути или используйте установщик ниже.
@@ -112,14 +112,14 @@ RZA_COMPILER=./rez3asm PREFIX="$HOME/.local" bash install.sh
 ### Binary-архивы
 
 Скачайте нужный архив и `SHA256SUMS` со страницы
-[релиза 0.2.0](https://github.com/wtorso/rza/releases/tag/v0.2.0), затем
+[релиза 0.3.0](https://github.com/wtorso/rza/releases/tag/v0.3.0), затем
 проверьте и распакуйте его. `--ignore-missing` позволяет скачать архив только
 одной платформы:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf rza-0.2.0-linux-x86_64.tar.gz
-cd rza-0.2.0-linux-x86_64
+tar -xzf rza-0.3.0-linux-x86_64.tar.gz
+cd rza-0.3.0-linux-x86_64
 ./rez3asm --version
 ```
 
