@@ -1256,6 +1256,7 @@ fn void parse_proc_contract(Proc* p, String entries, int line) {
 		}
 		add_proc_capability(p, rest[:comma], line);
 		rest = rest[comma + 1..];
+		if (rest.trim().len == 0) add_proc_capability(p, rest, line);
 	}
 }
 

@@ -63,7 +63,27 @@ fn int? contract_valid_body(String name, String body) {
     return contract_valid_case(name, source.str_view(), "42");
 }
 
+fn int? contract_capacity_case() {
+    const int CONTRACT_LIMIT = 64;
+    DString body = dstring::temp();
+    for (int i = 0; i <= CONTRACT_LIMIT; i++) {
+        String cell = i % 2 == 0 ? "input" : "result";
+        body.appendf("med c%d_m, %s, field\n", i, cell);
+    }
+    body.append("proc bad(");
+    for (int i = 0; i <= CONTRACT_LIMIT; i++) {
+        body.appendf("%sc%d_m: ro", i == 0 ? "" : ", ", i);
+    }
+    body.append("):\n    ret\nret\n");
+    return contract_invalid_case("capacity.rza", body.str_view(),
+        "proc contract capacity exceeded");
+}
+
 fn int? proc_contracts_direct() {
+    if (contract_invalid_case("trailing-comma.rza",
+            "proc bad(input_m: ro,):\n    ret\nret\n",
+            "malformed proc contract entry")! != 0) return 1;
+    if (contract_capacity_case()! != 0) return 1;
     if (contract_invalid_case("readonly.rza",
             "proc bad(input_m: ro):\n    store [input_m + 0], %r0\n    ret\nret\n",
             "store via read-only mediator input_m")! != 0) return 1;
