@@ -269,8 +269,13 @@ fn int? contract_run_world(ContractWorld world, String name, bool report) {
     return matches ? 0 : 1;
 }
 
+ulong contract_shrink_attempt;
+
 fn bool contract_world_fails(ContractWorld world) {
-    int? result = contract_run_world(world, "contract-shrink.rza", true);
+    assert(contract_shrink_attempt < 1000000);
+    String name = string::tformat("contract-shrink-%d.rza", contract_shrink_attempt);
+    contract_shrink_attempt++;
+    int? result = contract_run_world(world, name, true);
     if (catch result) return true;
     return result != 0;
 }
@@ -336,8 +341,10 @@ fn int? contract_harness_selftest() {
     bool mismatch = contract_invalid_matches(temp_path("flipped.rza"),
         temp_path("flipped.c"), flipped, false)!;
     if (!expect(!mismatch, "contract harness detects a flipped expectation")) return 1;
+    if (!expect(!contract_world_fails(world), "valid shrink candidate matches")) return 1;
     world.procs[0].access[0] = ContractAccess.RO;
-    if (contract_run_world(world, "write-mutation.rza", true)! != 0) return 1;
+    if (!expect(!contract_world_fails(world),
+            "invalid shrink candidate ignores stale artifacts")) return 1;
     return 0;
 }
 
