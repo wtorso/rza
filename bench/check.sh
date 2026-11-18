@@ -11,11 +11,20 @@ BUILD=$1
 rza_cc_init release include/rza .
 RUSTC=${RUSTC:-rustc}
 RUST_CC=${RUST_CC:-$CC}
+RUSTC_LINKER_ARGS=()
 RUST_LIBS="-lpthread -ldl -lm"
 RUST_LIB_EXT=a
 if [ "${OS:-}" = "Windows_NT" ]; then
     RUST_LIBS="ws2_32.lib userenv.lib bcrypt.lib ntdll.lib"
     RUST_LIB_EXT=lib
+    if rza_cc_is_msvc; then
+        rust_linker="${VCToolsInstallDir:-}/bin/Hostx64/x64/link.exe"
+        if [ ! -f "$rust_linker" ]; then
+            echo "FATAL: MSVC benchmarks require an x64 Native Tools environment" >&2
+            exit 2
+        fi
+        RUSTC_LINKER_ARGS=(-C "linker=$(cygpath -m "$rust_linker")")
+    fi
 fi
 if [ -z "${RZA_COMPILER:-}" ]; then
     RZA_COMPILER="./build/bin/rez3asm"
@@ -45,7 +54,7 @@ link_rust() {
 
 build_rust() {
     local name=$1
-    $RUSTC --edition=2021 --crate-type=staticlib -D warnings -O "bench/$name.rs" \
+    $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --crate-type=staticlib -D warnings -O "bench/$name.rs" \
         -o "$BUILD/lib$name.$RUST_LIB_EXT"
     link_rust bench/bench_check.c "$BUILD/lib$name.$RUST_LIB_EXT" \
         $RUST_LIBS -o "$BUILD/${name}_rust"
@@ -140,7 +149,7 @@ for variant in 1 2 3; do
         bench/bench_check.c -o "$BUILD/protocol_c_$variant"
     sed "s/^const VARIANT: u8 = 0;/const VARIANT: u8 = $variant;/" \
         bench/protocol.rs >"$BUILD/protocol_$variant.rs"
-    $RUSTC --edition=2021 --crate-type=staticlib -D warnings -O \
+    $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --crate-type=staticlib -D warnings -O \
         "$BUILD/protocol_$variant.rs" -o "$BUILD/libprotocol_$variant.$RUST_LIB_EXT"
     link_rust bench/bench_check.c "$BUILD/libprotocol_$variant.$RUST_LIB_EXT" \
         $RUST_LIBS -o "$BUILD/protocol_rust_$variant"
@@ -161,7 +170,7 @@ rza_cc "$BUILD/table_full.rza.c" bench/rza_table_host.c \
     bench/bench_check.c -o "$BUILD/table_full_rza"
 rza_cc "$BUILD/table_full.c" bench/bench_check.c \
     -o "$BUILD/table_full_c"
-$RUSTC --edition=2021 -D warnings --crate-type=staticlib -O "$BUILD/table_full.rs" \
+$RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 -D warnings --crate-type=staticlib -O "$BUILD/table_full.rs" \
     -o "$BUILD/libtable_full.$RUST_LIB_EXT"
 link_rust bench/bench_check.c "$BUILD/libtable_full.$RUST_LIB_EXT" \
     $RUST_LIBS -o "$BUILD/table_full_rust"
@@ -175,7 +184,7 @@ check_output crc32c_vector crc32c_vector
 rza_cc -DCRC32C_TABLE bench/crc32c_table.c bench/crc32c_vector.c \
     -o "$BUILD/crc32c_table_vector"
 check_output crc32c_table_vector crc32c_vector
-$RUSTC --edition=2021 --test -D warnings -O bench/workloads_test.rs \
+$RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --test -D warnings -O bench/workloads_test.rs \
     -o "$BUILD/workloads_test"
 "$BUILD/workloads_test"
 rza_cc bench/timer.c bench/timer_test.c -o "$BUILD/timer_test"
