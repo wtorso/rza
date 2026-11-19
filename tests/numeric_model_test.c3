@@ -154,3 +154,15 @@ fn void numeric_layout_metrics_use_descriptor_alignment() @test {
     assert(width == 8);
     assert(alignment == 1);
 }
+
+fn void numeric_unknown_op_preserves_sync_cascade_diagnostic() @test {
+    expect_layout_error("res raw, field, 8\nmed raw_m, raw, field\n"
+        "casc c: raw_m -> out[field]\nmystery\nendc\nret\n", 4, "STRUCT",
+        "op mystery not allowed in cascade body (data instructions only)");
+}
+
+fn void numeric_unknown_op_preserves_async_cascade_diagnostic() @test {
+    expect_layout_error("res raw, field, 8\nmed raw_m, raw, field\n"
+        "acasc c: raw_m -> out\nmystery\nendc\nawait %r0\nret\n", 4, "STRUCT",
+        "op mystery not allowed in async cascade body (data instructions only)");
+}

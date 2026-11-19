@@ -37,6 +37,12 @@ const String COMPLETION_TEXT = "layout Ring: read_pos:i64, count:i64, "
 	"store.i64 [ring\n"
 	"ret\n";
 
+const String COMPLETION_TYPE_TEXT = "layout Pair: tag:u8, value:i64\n"
+	"res pair, field, Pair\n"
+	"med pair_m, pair, field\n"
+	"load %r0, [pair_m + 0].\n"
+	"ret\n";
+
 fn bool completion_matches(Object* response, String[] expected, bool incomplete) {
 	Object* result = response.get("result") ?? null;
 	if (result == null || result.is_null()) return false;
@@ -141,6 +147,7 @@ fn int? completion_checks(Process* child) {
 	if (completion_scope_checks(child)! != 0) return 1;
 	if (completion_limit_checks(child)! != 0) return 1;
 	if (completion_regression_checks(child)! != 0) return 1;
+	if (completion_type_detail_checks(child)! != 0) return 1;
 	if (completion_view_checks(child)! != 0) return 1;
 	return 0;
 }
@@ -209,5 +216,32 @@ fn int? completion_regression_checks(Process* child) {
 	if (completion_store_checks(child)! != 0) return 1;
 	if (completion_numeric_context_checks(child)! != 0) return 1;
 	if (completion_field_scope_checks(child)! != 0) return 1;
+	return 0;
+}
+
+fn bool completion_detail_matches(Object* response, String label, String detail) {
+	Object* result = response.get("result") ?? null;
+	if (result == null) return false;
+	Object* items = result.get("items") ?? null;
+	if (items == null || !items.is_indexable()) return false;
+	for (sz i = 0; i < items.get_len(); i++) {
+		Object* item = items.get_at(i);
+		if ((item.get_string("label") ?? "") != label) continue;
+		return (item.get_string("detail") ?? "") == detail;
+	}
+	return false;
+}
+
+fn int? completion_type_detail_checks(Process* child) {
+	Object* diagnostics = lsp_call_json(child, change_message(COMPLETION_TYPE_TEXT, 6))!;
+	if (!expect(json_diagnostics(diagnostics)!.len() > 0,
+			"field completion document is intentionally invalid")) return 1;
+	Object* response = position_call(child, "textDocument/completion", 132, GOOD_URI, 3, 23)!;
+	if (!expect(completion_matches(response, { "tag", "value" }, false),
+			"field completion labels")) return 1;
+	if (!expect(completion_detail_matches(response, "tag", "u8 field"),
+			"u8 completion detail")) return 1;
+	if (!expect(completion_detail_matches(response, "value", "i64 field"),
+			"i64 completion detail")) return 1;
 	return 0;
 }

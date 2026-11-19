@@ -372,6 +372,7 @@ fn int? contract_fuzz_run() {
     if (contract_model_selftest() != 0) return 1;
     if (contract_shrink_selftest() != 0) return 1;
     if (contract_harness_selftest()! != 0) return 1;
+    if (contract_attribution_selftest() != 0) return 1;
     contract_coverage_reset();
     for (ulong seed = 1; seed <= 64; seed++) {
         if (contract_run_seed(seed)! != 0) return 1;
@@ -390,4 +391,46 @@ fn int contract_fuzz_main() {
         return 1;
     }
     return status;
+}
+
+fn int contract_attribution_selftest() {
+    contract_coverage_reset();
+    defer contract_coverage_reset();
+    ContractWorld direct = contract_valid_world(1);
+    contract_make_readonly(&direct, 1);
+    ContractExpectation expected = contract_reference(&direct);
+    if (!expect(!expected.valid && !expected.call, "direct attribution fixture")) return 1;
+    int direct_op = (int)direct.procs[expected.proc].op;
+    if (!expect(direct_op != (int)ContractOpKind.NONE, "direct op is not NONE")) return 1;
+    contract_coverage_record(&direct, expected);
+    for (int op = 0; op < CONTRACT_OP_COUNT; op++) {
+        ulong want = op == direct_op ? 1 : 0;
+        if (!expect(contract_coverage.failing_ops[op] == want,
+                "direct failure increments only its operation")) return 1;
+    }
+    for (int proc = 0; proc < CONTRACT_PROC_COUNT; proc++) {
+        int op = (int)direct.procs[proc].op;
+        if (!expect(contract_coverage.invalid_ops[op] > 0,
+                "invalid presence includes every operation")) return 1;
+    }
+    ContractWorld call = contract_valid_world(7);
+    call.procs[1].op = ContractOpKind.STORE;
+    contract_require_operation(&call.procs[1]);
+    contract_make_call_error(&call, 1, false);
+    expected = contract_reference(&call);
+    if (!expect(!expected.valid && expected.call, "call attribution fixture")) return 1;
+    ulong before = contract_coverage.failing_ops[(int)ContractOpKind.STORE];
+    contract_coverage_record(&call, expected);
+    if (!expect(contract_coverage.failing_ops[(int)ContractOpKind.STORE] == before &&
+            contract_coverage.deep_call == 1,
+            "call failure does not blame the caller operation")) return 1;
+    ContractWorld none = contract_valid_world(9);
+    none.procs[1].op = ContractOpKind.NONE;
+    contract_make_call_error(&none, 1, false);
+    expected = contract_reference(&none);
+    if (!expect(!expected.valid && expected.call, "NONE call fixture")) return 1;
+    contract_coverage_record(&none, expected);
+    if (!expect(contract_coverage.failing_ops[(int)ContractOpKind.NONE] == 0,
+            "NONE is never a failing operation")) return 1;
+    return 0;
 }

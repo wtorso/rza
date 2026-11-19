@@ -157,6 +157,7 @@ fn int? navigation_view_checks(Process* child) {
 fn int? navigation_checks(Process* child) {
 	if (navigation_hover_definition_checks(child)! != 0) return 1;
 	if (navigation_document_switch_checks(child)! != 0) return 1;
+	if (navigation_field_type_checks(child)! != 0) return 1;
 	if (navigation_regression_checks(child)! != 0) return 1;
 	if (navigation_hover_metadata_checks(child)! != 0) return 1;
 	if (navigation_view_checks(child)! != 0) return 1;
@@ -266,5 +267,44 @@ fn int? navigation_regression_checks(Process* child) {
 	if (navigation_namespace_checks(child)! != 0) return 1;
 	if (navigation_cascade_out_checks(child)! != 0) return 1;
 	if (navigation_contract_checks(child)! != 0) return 1;
+	return 0;
+}
+
+const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64\n"
+	"res pair, field, Pair\n"
+	"med pair_m, pair, field\n"
+	"loadb %r0, [pair_m + 0].tag\n"
+	"load %r1, [pair_m + 0].value\n"
+	"ret\n";
+
+const String PARTIAL_FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64\n"
+	"res pair, field, Pair\n"
+	"med pair_m, pair, field\n"
+	"loadb %r0, [pair_m + 0].tag\n"
+	"load %r1, [pair_m + 0].value\n"
+	"load %r2, [pair_m + 0].\n"
+	"ret\n";
+
+fn int? navigation_field_hover(Process* child, int id, int line, int character,
+		String field, String type, int offset) {
+	Object* response = position_call(child, "textDocument/hover", id, GOOD_URI,
+		line, character)!;
+	DString expected = dstring::temp();
+	expected.appendf("%s\n```\n%s field of `Pair`; offset %d bytes.",
+		field, type, offset);
+	if (!expect(hover_markdown(response).contains(expected.str_view()),
+			"field hover type and offset")) return 1;
+	return 0;
+}
+
+fn int? navigation_field_type_checks(Process* child) {
+	Object* response = lsp_call_json(child, change_message(FIELD_HOVER_TEXT, 20))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "valid field hover document")) return 1;
+	if (navigation_field_hover(child, 160, 3, 25, "tag", "u8", 0)! != 0) return 1;
+	if (navigation_field_hover(child, 161, 4, 25, "value", "i64", 8)! != 0) return 1;
+	response = lsp_call_json(child, change_message(PARTIAL_FIELD_HOVER_TEXT, 21))!;
+	if (!expect(json_diagnostics(response)!.len() > 0, "partial field hover document")) return 1;
+	if (navigation_field_hover(child, 162, 3, 25, "tag", "u8", 0)! != 0) return 1;
+	if (navigation_field_hover(child, 163, 4, 25, "value", "i64", 8)! != 0) return 1;
 	return 0;
 }

@@ -192,6 +192,7 @@ fn void oracle_coverage_print() {
 struct ContractCoverage {
     ulong[CONTRACT_OP_COUNT] valid_ops;
     ulong[CONTRACT_OP_COUNT] invalid_ops;
+    ulong[CONTRACT_OP_COUNT] failing_ops;
     ulong valid;
     ulong invalid;
     ulong unlisted;
@@ -224,6 +225,19 @@ fn void contract_coverage_record(ContractWorld* world, ContractExpectation expec
     if (!expected.unlisted) contract_coverage.readonly++;
     if (expected.call && expected.proc == 1) contract_coverage.deep_call++;
     if (expected.call && expected.proc == 2) contract_coverage.outer_call++;
+    if (!expected.call) {
+        int op = (int)world.procs[expected.proc].op;
+        assert(op != (int)ContractOpKind.NONE);
+        contract_coverage.failing_ops[op]++;
+    }
+}
+
+fn ulong contract_failing_total() {
+    ulong total = 0;
+    for (int op = 0; op < CONTRACT_OP_COUNT; op++) {
+        total += contract_coverage.failing_ops[op];
+    }
+    return total;
 }
 
 fn bool contract_coverage_ok() {
@@ -240,6 +254,12 @@ fn bool contract_coverage_ok() {
             "contract fuzz needs unlisted and read-only failures")) return false;
     if (!expect(contract_coverage.deep_call > 0 && contract_coverage.outer_call > 0,
             "contract fuzz needs both transitive call edges")) return false;
+    ulong direct = contract_coverage.invalid - contract_coverage.deep_call -
+        contract_coverage.outer_call;
+    if (!expect(contract_failing_total() == direct,
+            "contract fuzz exact direct attribution total")) return false;
+    if (!expect(contract_coverage.failing_ops[(int)ContractOpKind.NONE] == 0,
+            "NONE is never a failing operation")) return false;
     return true;
 }
 
@@ -249,4 +269,5 @@ fn void contract_coverage_print() {
         contract_coverage.unlisted, contract_coverage.readonly);
     io::printfn("CONTRACT_CALL_EDGES deep=%d outer=%d",
         contract_coverage.deep_call, contract_coverage.outer_call);
+    io::printfn("CONTRACT_DIRECT_FAILURES attributed=%d", contract_failing_total());
 }
