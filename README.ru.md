@@ -19,8 +19,9 @@ host-интерфейсы могут меняться.
 0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1) с `c3c` в `PATH`,
 компилятор C23 (GCC, Clang, Zig или MSVC на Windows), Bash и стандартные командные
 утилиты. Для запуска готового компилятора C3 не нужен, но для компиляции его
-C23-вывода всё ещё нужен C compiler. Rust необязателен и используется только для
-сравнительных программ и benchmark-проверок.
+C23-вывода всё ещё нужен C compiler. Rust необязателен для сборки и использования
+компилятора, но полный suite требует `rustc` для сравнительных программ и
+benchmark-проверок.
 
 Команды ниже используют POSIX-совместимый shell. CI также собирает и тестирует
 проект на Windows с Bash, Zig и MSVC. Release-пакеты пока доступны только для Linux
@@ -336,11 +337,12 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=206 FAIL=0` на POSIX и Windows MSVC, `PASS=205 FAIL=0`
+Ожидаемый результат: `PASS=207 FAIL=0` на POSIX и Windows MSVC, `PASS=206 FAIL=0`
 на Windows Zig. Benchmark correctness требует `rustc` и запускается на POSIX и
 Windows MSVC. Windows Zig сохраняет прежний объём из-за конфликта weak symbols
-Rust compiler-builtins и Zig compiler-rt при связывании static library. Полный
-timing-скрипт `bench/run.sh` остаётся Linux-only; MSVC запускает correctness и timer.
+Rust compiler-builtins и Zig compiler-rt при связывании static library; не маскируйте его
+через `FORCE:MULTIPLE`. Полный timing-скрипт `bench/run.sh` остаётся Linux-only;
+MSVC запускает correctness и timer.
 
 Другие поддерживаемые варианты C toolchain:
 

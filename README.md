@@ -18,8 +18,9 @@ Building from source requires [C3
 0.8.5_1](https://github.com/c3lang/c3c/releases/tag/v0.8.5_1) with `c3c` in
 `PATH`, a C23 compiler (GCC, Clang, Zig, or MSVC on Windows), Bash, and standard
 command-line tools. Running a packaged compiler does not require C3, but compiling
-its C23 output still requires a C compiler. Rust is optional and is used only for
-comparison programs and benchmark checks.
+its C23 output still requires a C compiler. Rust is optional when building or using the
+compiler, but the complete test suite requires `rustc` for its comparison programs and
+benchmark checks.
 
 The commands below use a POSIX-compatible shell. CI also builds and tests the
 project on Windows with Bash, Zig, and MSVC. Release packages are currently provided
@@ -335,11 +336,12 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=206 FAIL=0` on POSIX and Windows MSVC, and
-`PASS=205 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
+Expected results are `PASS=207 FAIL=0` on POSIX and Windows MSVC, and
+`PASS=206 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
 and run on POSIX and Windows MSVC. Windows Zig retains its previous scope because
-Rust static-library linking conflicts with Zig compiler-rt weak symbols. The full
-timing script `bench/run.sh` remains Linux-only; MSVC runs correctness and timer tests.
+Rust static-library linking conflicts with Zig compiler-rt weak symbols; do not mask it
+with `FORCE:MULTIPLE`. The full timing script `bench/run.sh` remains Linux-only; MSVC runs
+correctness and timer tests.
 
 Other supported compiler selections are:
 
