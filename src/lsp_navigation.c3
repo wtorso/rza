@@ -359,7 +359,7 @@ fn String nav_hover_text(NavSymbol symbol) {
 		out.appendf(
 			"%s\n```\n%s field of `%s`; offset %d bytes.",
 			clip_utf8(field.name, NAV_NAME_MAX),
-			field.scalar_type == ScalarType.U8 ? "u8" : "i64",
+			scalar_type_desc(field.scalar_type).source_name,
 			clip_utf8(layouts[li].name, NAV_NAME_MAX),
 			field.offset_bytes
 		);

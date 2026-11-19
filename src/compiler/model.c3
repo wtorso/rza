@@ -59,6 +59,7 @@ struct Frame {
 }
 
 enum ScalarType : char {
+	NONE,
 	U8,
 	I64
 }
@@ -97,9 +98,9 @@ struct Cell {
 }
 
 struct ViewOperand {
-	bool is_immediate;
+	OperandKind operand_kind;
 	int reg;
-	long immediate;
+	Immediate immediate;
 }
 
 struct Med {
@@ -164,6 +165,7 @@ struct LabelDef {
 enum Op : char {
 	CAV,
 	RES,
+	LAYOUT,
 	MED,
 	VIEW,
 	RAISE,
@@ -193,9 +195,11 @@ struct Instr {
 	int block;
 	int a, b, c; // regs / imm / off / size / casc idx
 	int x, y; // индексы frame/cell/med/proc
-	String s1, s2; // имена меток / C-оператор
-	bool flag;
-	long immediate;
+	String s1;
+	Immediate immediate;
+	AluOp alu_op;
+	OperandKind operand_kind;
+	ScalarType scalar_type;
 }
 
 const int NAME_MAP_MAX = 32768;

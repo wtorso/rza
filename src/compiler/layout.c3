@@ -30,7 +30,10 @@ fn bool is_layout_name(String name) {
 }
 
 fn int scalar_width(ScalarType type) {
-	return type == ScalarType.U8 ? 1 : 8;
+	TypeDesc* desc = scalar_type_desc(type);
+	assert(desc != null);
+	assert(desc.bit_width % 8 == 0);
+	return (int)(desc.bit_width / 8);
 }
 
 fn int align_layout_offset(int offset, int alignment) {
@@ -53,12 +56,8 @@ fn bool parse_layout_field(String text, int line, LayoutField* field) {
 	String name      = text[:colon].trim();
 	String type_name = text[colon + 1..].trim();
 	if (!check_name(name, line)) return false;
-	ScalarType type;
-	if (type_name == "u8") {
-		type = ScalarType.U8;
-	} else if (type_name == "i64") {
-		type = ScalarType.I64;
-	} else {
+	ScalarType type = find_scalar_type(type_name) ?? ScalarType.NONE;
+	if (type == ScalarType.NONE) {
 		viol(line, "STRUCT", cat({ "unknown layout scalar type ", type_name }));
 		return false;
 	}
@@ -90,9 +89,11 @@ fn int parse_layout_fields(
 				return -1;
 			}
 		}
-		int width = scalar_width(field.scalar_type);
-		if (width > alignment) alignment = width;
-		int field_offset = align_layout_offset(offset, width);
+		int width;
+		int field_alignment;
+		type_layout_metrics(scalar_type_desc(field.scalar_type), &width, &field_alignment);
+		if (field_alignment > alignment) alignment = field_alignment;
+		int field_offset = align_layout_offset(offset, field_alignment);
 		if (field_offset < 0 || field_offset > CELL_SIZE_BYTES_MAX - width) {
 			viol(line, "STRUCT", "layout size out of i32 range");
 			return -1;
@@ -216,7 +217,7 @@ fn bool parse_layout_use(
 fn bool check_typed_access(
 	int mediator_index,
 	String field_name,
-	String opname,
+	OpDesc* desc,
 	int index,
 	int index_reg,
 	int line,
@@ -224,6 +225,8 @@ fn bool check_typed_access(
 ) {
 	Cell* cell = &cells[meds[mediator_index].cell];
 	assert(cell.layout >= 0);
+	assert(desc != null && desc.has_access_type);
+	String opname = desc.source_name;
 	if (field_name.len == 0) {
 		viol(line, "STRUCT", cat({ "typed cell requires field selector in ", opname }));
 		return false;
@@ -233,9 +236,7 @@ fn bool check_typed_access(
 		viol(line, "STRUCT", cat({ "unknown layout field ", field_name }));
 		return false;
 	}
-	bool byte_op    = opname == "loadb" || opname == "storeb";
-	bool byte_field = layout_fields[found].scalar_type == ScalarType.U8;
-	if (byte_op != byte_field) {
+	if (layout_fields[found].scalar_type != desc.access_type) {
 		viol(line, "STRUCT", cat({ "opcode does not match layout field ", field_name }));
 		return false;
 	}

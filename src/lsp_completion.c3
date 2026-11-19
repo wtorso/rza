@@ -78,7 +78,7 @@ fn void completion_fields(CompletionWriter* writer, NavPosition* pos, int ci) {
 		writer.append(
 			field.name,
 			5,
-			field.scalar_type == ScalarType.U8 ? "u8 field" : "i64 field",
+			cat({ scalar_type_desc(field.scalar_type).source_name, " field" }),
 			prefix
 		);
 	}
@@ -140,6 +140,14 @@ fn void completion_procs(CompletionWriter* writer, NavPosition* pos) {
 	}
 }
 
+fn CompletionContext memory_completion_context(String op, int commas) {
+	OpDesc* desc = find_op_desc(op);
+	if (desc == null || !desc.has_access_type) return CompletionContext.NONE;
+	if (desc.op == Op.LOAD && commas == 1) return CompletionContext.MED;
+	if (desc.op == Op.STORE && commas == 0) return CompletionContext.MED;
+	return CompletionContext.NONE;
+}
+
 fn CompletionContext completion_context(NavPosition* pos, bool* allow_field) {
 	String line  = nav_line(pos);
 	int relative = pos.word_start - pos.line_start;
@@ -163,8 +171,8 @@ fn CompletionContext completion_context(NavPosition* pos, bool* allow_field) {
 	if (op == "raise" && commas == 0) return CompletionContext.CELL;
 	if (op == "raise" && commas == 1) return CompletionContext.FRAME;
 	if (op == "probe") return CompletionContext.MED;
-	if ((op == "load" || op == "loadb") && commas == 1) return CompletionContext.MED;
-	if ((op == "store" || op == "storeb") && commas == 0) return CompletionContext.MED;
+	CompletionContext memory = memory_completion_context(op, commas);
+	if (memory != CompletionContext.NONE) return memory;
 	if (op == "call" && commas == 0) return CompletionContext.PROC;
 	if (op == "decay" && commas == 0) {
 		*allow_field = false;

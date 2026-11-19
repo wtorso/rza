@@ -9,8 +9,10 @@ fn void view_declarations_and_extents() @test {
     assert(meds[0].view_source == -1 && meds[0].extent == 32);
     assert(meds[1].view_source == -1 && meds[1].extent == 4);
     assert(meds[2].view_source == 0 && meds[2].extent == 8);
-    assert(meds[2].view_offset.reg == 0 && !meds[2].view_offset.is_immediate);
-    assert(meds[2].view_length.is_immediate && meds[2].view_length.immediate == 8);
+    assert(meds[2].view_offset.reg == 0);
+    assert(meds[2].view_offset.operand_kind == OperandKind.REGISTER);
+    assert(meds[2].view_length.operand_kind == OperandKind.IMMEDIATE);
+    assert(meds[2].view_length.immediate.bits == 8);
     assert(meds[3].view_source == 2 && meds[3].extent == 3);
     assert(meds[4].view_source == 1 && meds[4].extent == 2);
     assert(cells[0].med_count == 3 && cells[1].med_count == 2);

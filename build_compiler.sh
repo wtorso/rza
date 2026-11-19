@@ -25,8 +25,8 @@ OLD="$BIN_DIR/rez3asm.$$.old"
 trap 'rm --force "$NEW" "$NEW.exe" "$NEW.pdb" "$OLD.exe" "$OLD.pdb" \
     2>/dev/null || true' EXIT
 
-if ! $C3C compile src/rez3asm.c3 src/compiler/model.c3 src/compiler/layout.c3 \
-        src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp_server.c3 \
+if ! $C3C compile src/rez3asm.c3 src/compiler/model.c3 src/compiler/numeric.c3 \
+        src/compiler/layout.c3 src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp_server.c3 \
         src/lsp_navigation.c3 src/lsp_completion.c3 src/lsp_references.c3 \
         src/memory_guard.c3 src/scratch_memory.c3 \
         -o "$NEW" "${RELEASE_FLAGS[@]}" \

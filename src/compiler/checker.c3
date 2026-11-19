@@ -189,7 +189,7 @@ fn bool immediate_error(String text, int line) {
 	return false;
 }
 
-fn bool parse_i64(String text, int line, long* value) {
+fn bool parse_i64_signed(String text, int line, long* value) {
 	bool negative    = text[0] == '-';
 	String magnitude = negative ? text[1..] : text;
 	bool hex         = magnitude.starts_with("0x") || magnitude.starts_with("0X");
@@ -213,6 +213,18 @@ fn bool parse_i64(String text, int line, long* value) {
 		long? parsed = text.to_long();
 		if (catch parsed) return immediate_error(text, line);
 		*value = parsed;
+	}
+	return true;
+}
+
+fn bool parse_i64(String text, int line, Immediate* immediate) {
+	long value;
+	if (!parse_i64_signed(text, line, &value)) return false;
+	*immediate = immediate_from_i64(value);
+	immediate.has_negative_sign = text[0] == '-';
+	String magnitude = immediate.has_negative_sign ? text[1..] : text;
+	if (magnitude.starts_with("0x") || magnitude.starts_with("0X")) {
+		immediate.literal_kind = LiteralKind.HEX_BITS;
 	}
 	return true;
 }
@@ -649,10 +661,11 @@ fn void op_med(String rest, int line) {
 fn bool parse_view_operand(String text, int line, ViewOperand* operand) {
 	*operand = { .reg = -1 };
 	if (is_int(text)) {
-		operand.is_immediate = true;
+		operand.operand_kind = OperandKind.IMMEDIATE;
 		return parse_i64(text, line, &operand.immediate);
 	}
 	if (text.len > 0 && text[0] == '%') {
+		operand.operand_kind = OperandKind.REGISTER;
 		operand.reg = parse_reg(text, line);
 		return operand.reg >= 0;
 	}
@@ -664,17 +677,21 @@ fn bool view_range_valid(int source, String name, ViewOperand offset,
 		ViewOperand length, int line) {
 	int ci = meds[source].cell;
 	int max = cells[ci].layout >= 0 ? cells[ci].element_count : cells[ci].size;
-	if (offset.is_immediate && (offset.immediate < 0 || offset.immediate > max)) {
+	bool offset_immediate = offset.operand_kind == OperandKind.IMMEDIATE;
+	bool length_immediate = length.operand_kind == OperandKind.IMMEDIATE;
+	long offset_value = immediate_i64(offset.immediate);
+	long length_value = immediate_i64(length.immediate);
+	if (offset_immediate && (offset_value < 0 || offset_value > max)) {
 		viol(line, "STRUCT", cat({ "view range out of bounds ", name }));
 		return false;
 	}
-	if (length.is_immediate && (length.immediate < 0 || length.immediate > max)) {
+	if (length_immediate && (length_value < 0 || length_value > max)) {
 		viol(line, "STRUCT", cat({ "view range out of bounds ", name }));
 		return false;
 	}
-	if (meds[source].extent < 0 || !offset.is_immediate || !length.is_immediate) return true;
-	if (offset.immediate > meds[source].extent
-			|| length.immediate > meds[source].extent - offset.immediate) {
+	if (meds[source].extent < 0 || !offset_immediate || !length_immediate) return true;
+	if (offset_value > meds[source].extent
+			|| length_value > meds[source].extent - offset_value) {
 		viol(line, "STRUCT", cat({ "view range out of bounds ", name }));
 		return false;
 	}
@@ -740,7 +757,8 @@ fn void op_view(String rest, int line) {
 		.cascade = cur_casc,
 		.read_only = proc_med_access(source, cur_proc) == 0,
 		.view_source = source, .view_offset = offset, .view_length = length,
-		.extent = length.is_immediate ? (int)length.immediate : -1
+		.extent = length.operand_kind == OperandKind.IMMEDIATE
+			? (int)immediate_i64(length.immediate) : -1
 	};
 	meds.push(m);
 	int mi = (int)meds.len() - 1;
@@ -924,13 +942,15 @@ fn bool cascade_input_ok(String mname) {
 fn int resolve_mem_med(
 	String tok,
 	int line,
-	String opname,
+	OpDesc* desc,
 	int* off,
 	int* off_reg,
 	int* field_index
 ) {
 	String mname;
 	String field_name;
+	assert(desc != null && desc.has_access_type);
+	String opname = desc.source_name;
 	*field_index = -1;
 	if (!parse_mem(tok, line, &mname, off, off_reg, &field_name)) return -1;
 	int mi = find_med(mname, cur_proc);
@@ -946,14 +966,13 @@ fn int resolve_mem_med(
 		cascade_scope_viol(line, mname);
 		return -1;
 	}
-	bool write = opname == "store" || opname == "storeb";
-	if (!check_proc_med_access(mi, line, opname, write)) return -1;
+	if (!check_proc_med_access(mi, line, opname, desc.write)) return -1;
 	int ci = meds[mi].cell;
 	if (cells[ci].layout >= 0) {
 		if (!check_typed_access(
 			mi,
 			field_name,
-			opname,
+			desc,
 			*off,
 			*off_reg,
 			line,
@@ -964,7 +983,7 @@ fn int resolve_mem_med(
 			viol(line, "STRUCT", "field access requires typed cell");
 			return -1;
 		}
-		int width = opname == "loadb" || opname == "storeb" ? 1 : 8;
+		int width = scalar_width(desc.access_type);
 		int size  = meds[mi].extent;
 		bool fixed_bad = *off >= 0 && size >= 0 && (*off > size || width > size - *off);
 		if (*off_reg < 0 && (*off < 0 || fixed_bad)) {
@@ -979,15 +998,14 @@ fn int resolve_mem_med(
 	return mi;
 }
 
-fn void op_load2(String rest, int line, bool is_byte) {
+fn void op_load2(String rest, int line, OpDesc* desc) {
 	String[2] buf;
-	if (!split_ops_exact(rest, 2, line, is_byte ? "loadb" : "load", &buf)) return;
-	int dst       =  parse_reg(buf[0], line);
-	int off       =  0;
-	int off_reg   = -1;
-	int field     = -1;
-	String opname =  is_byte ? "loadb" : "load";
-	int mi        =  resolve_mem_med(buf[1], line, opname, &off, &off_reg, &field);
+	if (!split_ops_exact(rest, 2, line, desc.source_name, &buf)) return;
+	int dst     = parse_reg(buf[0], line);
+	int off     = 0;
+	int off_reg = -1;
+	int field   = -1;
+	int mi      = resolve_mem_med(buf[1], line, desc, &off, &off_reg, &field);
 	if (dst < 0 || mi < 0) return;
 	add_instr(
 		{
@@ -998,20 +1016,19 @@ fn void op_load2(String rest, int line, bool is_byte) {
 			.y = field,
 			.b = off,
 			.c = off_reg,
-			.flag = is_byte
+			.scalar_type = desc.access_type
 		}
 	);
 }
 
-fn void op_store2(String rest, int line, bool is_byte) {
+fn void op_store2(String rest, int line, OpDesc* desc) {
 	String[2] buf;
-	if (!split_ops_exact(rest, 2, line, is_byte ? "storeb" : "store", &buf)) return;
-	int off       =  0;
-	int off_reg   = -1;
-	int field     = -1;
-	String opname =  is_byte ? "storeb" : "store";
-	int mi        =  resolve_mem_med(buf[0], line, opname, &off, &off_reg, &field);
-	int src       =  parse_reg(buf[1], line);
+	if (!split_ops_exact(rest, 2, line, desc.source_name, &buf)) return;
+	int off     = 0;
+	int off_reg = -1;
+	int field   = -1;
+	int mi      = resolve_mem_med(buf[0], line, desc, &off, &off_reg, &field);
+	int src     = parse_reg(buf[1], line);
 	if (mi < 0 || src < 0) return;
 	add_instr(
 		{
@@ -1022,21 +1039,9 @@ fn void op_store2(String rest, int line, bool is_byte) {
 			.y = field,
 			.b = off,
 			.c = off_reg,
-			.flag = is_byte
+			.scalar_type = desc.access_type
 		}
 	);
-}
-
-fn void op_store(String rest, int line) {
-	assert(line > 0);
-	assert(rest.len <= SOURCE_BYTES_MAX);
-	op_store2(rest, line, false);
-}
-
-fn void op_storeb(String rest, int line) {
-	assert(line > 0);
-	assert(rest.len <= SOURCE_BYTES_MAX);
-	op_store2(rest, line, true);
 }
 
 // --- данные и поток ----------------------------------------------------------------
@@ -1048,65 +1053,94 @@ fn void op_mov(String rest, int line) {
 	int dst = parse_reg(buf[0], line);
 	if (dst < 0) return;
 	if (is_int(buf[1])) {
-		long value;
+		Immediate value;
 		if (!parse_i64(buf[1], line, &value)) return;
-		add_instr({ .op = Op.MOV, .line = line, .a = dst, .immediate = value, .flag = true });
+		add_instr({
+			.op = Op.MOV,
+			.line = line,
+			.a = dst,
+			.immediate = value,
+			.operand_kind = OperandKind.IMMEDIATE,
+			.scalar_type = ScalarType.I64
+		});
 		return;
 	}
 	int src = parse_reg(buf[1], line);
 	if (src < 0) return;
-	add_instr({ .op = Op.MOV, .line = line, .a = dst, .b = src, .flag = false });
+	add_instr({
+		.op = Op.MOV,
+		.line = line,
+		.a = dst,
+		.b = src,
+		.operand_kind = OperandKind.REGISTER,
+		.scalar_type = ScalarType.I64
+	});
 }
 
-fn void op_alu3(String opname, String coper, String rest, int line) {
+fn void op_alu3(String rest, int line, OpDesc* desc) {
 	assert(line > 0);
 	assert(rest.len <= SOURCE_BYTES_MAX);
 	String[3] buf;
-	if (!split_ops_exact(rest, 3, line, opname, &buf)) return;
+	if (!split_ops_exact(rest, 3, line, desc.source_name, &buf)) return;
 	int d = parse_reg(buf[0], line);
 	int a = parse_reg(buf[1], line);
 	if (d < 0 || a < 0) return;
-	// Третий операнд — immediate (флаг) или регистр.
 	if (is_int(buf[2])) {
-		long value;
+		Immediate value;
 		if (!parse_i64(buf[2], line, &value)) return;
-		add_instr(
-			{
-				.op = Op.ALU3,
-				.line = line,
-				.a = d,
-				.b = a,
-				.immediate = value,
-				.s2 = coper,
-				.flag = true
-			}
-		);
+		add_instr({
+			.op = Op.ALU3,
+			.line = line,
+			.a = d,
+			.b = a,
+			.immediate = value,
+			.alu_op = desc.alu_op,
+			.operand_kind = OperandKind.IMMEDIATE,
+			.scalar_type = ScalarType.I64
+		});
 		return;
 	}
 	int b = parse_reg(buf[2], line);
 	if (b < 0) return;
-	add_instr({ .op = Op.ALU3, .line = line, .a = d, .b = a, .c = b, .s2 = coper, .flag = false });
+	add_instr({
+		.op = Op.ALU3,
+		.line = line,
+		.a = d,
+		.b = a,
+		.c = b,
+		.alu_op = desc.alu_op,
+		.operand_kind = OperandKind.REGISTER,
+		.scalar_type = ScalarType.I64
+	});
 }
 
-fn void op_alu1(String rest, int line, bool is_inc, bool checked) {
+fn void op_alu1(String rest, int line, OpDesc* desc) {
 	String[1] buf;
-	String opname = is_inc ? (checked ? "cinc" : "inc") : (checked ? "cdec" : "dec");
-	if (!split_ops_exact(rest, 1, line, opname, &buf)) return;
+	if (!split_ops_exact(rest, 1, line, desc.source_name, &buf)) return;
 	int r = parse_reg(buf[0], line);
 	if (r < 0) return;
+	bool is_inc = desc.alu_op == AluOp.INC || desc.alu_op == AluOp.CINC;
+	bool checked = desc.alu_op == AluOp.CINC || desc.alu_op == AluOp.CDEC;
 	if (checked) {
 		add_instr({
 			.op = Op.ALU3,
 			.line = line,
 			.a = r,
 			.b = r,
-			.immediate = 1,
-			.s2 = is_inc ? "c+" : "c-",
-			.flag = true
+			.immediate = immediate_from_i64(1),
+			.alu_op = is_inc ? AluOp.CADD : AluOp.CSUB,
+			.operand_kind = OperandKind.IMMEDIATE,
+			.scalar_type = ScalarType.I64
 		});
 		return;
 	}
-	add_instr({ .op = Op.ALU1, .line = line, .a = r, .flag = is_inc });
+	add_instr({
+		.op = Op.ALU1,
+		.line = line,
+		.a = r,
+		.alu_op = desc.alu_op,
+		.scalar_type = ScalarType.I64
+	});
 }
 
 fn void op_print(String rest, int line) {
@@ -1498,67 +1532,13 @@ fn void end_casc(int line) {
 }
 
 // --- диспетчер инструкций -------------------------------------------------------------
-fn bool casc_body_ok(String op) {
-	if (op == "view") return !cascades[cur_casc].is_async;
-	switch (op) {
-		case "mov":
-		case "store":
-		case "load":
-		case "loadb":
-		case "print":
-		case "jmp":
-		case "brz":
-		case "brnz":
-		case "inc":
-		case "dec":
-		case "cinc":
-		case "cdec":
-		case "add":
-		case "sub":
-		case "mul":
-		case "cadd":
-		case "csub":
-		case "cmul":
-		case "crc32c":
-		case "div":
-		case "mod":
-		case "and":
-		case "or":
-		case "xor":
-		case "shl":
-		case "shr":
-		case "ushr":
-		case "storeb":
-		case "slt":
-			return true;
-		default:
-			return false;
-	}
-}
-
-fn bool parse_alu_instr(String op, String rest, int n) {
-	String coper = "";
-	switch (op) {
-		case "slt": coper = "<";
-		case "add": coper = "+";
-		case "cadd": coper = "c+";
-		case "sub": coper = "-";
-		case "csub": coper = "c-";
-		case "mul": coper = "*";
-		case "cmul": coper = "c*";
-		case "crc32c": coper = "crc32c";
-		case "div": coper = "/";
-		case "mod": coper = "%";
-		case "and": coper = "&";
-		case "or": coper = "|";
-		case "xor": coper = "^";
-		case "shl": coper = "<<";
-		case "shr": coper = ">>";
-		case "ushr": coper = ">>>";
-		default: return false;
-	}
-	op_alu3(op, coper, rest, n);
-	return true;
+fn void cascade_op_viol(String op, int n) {
+	String kind = cascades[cur_casc].is_async ? "async cascade body" : "cascade body";
+	viol(
+		n,
+		"STRUCT",
+		cat({ "op ", op, " not allowed in ", kind, " (data instructions only)" })
+	);
 }
 
 fn void parse_instr(String line, int n, bool in_casc) {
@@ -1571,69 +1551,40 @@ fn void parse_instr(String line, int n, bool in_casc) {
 	}
 	String op   = line[:sp];
 	String rest = (sp < line.len) ? line[sp + 1..].trim() : "";
-	if (in_casc && !casc_body_ok(op)) {
-		String kind = cascades[cur_casc].is_async ? "async cascade body" : "cascade body";
-		viol(
-			n,
-			"STRUCT",
-			cat({ "op ", op, " not allowed in ", kind, " (data instructions only)" })
-		);
+	OpDesc* desc = find_op_desc(op);
+	if (desc == null) {
+		if (in_casc) {
+			cascade_op_viol(op, n);
+		} else {
+			viol(n, "STRUCT", cat({ "unknown op ", op }));
+		}
 		return;
 	}
-	if (op == "cav") {
-		op_cav(rest, n);
-	} else if (op == "layout") {
-		op_layout(rest, n);
-	} else if (op == "res") {
-		op_res(rest, n);
-	} else if (op == "med") {
-		op_med(rest, n);
-	} else if (op == "view") {
-		op_view(rest, n);
-	} else if (op == "raise") {
-		op_raise(rest, n);
-	} else if (op == "decay") {
-		op_decay(rest, n);
-	} else if (op == "probe") {
-		op_probe(rest, n);
-	} else if (op == "load") {
-		op_load2(rest, n, false);
-	} else if (op == "loadb") {
-		op_load2(rest, n, true);
-	} else if (op == "store") {
-		op_store(rest, n);
-	} else if (op == "storeb") {
-		op_storeb(rest, n);
-	} else if (op == "mov") {
-		op_mov(rest, n);
-	} else if (!parse_alu_instr(op, rest, n)) {
-		parse_control_instr(op, rest, n);
+	if (in_casc && !op_desc_cascade_ok(desc, cascades[cur_casc].is_async)) {
+		cascade_op_viol(op, n);
+		return;
 	}
-}
-
-fn void parse_control_instr(String op, String rest, int n) {
-	if (op == "inc") {
-		op_alu1(rest, n, true, false);
-	} else if (op == "dec") {
-		op_alu1(rest, n, false, false);
-	} else if (op == "cinc") {
-		op_alu1(rest, n, true, true);
-	} else if (op == "cdec") {
-		op_alu1(rest, n, false, true);
-	} else if (op == "print") {
-		op_print(rest, n);
-	} else if (op == "await") {
-		op_await(rest, n);
-	} else if (op == "jmp") {
-		op_jmp(rest, n);
-	} else if (op == "brz") {
-		op_br(rest, n, true);
-	} else if (op == "brnz") {
-		op_br(rest, n, false);
-	} else if (op == "call") {
-		op_call(rest, n);
-	} else {
-		viol(n, "STRUCT", cat({ "unknown op ", op }));
+	switch (desc.op) {
+		case Op.CAV: op_cav(rest, n);
+		case Op.LAYOUT: op_layout(rest, n);
+		case Op.RES: op_res(rest, n);
+		case Op.MED: op_med(rest, n);
+		case Op.VIEW: op_view(rest, n);
+		case Op.RAISE: op_raise(rest, n);
+		case Op.DECAY: op_decay(rest, n);
+		case Op.PROBE: op_probe(rest, n);
+		case Op.LOAD: op_load2(rest, n, desc);
+		case Op.STORE: op_store2(rest, n, desc);
+		case Op.MOV: op_mov(rest, n);
+		case Op.ALU3: op_alu3(rest, n, desc);
+		case Op.ALU1: op_alu1(rest, n, desc);
+		case Op.PRINT: op_print(rest, n);
+		case Op.JMP: op_jmp(rest, n);
+		case Op.BRZ: op_br(rest, n, true);
+		case Op.BRNZ: op_br(rest, n, false);
+		case Op.CALL: op_call(rest, n);
+		case Op.AWAIT: op_await(rest, n);
+		default: unreachable("unexpected source opcode");
 	}
 }
 

@@ -16,6 +16,7 @@
       "sources": [
         "src/rez3asm.c3",
         "src/compiler/model.c3",
+        "src/compiler/numeric.c3",
         "src/compiler/layout.c3",
         "src/compiler/checker.c3",
         "src/compiler/emitter.c3",

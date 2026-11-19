@@ -32,6 +32,9 @@ const String COMPLETION_TEXT = "layout Ring: read_pos:i64, count:i64, "
 	"store [ring\n"
 	"storeb [ring\n"
 	"store %r0, ring\n"
+	"loadb %r0, [ring\n"
+	"load.u16 %r0, [ring\n"
+	"store.i64 [ring\n"
 	"ret\n";
 
 fn bool completion_matches(Object* response, String[] expected, bool incomplete) {
@@ -183,6 +186,15 @@ fn int? completion_store_checks(Process* child) {
 	return 0;
 }
 
+fn int? completion_numeric_context_checks(Process* child) {
+	Object* response = lsp_call_json(child, change_message(COMPLETION_TEXT, 5))!;
+	(void)response;
+	if (expect_completion(child, 128, 24, 16, { "ring_m" }, false)! != 0) return 1;
+	if (expect_completion(child, 129, 25, 19, { }, false)! != 0) return 1;
+	if (expect_completion(child, 131, 26, 15, { }, false)! != 0) return 1;
+	return 0;
+}
+
 fn int? completion_field_scope_checks(Process* child) {
 	Object* response = lsp_call_json(child, change_message(FIELD_SCOPE_TEXT, 3))!;
 	(void)response;
@@ -195,6 +207,7 @@ fn int? completion_field_scope_checks(Process* child) {
 
 fn int? completion_regression_checks(Process* child) {
 	if (completion_store_checks(child)! != 0) return 1;
+	if (completion_numeric_context_checks(child)! != 0) return 1;
 	if (completion_field_scope_checks(child)! != 0) return 1;
 	return 0;
 }

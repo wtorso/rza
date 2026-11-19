@@ -66,7 +66,7 @@ fn void layout_offset_expression_capacity() @test {
     prepare_checker("layout Entry: key:i64, value:i64\n"
         "res entries, field, Entry\nmed entries_m, entries, field\n");
     layouts[0].size_bytes = CELL_SIZE_BYTES_MAX;
-    Instr ins = { .x = 0, .y = 1, .c = 15 };
+    Instr ins = { .x = 0, .y = 1, .c = 15, .scalar_type = ScalarType.I64 };
     DString out = dstring::new(workmem);
     defer out.free();
     append_access_offset(&out, &ins);

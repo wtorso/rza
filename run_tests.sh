@@ -353,13 +353,13 @@ run_c3_unit() {
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
     if ! "$c3c_bin" compile-test src/rez3asm.c3 src/compiler/model.c3 \
-            src/compiler/layout.c3 src/compiler/checker.c3 src/compiler/emitter.c3 \
-            src/lsp_server.c3 src/lsp_navigation.c3 src/lsp_completion.c3 \
-            src/lsp_references.c3 src/memory_guard.c3 src/scratch_memory.c3 \
-            tests/output_writer_test.c3 \
+            src/compiler/numeric.c3 src/compiler/layout.c3 src/compiler/checker.c3 \
+            src/compiler/emitter.c3 src/lsp_server.c3 src/lsp_navigation.c3 \
+            src/lsp_completion.c3 src/lsp_references.c3 src/memory_guard.c3 \
+            src/scratch_memory.c3 tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
-            tests/layout_test.c3 tests/view_test.c3 tests/lsp_navigation_test.c3 \
-            tests/harness.c3 tests/function_length.c3 \
+            tests/numeric_model_test.c3 tests/layout_test.c3 tests/view_test.c3 \
+            tests/lsp_navigation_test.c3 tests/harness.c3 tests/function_length.c3 \
             tests/source_style.c3 tests/source_style_test.c3 tests/function_length_test.c3 \
             -o c3_tests --output-dir "$BUILD" >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"

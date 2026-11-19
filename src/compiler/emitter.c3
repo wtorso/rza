@@ -131,7 +131,7 @@ fn void prepare_emit_info() {
             open_proc = pi;
         }
         if (pi < 0) continue;
-        if (ins.op == Op.ALU3 && ins.s2 == "crc32c") {
+        if (ins.op == Op.ALU3 && ins.alu_op == AluOp.CRC32C) {
             proc_emit_info[pi].has_crc32c = true;
         }
         switch (ins.op) {
@@ -182,21 +182,22 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
                 *rd |= 1u << ins.a;
                 if (ins.c >= 0) *rd |= 1u << ins.c;
             case Op.VIEW:
-                if (!meds[ins.x].view_offset.is_immediate) {
+                if (meds[ins.x].view_offset.operand_kind == OperandKind.REGISTER) {
                     *rd |= 1u << meds[ins.x].view_offset.reg;
                 }
-                if (!meds[ins.x].view_length.is_immediate) {
+                if (meds[ins.x].view_length.operand_kind == OperandKind.REGISTER) {
                     *rd |= 1u << meds[ins.x].view_length.reg;
                 }
             case Op.MOV:
-                if (!ins.flag && ins.a == ins.b) break;
+                if (ins.operand_kind == OperandKind.REGISTER && ins.a == ins.b) break;
                 *wr |= 1u << ins.a;
-                if (!ins.flag) *rd |= 1u << ins.b;
+                if (ins.operand_kind == OperandKind.REGISTER) *rd |= 1u << ins.b;
             case Op.ALU3:
                 *wr |= 1u << ins.a;
-                if (ins.s2 == "<" && !ins.flag && ins.b == ins.c) break;
+                if (ins.alu_op == AluOp.SLT && ins.operand_kind == OperandKind.REGISTER
+                        && ins.b == ins.c) break;
                 *rd |= 1u << ins.b;
-                if (!ins.flag) *rd |= 1u << ins.c;
+                if (ins.operand_kind == OperandKind.REGISTER) *rd |= 1u << ins.c;
             case Op.ALU1:
                 *rd |= 1u << ins.a;
                 *wr |= 1u << ins.a;
@@ -282,8 +283,7 @@ fn Cell* validated_access_cell(Instr* ins) {
     assert(ins.y >= layout.first_field);
     assert(ins.y < layout.first_field + layout.field_count);
     assert(ins.y < (int)layout_fields.len());
-    bool byte_field = layout_fields[ins.y].scalar_type == ScalarType.U8;
-    assert(ins.flag == byte_field);
+    assert(ins.scalar_type == layout_fields[ins.y].scalar_type);
     return cell;
 }
 
@@ -302,7 +302,7 @@ fn void append_access_offset(DString* out, Instr* ins) {
     } else {
         assert(ins.b >= 0 && ins.b < cell.element_count);
         long offset = (long)ins.b * stride + field_offset;
-        int width = ins.flag ? 1 : 8;
+        int width = scalar_width(ins.scalar_type);
         assert(offset >= 0 && offset + width <= cell.size);
         out.appendf("%d", offset);
     }
@@ -402,7 +402,7 @@ fn void emit_fault_support(Output* out) {
 
 fn void emit_dynamic_bounds_guard(Output* out, int ind, Instr* ins) {
     Cell* cell = validated_access_cell(ins);
-    int width = ins.flag ? 1 : 8;
+    int width = scalar_width(ins.scalar_type);
     pad(out, ind);
     if (cell.layout >= 0 && ins.c >= 0) {
         int stride = layouts[cell.layout].size_bytes;
@@ -439,7 +439,7 @@ fn void emit_bounds_guard(Output* out, int ind, Instr* ins) {
     if (cell.layout >= 0) {
         out.appendf("if (r%d < 0 || (uint64_t)r%d >= %d) {\n", ins.c, ins.c, extent);
     } else {
-        int width = ins.flag ? 1 : 8;
+        int width = scalar_width(ins.scalar_type);
         assert(width > 0);
         if (extent < width) {
             out.append_string("if (1) {\n");
@@ -501,7 +501,7 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     emit_casc_view_guard(out, ind, ins, in_casc);
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
-    if (ins.flag) {
+    if (ins.scalar_type == ScalarType.U8) {
         out.appendf("r%d = (int64_t)*(unsigned char*)((char*)%s + %s);",
                     ins.a, ptr, oex.str_view());
     } else {
@@ -535,7 +535,7 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     emit_casc_view_guard(out, ind, ins, in_casc);
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
-    if (ins.flag) {
+    if (ins.scalar_type == ScalarType.U8) {
         out.appendf("*(unsigned char*)((char*)%s + %s) = (unsigned char)r%d;",
                     ptr, sex.str_view(), ins.a);
     } else {
@@ -553,24 +553,46 @@ fn void emit_checked_arith(Output* out, int ind, Instr* ins, String helper, Stri
     out.append_string("}\n");
 }
 
+fn String alu_emit_name(AluOp op) {
+    switch (op) {
+        case AluOp.ADD: return "rez_i64_add";
+        case AluOp.SUB: return "rez_i64_sub";
+        case AluOp.MUL: return "rez_i64_mul";
+        case AluOp.DIV: return "rez_i64_div";
+        case AluOp.MOD: return "rez_i64_mod";
+        case AluOp.SHL: return "rez_i64_shl";
+        case AluOp.SHR: return "rez_i64_shr";
+        case AluOp.USHR: return "rez_i64_ushr";
+        case AluOp.AND: return "&";
+        case AluOp.OR: return "|";
+        case AluOp.XOR: return "^";
+        case AluOp.CRC32C:
+            return emit_crc_direct ? "rez_crc32c_u64_x86" : "rez_crc32c_u64";
+        default: unreachable();
+    }
+}
+
 fn void emit_alu3(Output* out, int ind, Instr* ins) {
     DString rhs = dstring::new(workmem);
     defer rhs.free();
-    if (ins.flag && ins.immediate == -9223372036854775807 - 1) {
+    bool immediate = ins.operand_kind == OperandKind.IMMEDIATE;
+    long immediate_value = immediate_i64(ins.immediate);
+    assert(ins.scalar_type == ScalarType.I64);
+    if (immediate && immediate_value == -9223372036854775807 - 1) {
         rhs.append("INT64_MIN");
-    } else if (ins.flag) { rhs.appendf("%dLL", ins.immediate); }
+    } else if (immediate) { rhs.appendf("%dLL", immediate_value); }
     else { rhs.appendf("r%d", ins.c); }
-    if (ins.s2 == "<") {
+    if (ins.alu_op == AluOp.SLT) {
         pad(out, ind);
-        if (!ins.flag && ins.b == ins.c) {
+        if (!immediate && ins.b == ins.c) {
             out.appendf("r%d = 0;\n", ins.a);
         } else {
             out.appendf("r%d = r%d < %s;\n", ins.a, ins.b, rhs.str_view());
         }
         return;
     }
-    bool division = ins.s2 == "/" || ins.s2 == "%";
-    bool shift = ins.s2 == "<<" || ins.s2 == ">>" || ins.s2 == ">>>";
+    bool division = ins.alu_op == AluOp.DIV || ins.alu_op == AluOp.MOD;
+    bool shift = ins.alu_op == AluOp.SHL || ins.alu_op == AluOp.SHR || ins.alu_op == AluOp.USHR;
     if (division) {
         pad(out, ind);
         out.appendf("if (rez_i64_div_invalid(r%d, %s)) {\n", ins.b, rhs.str_view());
@@ -586,31 +608,23 @@ fn void emit_alu3(Output* out, int ind, Instr* ins) {
         out.append_string("}\n");
     }
     String checked = "";
-    if (ins.s2 == "c+") checked = "rez_i64_cadd";
-    if (ins.s2 == "c-") checked = "rez_i64_csub";
-    if (ins.s2 == "c*") checked = "rez_i64_cmul";
+    switch (ins.alu_op) {
+        case AluOp.CADD: checked = "rez_i64_cadd";
+        case AluOp.CSUB: checked = "rez_i64_csub";
+        case AluOp.CMUL: checked = "rez_i64_cmul";
+        default: break;
+    }
     if (checked.len > 0) {
         emit_checked_arith(out, ind, ins, checked, rhs.str_view());
         return;
     }
-    String helper = "";
-    if (ins.s2 == "+") helper = "rez_i64_add";
-    if (ins.s2 == "-") helper = "rez_i64_sub";
-    if (ins.s2 == "*") helper = "rez_i64_mul";
-    if (ins.s2 == "/") helper = "rez_i64_div";
-    if (ins.s2 == "%") helper = "rez_i64_mod";
-    if (ins.s2 == "<<") helper = "rez_i64_shl";
-    if (ins.s2 == ">>") helper = "rez_i64_shr";
-    if (ins.s2 == ">>>") helper = "rez_i64_ushr";
-    if (ins.s2 == "crc32c") {
-        helper = emit_crc_direct ? "rez_crc32c_u64_x86" : "rez_crc32c_u64";
-    }
+    String name = alu_emit_name(ins.alu_op);
+    bool direct = ins.alu_op == AluOp.AND || ins.alu_op == AluOp.OR || ins.alu_op == AluOp.XOR;
     pad(out, ind);
-    if (helper.len > 0) {
-        out.appendf("r%d = %s(r%d, %s);\n",
-                    ins.a, helper, ins.b, rhs.str_view());
+    if (direct) {
+        out.appendf("r%d = r%d %s %s;\n", ins.a, ins.b, name, rhs.str_view());
     } else {
-        out.appendf("r%d = r%d %s %s;\n", ins.a, ins.b, ins.s2, rhs.str_view());
+        out.appendf("r%d = %s(r%d, %s);\n", ins.a, name, ins.b, rhs.str_view());
     }
 }
 
@@ -623,13 +637,15 @@ fn void emit_label(Output* out, int ind, Instr* ins) {
 }
 
 fn String view_operand_expr(ViewOperand operand) {
-	if (operand.immediate == -9223372036854775807 - 1 && operand.is_immediate) {
+	long value = immediate_i64(operand.immediate);
+	bool immediate = operand.operand_kind == OperandKind.IMMEDIATE;
+	if (value == -9223372036854775807 - 1 && immediate) {
 		return "(uint64_t)INT64_MIN";
 	}
 	DString out = dstring::new(workmem);
 	defer out.free();
-	if (operand.is_immediate) {
-		out.appendf("(uint64_t)%d", operand.immediate);
+	if (immediate) {
+		out.appendf("(uint64_t)%d", value);
 	} else {
 		out.appendf("(uint64_t)r%d", operand.reg);
 	}
@@ -875,13 +891,15 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
 }
 
 fn void emit_mov(Output* out, int ind, Instr* ins) {
-    if (!ins.flag && ins.a == ins.b) return;
+    bool immediate = ins.operand_kind == OperandKind.IMMEDIATE;
+    if (!immediate && ins.a == ins.b) return;
+    long value = immediate_i64(ins.immediate);
     pad(out, ind);
-    if (ins.flag) {
-        if (ins.immediate == -9223372036854775807 - 1) {
+    if (immediate) {
+        if (value == -9223372036854775807 - 1) {
             out.appendf("r%d = INT64_MIN;\n", ins.a);
         } else {
-            out.appendf("r%d = %dLL;\n", ins.a, ins.immediate);
+            out.appendf("r%d = %dLL;\n", ins.a, value);
         }
     } else {
         out.appendf("r%d = r%d;\n", ins.a, ins.b);
@@ -903,7 +921,7 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
             case Op.ALU1:
                 pad(out, ind);
                 out.appendf("r%d = %s(r%d, 1);\n", ins.a,
-                            ins.flag ? "rez_i64_add" : "rez_i64_sub", ins.a);
+                            ins.alu_op == AluOp.INC ? "rez_i64_add" : "rez_i64_sub", ins.a);
             case Op.PRINT:
                 pad(out, ind);
                 out.appendf("printf(\"%%lld\\n\", (long long)r%d);\n", ins.a);
@@ -988,14 +1006,15 @@ fn uint scan_casc_regs(Cascade* ca) {
                 mask |= 1u << ins.a;
                 if (ins.c >= 0) mask |= 1u << ins.c;
             case Op.MOV:
-                if (!ins.flag && ins.a == ins.b) break;
+                if (ins.operand_kind == OperandKind.REGISTER && ins.a == ins.b) break;
                 mask |= 1u << ins.a;
-                if (!ins.flag) mask |= 1u << ins.b;
+                if (ins.operand_kind == OperandKind.REGISTER) mask |= 1u << ins.b;
             case Op.ALU3:
                 mask |= 1u << ins.a;
-                if (ins.s2 == "<" && !ins.flag && ins.b == ins.c) break;
+                if (ins.alu_op == AluOp.SLT && ins.operand_kind == OperandKind.REGISTER
+                        && ins.b == ins.c) break;
                 mask |= 1u << ins.b;
-                if (!ins.flag) mask |= 1u << ins.c;
+                if (ins.operand_kind == OperandKind.REGISTER) mask |= 1u << ins.c;
             case Op.ALU1: case Op.PRINT: case Op.BRZ: case Op.BRNZ:
                 mask |= 1u << ins.a;
             default: break;
@@ -1258,7 +1277,7 @@ fn void emit_body(Output* out, int func) {
             case Op.ALU1:
                 pad(out, ind);
                 out.appendf("r%d = %s(r%d, 1);\n", ins.a,
-                            ins.flag ? "rez_i64_add" : "rez_i64_sub", ins.a);
+                            ins.alu_op == AluOp.INC ? "rez_i64_add" : "rez_i64_sub", ins.a);
             case Op.PRINT:
                 pad(out, ind);
                 out.appendf("printf(\"%%lld\\n\", (long long)r%d);\n", ins.a);
@@ -1275,7 +1294,7 @@ fn void emit_body(Output* out, int func) {
                             ins.a, label_cname(ins.block, ins.s1));
             case Op.CALL: emit_call(out, ind, ins);
             case Op.AWAIT: emit_await(out, ind, ins);
-            case Op.RET:
+            case Op.RET: case Op.LAYOUT:
                 // Общий epilogue сначала делает drain, возврат происходит
                 // только после него: top-level ret не обходит очередь.
                 // ret процедуры закрывается emit_proc.
