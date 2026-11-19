@@ -32,6 +32,13 @@ run_style() {
     ok style
 }
 
+require_c3c() {
+    if command -v c3c >/dev/null 2>&1; then return; fi
+    if [ -n "${LOCALAPPDATA:-}" ] && [ -x "$LOCALAPPDATA/c3/c3c.exe" ]; then return; fi
+    echo "FATAL: no c3c" >&2
+    exit 2
+}
+
 run_function_style() {
     local c3c_bin="c3c"
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
@@ -49,9 +56,9 @@ run_function_style() {
             tests/lsp_completion_smoke.c3 tests/lsp_references_smoke.c3 \
             tests/lsp_memory_posix.c3 tests/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
             >"$BUILD/function_style.out" 2>&1; then
-        bad function_style "C3 test runner build failed"
-        cat "$BUILD/function_style.out"
-        return
+        echo "FATAL: C3 test runner build failed" >&2
+        cat "$BUILD/function_style.out" >&2
+        exit 2
     fi
     if [ -f "$BUILD/rza_tests" ] &&
             [ ! "$BUILD/rza_tests" -ef "$BUILD/rza_tests.exe" ]; then
@@ -67,11 +74,15 @@ run_function_style() {
     fi
     ok function_style
 }
+require_c3c
 run_function_style
 run_style
 
 echo "== build rez3asm (c3c) =="
-bash build_compiler.sh
+if ! bash build_compiler.sh; then
+    echo "FATAL: compiler build failed; refusing stale binary" >&2
+    exit 2
+fi
 if [ -z "${RZA_COMPILER:-}" ]; then
     RZA_COMPILER="./build/bin/rez3asm"
     if [ "${OS:-}" = "Windows_NT" ]; then RZA_COMPILER="./build/bin/rez3asm.exe"; fi
@@ -559,6 +570,11 @@ run_reference_invalid() {
 
 run_build_parallel() {
     local p1 p2 status
+    if ! bash tests/infrastructure_cases.sh >"$BUILD/infrastructure.log" 2>&1; then
+        bad build_parallel "compiler infrastructure contract failed"
+        cat "$BUILD/infrastructure.log"
+        return
+    fi
     bash build_compiler.sh >"$BUILD/parallel1.log" 2>&1 & p1=$!
     bash build_compiler.sh >"$BUILD/parallel2.log" 2>&1 & p2=$!
     status=0
