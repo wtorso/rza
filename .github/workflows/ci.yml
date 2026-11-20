@@ -143,7 +143,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends qemu-user binutils
+          sudo apt-get install --yes --no-install-recommends qemu-user binutils gawk
           "${{ matrix.qemu }}" --version
           readelf --version
       - name: Target suite
