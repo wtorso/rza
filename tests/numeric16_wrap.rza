@@ -1,0 +1,74 @@
+mov.i16 %r0, 32767
+add.i16 %r0, %r0, 1
+print %r0
+sub.i16 %r0, %r0, 1
+print %r0
+mov.i16 %r1, -32768
+mul.i16 %r1, %r1, -1
+print %r1
+inc.i16 %r0
+print %r0
+dec.i16 %r0
+print %r0
+mov.u16 %r0, 65535
+add.u16 %r0, %r0, 1
+print %r0
+dec.u16 %r0
+print %r0
+sub.u16 %r0, %r0, 1
+print %r0
+mov.u16 %r1, 16
+mul.u16 %r1, %r1, 16
+print %r1
+mov %r2, 0x1ffff
+mov %r3, 1
+add.i16 %r4, %r2, %r3
+print %r4
+add.u16 %r5, %r2, %r3
+print %r5
+mov %r2, -32769
+add.i16 %r4, %r2, 1
+print %r4
+add.u16 %r5, %r2, 1
+print %r5
+mov %r2, 65536
+inc.i16 %r2
+print %r2
+mov %r2, 65536
+inc.u16 %r2
+print %r2
+mov %r2, 0x1ffff
+mov.i16 %r2, %r2
+print %r2
+mov %r2, 0x1ffff
+mov.u16 %r2, %r2
+print %r2
+mov.i16 %r0, 0xf000
+mov.i16 %r1, 0x9ff0
+and.i16 %r2, %r0, %r1
+print %r2
+or.i16 %r2, %r0, %r1
+print %r2
+xor.i16 %r2, %r0, %r1
+print %r2
+mov.u16 %r0, 0xf000
+mov.u16 %r1, 0x9ff0
+and.u16 %r2, %r0, %r1
+print %r2
+or.u16 %r2, %r0, %r1
+print %r2
+xor.u16 %r2, %r0, %r1
+print %r2
+mov.i16 %r0, -32768
+mov.i16 %r1, 0
+slt.i16 %r2, %r0, %r1
+print %r2
+slt.i16 %r2, %r1, %r0
+print %r2
+mov.u16 %r0, 65535
+mov.u16 %r1, 0
+ult.u16 %r2, %r0, %r1
+print %r2
+ult.u16 %r2, %r1, %r0
+print %r2
+ret

@@ -1,0 +1,8 @@
+res data, field, 2
+med data_m, data, field
+mov.u16 %r0, 65535
+casc checked: data_m -> out[field]
+    cadd.u16 %r0, %r0, 1
+    store.u16 [data_m + 0], %r0
+endc
+ret

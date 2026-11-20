@@ -98,7 +98,7 @@ CC="zig cc -target aarch64-linux-musl -static" \
 RZA_TARGET_ARCH=aarch64 \
 RZA_TARGET_LAUNCHER=qemu-aarch64-static \
 RZA_TARGET_LOG="$PWD/build/target-aarch64.exec.log" \
-RZA_TARGET_EXPECTED_PASS=134 \
+RZA_TARGET_EXPECTED_PASS=153 \
 bash run_tests.sh
 ```
 
@@ -107,12 +107,14 @@ log path. Every target executable is checked centrally for ELF64, little-endian,
 the required machine ID before QEMU execution. Missing settings or tools are an
 infrastructure failure, never a fallback to host execution.
 
-The validated target run has `PASS=134` and 682 logged executions on each target.
-The log includes mutation and shrink attempts, so 682 is not a semantic test count.
-It includes the numeric8 oracle's 64 valid + 64 fault programs and 20 RZA workload
-checks. C3/compiler internals, LSP, static diagnostics, deterministic artifacts,
-release/package checks, native Rust comparisons, and timing are host-only or separate
-native gates; they are not counted as ARM/RV64 execution evidence.
+The validated target run has `PASS=153` and 864 logged executions on each target.
+The log includes mutation and shrink attempts, so 864 is not a semantic test count.
+It includes the numeric8 and numeric16 oracles, each with 64 valid + 64 fault programs,
+and 38 direct RZA workload checks. It also includes nine numeric8 shrink-signature
+executions added after the original platform baseline. C3/compiler internals, LSP,
+static diagnostics, deterministic artifacts, release/package checks, native Rust
+comparisons, and timing are host-only or separate native gates; they are not counted
+as ARM/RV64 execution evidence.
 
 These results cover cross-build and QEMU user-mode validation only. They do not cover
 real hardware, big-endian targets, other libc implementations or ABIs, ARM32, RV32,
@@ -251,32 +253,36 @@ signed division or remainder, and invalid shift counts produce `FAULT`. A
 constant out-of-bounds access is rejected during validation; a
 register-dependent out-of-bounds access is a runtime `FAULT`.
 
-### 8-bit typed operations
+### 8-bit and 16-bit typed operations
 
-The `.i8` and `.u8` suffixes select signed and unsigned 8-bit semantics for `mov`,
-`load`, `store`, `add`, `sub`, `mul`, `inc`, `dec`, `cadd`, `csub`, `cmul`, `cinc`,
-`cdec`, `and`, `or`, `xor`, `div`, `mod`, `shl`, and `ushr`. `.i8` also supports
-`shr` and `slt`; `.u8` also supports `ult`. These are the only typed suffixes:
-`.i64`, wider integer types, floating point, and invalid operation/type pairs are
-rejected. Legacy `loadb`/`storeb` remain aliases for `load.u8`/`store.u8`.
+The `.i8`, `.u8`, `.i16`, and `.u16` suffixes select signed or unsigned semantics
+for `mov`, `load`, `store`, `add`, `sub`, `mul`, `inc`, `dec`, `cadd`, `csub`,
+`cmul`, `cinc`, `cdec`, `and`, `or`, `xor`, `div`, `mod`, `shl`, and `ushr`.
+Signed `.i8` and `.i16` also support `shr` and `slt`; unsigned `.u8` and `.u16`
+support `ult`. Each width has 43 operation/type spellings. Typed `.i64`,
+`i32`/`u32`/`u64`, floating point, and invalid operation/type pairs remain rejected.
+Legacy `loadb`/`storeb` remain aliases for `load.u8`/`store.u8`, not 16-bit aliases.
 
-Typed operations read the low eight bits of their register operands. An `i8`
-result sign-extends into its 64-bit register; a `u8` result zero-extends. Typed
-stores write the low eight bits. A typed layout field requires the exactly
-matching load/store type. Raw cells retain byte offsets, while typed cells retain
-element indices.
+Typed operations read only the low 8 or 16 bits of their register operands. Signed
+results sign-extend and unsigned results zero-extend into the 64-bit register.
+Typed stores write exactly the low 8 or 16 bits. A layout field requires the exact
+matching load/store type. Raw cells retain byte offsets; typed cells use element
+indices. A 16-bit field has alignment 2. Raw 16-bit accesses may be unaligned and
+use defined byte copies (`memcpy` in the C23 output), never narrow pointer casts.
+Memory uses target byte order, not a portable wire format.
 
-Wrapping arithmetic is modulo 256. Checked arithmetic faults outside the signed
-range -128..127 or unsigned range 0..255. Signed division truncates toward zero;
-zero divisors and -128/-1 fault for both signed division and remainder. Unsigned
-division and remainder fault only on zero. Shift counts must be 0..7: `shl`
-discards high bits, `shr.i8` fills the sign bit, and `ushr` fills zeroes.
+Wrapping arithmetic is modulo 256 or 65536. Checked arithmetic faults outside
+-128..127 or -32768..32767 for signed operations, and 0..255 or 0..65535 for
+unsigned operations. Signed division truncates toward zero; zero divisors and
+-128/-1 or -32768/-1 fault for both division and remainder. Unsigned division and
+remainder fault only on zero. Shift counts are 0..7 or 0..15: `shl` discards high
+bits, signed `shr` fills the sign bit, and `ushr` fills zeroes.
 
-Decimal literals are -128..127 for `i8` and 0..255 for `u8`; any leading minus,
-including `-0`, is rejected for `u8`. Typed hexadecimal literals range from `0x0`
-through `0xff`, allow leading zeroes, and cannot have a negative sign. For `i8`,
-patterns `0x80` through `0xff` represent negative values after sign extension.
-`print` still prints the resulting register as signed i64.
+Decimal ranges are -128..127 and 0..255 for `i8`/`u8`, and -32768..32767 and
+0..65535 for `i16`/`u16`. Any leading minus on an unsigned literal, including `-0`,
+is rejected. Typed hex ranges are `0x0`..`0xff` and `0x0`..`0xffff`; leading zeroes
+are allowed and negative hex is rejected. Signed hex patterns with the high bit set
+represent negative values after sign extension. `print` remains signed i64 output.
 
 `crc32c DST, STATE, WORD` updates CRC32C over the eight little-endian bytes of
 `WORD`. Initial and final XOR remain explicit. The runtime uses SSE4.2 when the
@@ -332,10 +338,11 @@ ret
 ```
 
 The value after `+` is an element index for a typed cell, not a byte offset. The
-compiler calculates the record stride and field offsets. Use legacy `load`/`store`
-for `i64` fields, and `load.i8`/`store.i8` or `load.u8`/`store.u8` for the matching
-8-bit field types. The `loadb`/`storeb` aliases remain available for `u8`. Raw
-cells instead use byte offsets and have no field selector.
+compiler calculates the record stride and field offsets from each type's width and
+alignment. Use legacy `load`/`store` for `i64` fields and the exactly matching
+`load`/`store` suffix for `u8`, `i8`, `u16`, or `i16` fields. The `loadb`/`storeb`
+aliases remain available only for `u8`. Raw cells use byte offsets and have no
+field selector.
 
 See [the ring buffer example](examples/ring_buffer.rza) for typed state, an array
 of records, and fixed-capacity index arithmetic.
@@ -409,8 +416,10 @@ and workload; they do not establish a universal advantage over C or Rust.
 
 ## Current limits
 
-- Only flat `u8`/`i8`/`i64` records and fixed-size arrays are supported. Nested and
-  packed layouts, unions, bitfields, and a portable wire ABI are not implemented.
+- Only flat `u8`/`i8`/`u16`/`i16`/`i64` records and fixed-size arrays are supported.
+  Nested and packed layouts, unions, bitfields, and a portable wire ABI are not implemented.
+- The fixed-width integer work is incomplete: `i32`/`u32`/`u64` and typed `.i64`
+  remain inactive. Floating point and Stage 3 have not started.
 - There are no OS threads, garbage collection, recursion, physical memory moves,
   transactional rollback, or general-purpose networking primitives.
 - RZA has no general SIMD or intrinsic interface and no native optimizing backend.
@@ -428,8 +437,8 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=226 FAIL=0` on POSIX and Windows MSVC, and
-`PASS=225 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
+Expected results are `PASS=252 FAIL=0` on POSIX and Windows MSVC, and
+`PASS=251 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
 and run on POSIX and Windows MSVC. Windows Zig retains its previous scope because
 Rust static-library linking conflicts with Zig compiler-rt weak symbols; do not mask it
 with `FORCE:MULTIPLE`. The full timing script `bench/run.sh` remains Linux-only; MSVC runs

@@ -9,6 +9,12 @@ fn bool typed_immediate_error(String text, ScalarType type, int line) {
 	return false;
 }
 
+fn ulong typed_max_bits(ScalarType type) {
+	TypeDesc* desc = scalar_type_desc(type);
+	assert(desc != null && desc.bit_width > 0 && desc.bit_width < 64);
+	return (1UL << desc.bit_width) - 1;
+}
+
 fn bool parse_typed_hex(
 	String text,
 	String magnitude,
@@ -18,7 +24,7 @@ fn bool parse_typed_hex(
 ) {
 	ulong? parsed = magnitude.to_ulong();
 	if (catch parsed) return typed_immediate_error(text, type, line);
-	if (parsed > 0xff) return typed_immediate_error(text, type, line);
+	if (parsed > typed_max_bits(type)) return typed_immediate_error(text, type, line);
 	*immediate = {
 		.bits = parsed,
 		.literal_kind = LiteralKind.HEX_BITS,
@@ -36,17 +42,21 @@ fn bool parse_typed_decimal(
 	long? parsed = text.to_long();
 	if (catch parsed) return typed_immediate_error(text, type, line);
 	long value = parsed;
-	if (type == ScalarType.I8) {
-		if (value < -128 || value > 127) return typed_immediate_error(text, type, line);
-	} else if (type == ScalarType.U8) {
-		if (text[0] == '-' || value < 0 || value > 255) {
+	TypeDesc* desc = scalar_type_desc(type);
+	assert(desc != null && desc.bit_width > 0 && desc.bit_width < 64);
+	if (desc.signedness == Signedness.SIGNED) {
+		long minimum = -(1L << (desc.bit_width - 1));
+		long maximum = (1L << (desc.bit_width - 1)) - 1;
+		if (value < minimum || value > maximum) return typed_immediate_error(text, type, line);
+	} else if (desc.signedness == Signedness.UNSIGNED) {
+		if (text[0] == '-' || value < 0 || (ulong)value > typed_max_bits(type)) {
 			return typed_immediate_error(text, type, line);
 		}
 	} else {
-		unreachable("typed decimal requires i8 or u8");
+		unreachable("typed decimal requires signed or unsigned integer");
 	}
 	*immediate = {
-		.bits = immediate_bits_from_i64(value) & 0xff,
+		.bits = immediate_bits_from_i64(value) & typed_max_bits(type),
 		.literal_kind = LiteralKind.DECIMAL,
 		.has_negative_sign = text[0] == '-'
 	};

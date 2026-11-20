@@ -308,6 +308,7 @@ fn int? artifacts_run() {
     if (check_frame_free_artifact()! != 0) return 1;
     if (check_self_move_artifact()! != 0) return 1;
     if (check_numeric8_artifact()! != 0) return 1;
+    if (check_numeric16_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }
@@ -354,5 +355,34 @@ fn int? check_numeric8_artifact() {
     String typed = emit_artifact(temp_path("typed-byte.rza"), temp_path("typed-byte.c"))!;
     if (!expect(artifact_body(legacy) == artifact_body(typed),
             "legacy and typed byte access bodies differ")) return 1;
+    return 0;
+}
+
+
+fn int? check_numeric16_artifact() {
+    DString source = dstring::temp("cav main, field\nres raw, main, 4\n"
+        "med raw_m, raw, main\nmov.i16 %r0, 0x8000\nstore.i16 [raw_m + 1], %r0\n"
+        "load.i16 %r1, [raw_m + 1]\nadd.i16 %r1, %r1, 1\n"
+        "mov.u16 %r2, 2\ncadd.u16 %r2, %r2, 3\ndiv.i16 %r3, %r1, 2\n"
+        "shl.u16 %r4, %r2, 1\nprint %r3\nret\n");
+    path::mkdir(path::tnew(temp_path("numeric16-first"))!, true)!;
+    path::mkdir(path::tnew(temp_path("numeric16-second"))!, true)!;
+    String first_source = temp_path("numeric16-first/input.rza");
+    String second_source = temp_path("numeric16-second/renamed.rza");
+    write_file(first_source, source.str_view())!;
+    write_file(second_source, source.str_view())!;
+    String first = dstring::temp(emit_artifact(first_source,
+        temp_path("numeric16-first/output.c"))!).str_view();
+    String second = emit_artifact(second_source, temp_path("numeric16-second/output.c"))!;
+    if (!expect(first == second && first.starts_with(source_prefix(source.str_view())),
+            "numeric16 artifact repeat/path hash")) return 1;
+    String[] required = {
+        "memcpy(&value, (char*)p + 1, 2)", "r1 = rez_i16_from_bits(value)",
+        "rez_i16_add", "rez_u16_cadd", "rez_i16_div_invalid",
+        "rez_shift16_invalid", "rez_u16_shl",
+    };
+    foreach (needle : required) {
+        if (!expect(first.contains(needle), "numeric16 artifact semantic helper")) return 1;
+    }
     return 0;
 }

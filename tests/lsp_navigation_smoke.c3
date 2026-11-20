@@ -271,21 +271,27 @@ fn int? navigation_regression_checks(Process* child) {
 	return 0;
 }
 
-const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8\n"
+const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
+	"half:u16, signed_half:i16\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"loadb %r0, [pair_m + 0].tag\n"
 	"load %r1, [pair_m + 0].value\n"
 	"load.i8 %r2, [pair_m + 0].signed\n"
+	"load.u16 %r3, [pair_m + 0].half\n"
+	"load.i16 %r4, [pair_m + 0].signed_half\n"
 	"ret\n";
 
-const String PARTIAL_FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8\n"
+const String PARTIAL_FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
+	"half:u16, signed_half:i16\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"loadb %r0, [pair_m + 0].tag\n"
 	"load %r1, [pair_m + 0].value\n"
 	"load.i8 %r2, [pair_m + 0].signed\n"
-	"load %r3, [pair_m + 0].\n"
+	"load.u16 %r3, [pair_m + 0].half\n"
+	"load.i16 %r4, [pair_m + 0].signed_half\n"
+	"load %r5, [pair_m + 0].\n"
 	"ret\n";
 
 fn int? navigation_field_hover(Process* child, int id, int line, int character,
@@ -309,17 +315,36 @@ fn int? navigation_field_type_checks(Process* child) {
 	if (navigation_field_hover(child, 160, 3, 25, "tag", "u8", 0)! != 0) return 1;
 	if (navigation_field_hover(child, 161, 4, 25, "value", "i64", 8)! != 0) return 1;
 	if (navigation_field_hover(child, 164, 5, 30, "signed", "i8", 16)! != 0) return 1;
+	if (navigation_field_hover(child, 166, 6, 30, "half", "u16", 18)! != 0) return 1;
+	if (navigation_field_hover(child, 167, 7, 32, "signed_half", "i16", 20)! != 0) return 1;
 	response = lsp_call_json(child, change_message(PARTIAL_FIELD_HOVER_TEXT, 21))!;
 	if (!expect(json_diagnostics(response)!.len() > 0, "partial field hover document")) return 1;
 	if (navigation_field_hover(child, 162, 3, 25, "tag", "u8", 0)! != 0) return 1;
 	if (navigation_field_hover(child, 163, 4, 25, "value", "i64", 8)! != 0) return 1;
 	if (navigation_field_hover(child, 165, 5, 30, "signed", "i8", 16)! != 0) return 1;
-	char[] numeric = read_file("tests/numeric8_wrap.rza", navigation_source_buf[..])!;
-	response = lsp_call_json(child, change_message((String)numeric, 22))!;
-	if (!expect(json_diagnostics(response)!.len() == 0, "numeric8 active LSP document")) return 1;
-	response = lsp_call_json(child, change_message("shr.u8 %r0, %r0, 1\nret\n", 23))!;
-	Object* diagnostic = json_diagnostics(response)!.get_at(0);
-	if (!expect((diagnostic.get_string("message") ?? "").contains("unknown op shr.u8"),
-			"invalid numeric signedness diagnostic")) return 1;
+	if (navigation_field_hover(child, 168, 6, 30, "half", "u16", 18)! != 0) return 1;
+	if (navigation_field_hover(child, 169, 7, 32, "signed_half", "i16", 20)! != 0) return 1;
+	String[] paths = {
+		"tests/numeric8_wrap.rza", "tests/numeric16_wrap.rza",
+		"tests/numeric16_div_shift.rza", "tests/numeric16_async.rza",
+	};
+	int version = 22;
+	foreach (path : paths) {
+		char[] numeric = read_file(path, navigation_source_buf[..])!;
+		response = lsp_call_json(child, change_message((String)numeric, version))!;
+		version++;
+		if (!expect(json_diagnostics(response)!.len() == 0,
+				"active numeric LSP document")) return 1;
+	}
+	String[] invalid = { "shr.u8", "shr.u16", "slt.u16", "ult.i16", "add.i64", "add.u32" };
+	foreach (token : invalid) {
+		String source = string::tformat("%s %%r0, %%r0, 1\nret\n", token);
+		response = lsp_call_json(child, change_message(source, version))!;
+		version++;
+		Object* diagnostic = json_diagnostics(response)!.get_at(0);
+		String message = string::tformat("unknown op %s", token);
+		if (!expect((diagnostic.get_string("message") ?? "").contains(message),
+				"invalid numeric operation diagnostic")) return 1;
+	}
 	return 0;
 }

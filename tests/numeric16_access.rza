@@ -1,0 +1,22 @@
+res raw, field, 4
+med raw_m, raw, field
+mov.i16 %r0, 0xffff
+print %r0
+mov.u16 %r1, 0x000ffff
+print %r1
+store.i16 [raw_m + 1], %r0
+load.i16 %r2, [raw_m + 1]
+print %r2
+store.u16 [raw_m + 0], %r1
+load.u16 %r2, [raw_m + 0]
+print %r2
+mov %r3, 0x1ffff
+mov.i16 %r4, %r3
+print %r4
+mov.u16 %r5, %r3
+print %r5
+view raw_v_m, raw_m, 1, 2
+store.i16 [raw_v_m + 0], %r0
+load.i16 %r6, [raw_v_m + 0]
+print %r6
+ret

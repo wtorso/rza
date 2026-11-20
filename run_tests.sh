@@ -59,6 +59,8 @@ run_function_style() {
             tests/execution_cascade_model.c3 tests/execution_shrink.c3 \
             tests/execution_coverage.c3 tests/numeric8_oracle.c3 \
             tests/numeric8_reference.c3 tests/numeric8_coverage.c3 \
+            tests/numeric16_oracle.c3 tests/numeric16_reference.c3 \
+            tests/numeric16_coverage.c3 \
             tests/lsp_client.c3 tests/fault_scenarios.c3 \
             tests/fault_smoke.c3 tests/proc_contracts.c3 tests/contract_model.c3 \
             tests/contract_fuzz.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
@@ -316,6 +318,7 @@ run_fuzz() {
 run_ownership_fuzz() { run_c3 ownership_fuzz ownership; }
 run_execution_oracle() { run_c3 execution_oracle oracle; }
 run_numeric8_oracle() { run_c3 numeric8_oracle numeric8-oracle; }
+run_numeric16_oracle() { run_c3 numeric16_oracle numeric16-oracle; }
 run_fault_smoke() { run_c3 fault_smoke faults; }
 run_proc_contracts() { run_c3 proc_contracts contracts; }
 run_contract_fuzz() { run_c3 contract_fuzz contract-fuzz; }
@@ -401,7 +404,8 @@ run_c3_unit() {
             src/lsp_navigation.c3 src/lsp_completion.c3 src/lsp_references.c3 \
             src/memory_guard.c3 src/scratch_memory.c3 tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
-            tests/numeric_model_test.c3 tests/numeric8_test.c3 tests/layout_test.c3 \
+            tests/numeric_model_test.c3 tests/numeric8_test.c3 tests/numeric16_test.c3 \
+            tests/layout_test.c3 \
             tests/view_test.c3 tests/lsp_navigation_test.c3 tests/harness.c3 \
             tests/function_length.c3 \
             tests/source_style.c3 tests/source_style_test.c3 tests/function_length_test.c3 \
@@ -697,6 +701,11 @@ run_good numeric8_access
 run_good numeric8_wrap
 run_good numeric8_div_shift
 run_good numeric8_async
+run_good numeric16_access
+run_good numeric16_layout
+run_good numeric16_wrap
+run_good numeric16_div_shift
+run_good numeric16_async
 run_dead numeric8_cadd_i8_overflow "FAULT line 2: arithmetic overflow"
 run_dead numeric8_cadd_u8_overflow "FAULT line 2: arithmetic overflow"
 run_dead numeric8_cinc_i8_overflow "FAULT line 2: arithmetic overflow"
@@ -705,12 +714,32 @@ run_dead numeric8_div_i8_min_minus_one "FAULT line 2: division"
 run_dead numeric8_div_u8_zero "FAULT line 3: division"
 run_dead numeric8_shift_u8_eight "FAULT line 2: shift"
 run_dead numeric8_checked_index_attack "FAULT line 4: arithmetic overflow"
+run_dead numeric16_cadd_i16_overflow "FAULT line 2: arithmetic overflow"
+run_dead numeric16_cinc_i16_overflow "FAULT line 2: arithmetic overflow"
+run_dead numeric16_cdec_u16_underflow "FAULT line 2: arithmetic overflow"
+run_dead numeric16_div_i16_min_minus_one "FAULT line 2: division"
+run_dead numeric16_div_u16_zero "FAULT line 3: division"
+run_dead numeric16_shift_i16_negative "FAULT line 2: shift"
+run_dead numeric16_shift_u16_sixteen "FAULT line 2: shift"
+run_dead numeric16_checked_index_attack "FAULT line 4: arithmetic overflow"
+run_dead numeric16_checked_index_proc "FAULT line 5: arithmetic overflow"
+run_dead numeric16_checked_index_sync "FAULT line 5: arithmetic overflow"
+run_dead numeric16_checked_index_async "FAULT line 5: arithmetic overflow"
+run_dead numeric16_view_raw_oob "FAULT line 5: out of bounds raw_v_m"
+run_dead numeric16_view_typed_oob "FAULT line 6: out of bounds pairs_v_m"
 run_viol viol_numeric8_i8_literal STRUCT tests/viol_numeric8_i8_literal.stderr
 run_viol viol_numeric8_u8_literal STRUCT tests/viol_numeric8_u8_literal.stderr
 run_viol viol_numeric8_negative_hex STRUCT tests/viol_numeric8_negative_hex.stderr
 run_viol viol_numeric8_opcode_type STRUCT tests/viol_numeric8_opcode_type.stderr
 run_viol viol_numeric8_layout_mismatch STRUCT tests/viol_numeric8_layout_mismatch.stderr
 run_viol viol_numeric8_reserved STRUCT tests/viol_numeric8_reserved.stderr
+run_viol viol_numeric16_i16_literal STRUCT tests/viol_numeric16_i16_literal.stderr
+run_viol viol_numeric16_u16_literal STRUCT tests/viol_numeric16_u16_literal.stderr
+run_viol viol_numeric16_negative_hex STRUCT tests/viol_numeric16_negative_hex.stderr
+run_viol viol_numeric16_opcode_type STRUCT tests/viol_numeric16_opcode_type.stderr
+run_viol viol_numeric16_layout_mismatch STRUCT tests/viol_numeric16_layout_mismatch.stderr
+run_viol viol_numeric16_reserved STRUCT tests/viol_numeric16_reserved.stderr
+run_viol viol_numeric16_view_bounds STRUCT tests/viol_numeric16_view_bounds.stderr
 run_viol viol_i64_immediate STRUCT
 run_viol viol_i64_hex STRUCT
 run_viol viol_storeb STRUCT
@@ -861,6 +890,7 @@ run_lsp_smoke
 run_ownership_fuzz
 run_execution_oracle
 run_numeric8_oracle
+run_numeric16_oracle
 run_fault_smoke
 run_proc_contracts
 run_contract_fuzz
@@ -874,7 +904,7 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=226
+EXPECTED_PASS=252
 if [ -n "${RZA_TARGET_ARCH:-}" ]; then
     case ${RZA_TARGET_EXPECTED_PASS:-} in
         ''|*[!0-9]*)
@@ -884,7 +914,7 @@ if [ -n "${RZA_TARGET_ARCH:-}" ]; then
     esac
     EXPECTED_PASS=$RZA_TARGET_EXPECTED_PASS
 fi
-if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=225; fi
+if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=251; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

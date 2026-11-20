@@ -1,0 +1,3 @@
+mov.i16 %r0, 32767
+cinc.i16 %r0
+ret

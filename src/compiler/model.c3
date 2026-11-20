@@ -62,6 +62,8 @@ enum ScalarType : char {
 	NONE,
 	U8,
 	I8,
+	I16,
+	U16,
 	I64
 }
 

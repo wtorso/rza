@@ -96,6 +96,30 @@ const TypeDesc[] TYPE_DESCS = {
 		.typed_syntax = true
 	},
 	{
+		.source_name = "i16",
+		.type = ScalarType.I16,
+		.kind = TypeKind.INTEGER,
+		.bit_width = 16,
+		.alignment_bytes = 2,
+		.signedness = Signedness.SIGNED,
+		.storage_only = false,
+		.conversion_class = ConversionClass.INTEGER,
+		.target_capabilities = 0,
+		.typed_syntax = true
+	},
+	{
+		.source_name = "u16",
+		.type = ScalarType.U16,
+		.kind = TypeKind.INTEGER,
+		.bit_width = 16,
+		.alignment_bytes = 2,
+		.signedness = Signedness.UNSIGNED,
+		.storage_only = false,
+		.conversion_class = ConversionClass.INTEGER,
+		.target_capabilities = 0,
+		.typed_syntax = true
+	},
+	{
 		.source_name = "i64",
 		.type = ScalarType.I64,
 		.kind = TypeKind.INTEGER,
@@ -223,7 +247,7 @@ fn TypeDesc* scalar_type_desc(ScalarType type) {
 fn void type_layout_metrics(TypeDesc* desc, int* width, int* alignment) {
 	assert(desc != null && width != null && alignment != null);
 	assert(desc.bit_width > 0 && desc.bit_width % 8 == 0);
-	assert(desc.alignment_bytes == 1 || desc.alignment_bytes == 8);
+	assert(desc.alignment_bytes == 1 || desc.alignment_bytes == 2 || desc.alignment_bytes == 8);
 	*width = (int)(desc.bit_width / 8);
 	*alignment = (int)desc.alignment_bytes;
 }

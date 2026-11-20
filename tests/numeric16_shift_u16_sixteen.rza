@@ -1,0 +1,3 @@
+mov.u16 %r0, 1
+ushr.u16 %r1, %r0, 16
+ret

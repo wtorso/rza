@@ -1,0 +1,51 @@
+res input, field, 2
+res result, field, 2
+med input_m, input, field
+med result_m, result, field
+proc checked(input_m: ro, result_m: rw):
+    load.u16 %r1, [input_m + 0]
+    cadd.u16 %r2, %r1, 1
+    store.u16 [result_m + 0], %r2
+    ret
+mov.u16 %r0, 41
+store.u16 [input_m + 0], %r0
+casc sync: input_m, result_m -> sync_out[field]
+    load.i16 %r0, [input_m + 0]
+    cadd.i16 %r1, %r0, 1
+    store.i16 [result_m + 0], %r1
+endc
+mov %r0, 0x10029
+acasc async: input_m, result_m -> async_out
+    cinc.u16 %r0
+    store.u16 [result_m + 0], %r0
+endc
+await %r0
+print %r0
+load.u16 %r0, [result_m + 0]
+print %r0
+call checked
+load.u16 %r0, [result_m + 0]
+print %r0
+mov.i16 %r0, 32767
+cadd.i16 %r1, %r0, 0
+print %r1
+mov.i16 %r0, -32768
+csub.i16 %r1, %r0, 0
+print %r1
+cmul.i16 %r1, %r0, 1
+print %r1
+mov.u16 %r0, 65535
+cadd.u16 %r1, %r0, 0
+print %r1
+mov.u16 %r0, 0
+csub.u16 %r1, %r0, 0
+print %r1
+mov.u16 %r0, 65535
+cmul.u16 %r1, %r0, 1
+print %r1
+mov %r2, 0x1ffff
+cadd.i16 %r3, %r2, 0
+print %r3
+cadd.u16 %r4, %r2, 0
+print %r4
+ret

@@ -33,18 +33,22 @@ const String COMPLETION_TEXT = "layout Ring: read_pos:i64, count:i64, "
 	"storeb [ring\n"
 	"store %r0, ring\n"
 	"loadb %r0, [ring\n"
-	"load.u16 %r0, [ring\n"
+	"load.u32 %r0, [ring\n"
 	"store.i64 [ring\n"
 	"ret\n";
 
-const String COMPLETION_TYPE_TEXT = "layout Pair: tag:u8, value:i64, signed:i8\n"
+const String COMPLETION_TYPE_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
+	"half:u16, signed_half:i16\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"load %r0, [pair_m + 0].\n"
 	"load.i8 %r0, [pair\n"
-	"load.u16 %r0, [pair\n"
+	"load.u32 %r0, [pair\n"
 	"store.i8 [pair\n"
 	"store.i64 [pair\n"
+	"load.u16 %r0, [pair\n"
+	"store.u16 [pair\n"
+	"load.i64 %r0, [pair\n"
 	"ret\n";
 
 fn bool completion_matches(Object* response, String[] expected, bool incomplete) {
@@ -241,7 +245,8 @@ fn int? completion_type_detail_checks(Process* child) {
 	if (!expect(json_diagnostics(diagnostics)!.len() > 0,
 			"field completion document is intentionally invalid")) return 1;
 	Object* response = position_call(child, "textDocument/completion", 132, GOOD_URI, 3, 23)!;
-	if (!expect(completion_matches(response, { "tag", "value", "signed" }, false),
+	if (!expect(completion_matches(response,
+			{ "tag", "value", "signed", "half", "signed_half" }, false),
 			"field completion labels")) return 1;
 	if (!expect(completion_detail_matches(response, "tag", "u8 field"),
 			"u8 completion detail")) return 1;
@@ -249,9 +254,16 @@ fn int? completion_type_detail_checks(Process* child) {
 			"i64 completion detail")) return 1;
 	if (!expect(completion_detail_matches(response, "signed", "i8 field"),
 			"i8 completion detail")) return 1;
+	if (!expect(completion_detail_matches(response, "half", "u16 field"),
+			"u16 completion detail")) return 1;
+	if (!expect(completion_detail_matches(response, "signed_half", "i16 field"),
+			"i16 completion detail")) return 1;
 	if (expect_completion(child, 133, 4, 18, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 134, 5, 18, { }, false)! != 0) return 1;
 	if (expect_completion(child, 135, 6, 14, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 136, 7, 15, { }, false)! != 0) return 1;
+	if (expect_completion(child, 137, 8, 19, { "pair_m" }, false)! != 0) return 1;
+	if (expect_completion(child, 138, 9, 15, { "pair_m" }, false)! != 0) return 1;
+	if (expect_completion(child, 139, 10, 18, { }, false)! != 0) return 1;
 	return 0;
 }

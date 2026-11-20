@@ -32,7 +32,7 @@ fn void numeric_operation_descriptors_cover_legacy_surface() @test {
     };
     foreach (name : names) assert(find_op_desc(name) != null);
     assert(find_op_desc("add.i64") == null);
-    assert(find_op_desc("load.u16") == null);
+    assert(find_op_desc("load.u32") == null);
     OpDesc* add = find_op_desc("add");
     assert(add.op == Op.ALU3 && add.alu_op == AluOp.ADD && add.has_scalar_type);
     OpDesc* load = find_op_desc("loadb");
@@ -141,7 +141,7 @@ fn void numeric_lsp_memory_context_uses_operation_descriptors() @test {
     assert(memory_completion_context("storeb", 0) == CompletionContext.MED);
     assert(memory_completion_context("load", 0) == CompletionContext.NONE);
     assert(memory_completion_context("store", 1) == CompletionContext.NONE);
-    assert(memory_completion_context("load.u16", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("load.u32", 1) == CompletionContext.NONE);
     assert(memory_completion_context("store.i64", 0) == CompletionContext.NONE);
     assert(memory_completion_context("unknown", 1) == CompletionContext.NONE);
 }
