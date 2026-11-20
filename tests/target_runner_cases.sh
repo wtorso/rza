@@ -37,6 +37,7 @@ expect_case() {
     if [ "$status" -ne "$expected_status" ] || [ "$lines" -ne "$expected_log" ]; then
         printf 'FAIL %s: status=%d want=%d log=%d want=%d\n' \
             "$name" "$status" "$expected_status" "$lines" "$expected_log" >&2
+        cat "$work/$name.err" >&2
         return 1
     fi
     passed=$((passed + 1))
