@@ -527,8 +527,30 @@ fn void numeric8_mutate_generated(String path) {
     write_file(path, mutated) ?? unreachable();
 }
 
-fn bool numeric8_program_fails(Numeric8Program program) {
+enum Numeric8FailureKind : char {
+    NONE,
+    EMIT,
+    COMPILE,
+    RUNTIME,
+}
+
+struct Numeric8Failure {
+    Numeric8FailureKind kind;
+    int expected_status;
+    int actual_status;
+    DString expected_output;
+    DString expected_errors;
+    DString actual_output;
+    DString actual_errors;
+}
+
+fn Numeric8Failure numeric8_failure(Numeric8Program program) {
     Numeric8Expected expected = numeric8_reference(&program);
+    Numeric8Failure failure = {
+        .expected_status = expected.status,
+        .expected_output = dstring::temp(normalize_lines(expected.output.str_view())),
+        .expected_errors = dstring::temp(normalize_lines(expected.errors.str_view())),
+    };
     String source = numeric8_source(&program);
     assert(numeric8_attempt < 1000000);
     String name = string::tformat("numeric8-%d.rza", numeric8_attempt);
@@ -540,21 +562,52 @@ fn bool numeric8_program_fails(Numeric8Program program) {
         compiler_path(), path, "--emit-c", "-o", generated,
     }) ?? unreachable();
     if (emitted.status != 0 || emitted.stdout_text.len != 0 ||
-            emitted.stderr_text.len != 0) return true;
+            emitted.stderr_text.len != 0) {
+        failure.kind = Numeric8FailureKind.EMIT;
+        failure.actual_status = emitted.status;
+        failure.actual_output = dstring::temp(normalize_lines(emitted.stdout_text));
+        failure.actual_errors = dstring::temp(normalize_lines(emitted.stderr_text));
+        return failure;
+    }
     numeric8_mutate_generated(generated);
     String executable = string::tformat("%s.exe", path);
     ProcessResult compiled = compile_c(generated, executable) ?? unreachable();
-    if (compiled.status != 0 || compiled.stderr_text.len != 0) return true;
+    if (compiled.status != 0 || compiled.stderr_text.len != 0) {
+        failure.kind = Numeric8FailureKind.COMPILE;
+        failure.actual_status = compiled.status;
+        failure.actual_output = dstring::temp(normalize_lines(compiled.stdout_text));
+        failure.actual_errors = dstring::temp(normalize_lines(compiled.stderr_text));
+        return failure;
+    }
     ProcessResult runtime = run_program({ executable }) ?? unreachable();
+    failure.actual_status = runtime.status;
+    failure.actual_output = dstring::temp(normalize_lines(runtime.stdout_text));
+    failure.actual_errors = dstring::temp(normalize_lines(runtime.stderr_text));
     bool mismatch = runtime.status != expected.status ||
-        normalize_lines(runtime.stdout_text) != normalize_lines(expected.output.str_view()) ||
-        normalize_lines(runtime.stderr_text) != normalize_lines(expected.errors.str_view());
+        failure.actual_output.str_view() != failure.expected_output.str_view() ||
+        failure.actual_errors.str_view() != failure.expected_errors.str_view();
     if (mismatch) {
+        failure.kind = Numeric8FailureKind.RUNTIME;
         io::eprintfn("numeric8 expected status=%d stdout=%s stderr=%s",
             expected.status, expected.output.str_view(), expected.errors.str_view());
         print_result(runtime);
     }
-    return mismatch;
+    return failure;
+}
+
+fn bool numeric8_failure_same(Numeric8Program candidate, Numeric8Failure original) {
+    Numeric8Failure current = numeric8_failure(candidate);
+    return current.kind == original.kind &&
+        current.expected_status == original.expected_status &&
+        current.actual_status == original.actual_status &&
+        current.expected_output.str_view() == original.expected_output.str_view() &&
+        current.expected_errors.str_view() == original.expected_errors.str_view() &&
+        current.actual_output.str_view() == original.actual_output.str_view() &&
+        current.actual_errors.str_view() == original.actual_errors.str_view();
+}
+
+fn bool numeric8_program_fails(Numeric8Program program) {
+    return numeric8_failure(program).kind != Numeric8FailureKind.NONE;
 }
 
 fn Numeric8Program numeric8_remove(Numeric8Program program, int index) {
@@ -565,7 +618,8 @@ fn Numeric8Program numeric8_remove(Numeric8Program program, int index) {
 }
 
 fn Numeric8Program numeric8_shrink(Numeric8Program world) {
-    assert(numeric8_program_fails(world));
+    Numeric8Failure original = numeric8_failure(world);
+    assert(original.kind != Numeric8FailureKind.NONE);
     Numeric8Program best = world;
     for (int round = 0; round < 16; round++) {
         bool changed = false;
@@ -573,14 +627,14 @@ fn Numeric8Program numeric8_shrink(Numeric8Program world) {
             Numeric8Op op = best.ops[index].op;
             if (op == Numeric8Op.PRINT || op == Numeric8Op.RET) continue;
             Numeric8Program candidate = numeric8_remove(best, index);
-            if (numeric8_program_fails(candidate)) {
+            if (numeric8_failure_same(candidate, original)) {
                 best = candidate;
                 changed = true;
             }
         }
         if (!changed) break;
     }
-    assert(numeric8_program_fails(best));
+    assert(numeric8_failure_same(best, original));
     return best;
 }
 
@@ -631,6 +685,42 @@ fn int numeric8_shrink_selftest() {
     return 0;
 }
 
+fn int numeric8_shrink_signature_selftest() {
+    Numeric8Program original = {};
+    numeric8_push_legacy(&original, 0, 127);
+    numeric8_push_legacy(&original, 1, 1);
+    numeric8_push(&original, {
+        .op = Numeric8Op.CADD, .type = Numeric8Type.I8, .dst = 2,
+        .left = 0, .right = 1, .value = 1, .immediate_rhs = true,
+    });
+    numeric8_push(&original, {
+        .op = Numeric8Op.ADD, .type = Numeric8Type.I8, .dst = 3,
+        .left = 0, .right = 1, .value = 1, .immediate_rhs = true,
+    });
+    numeric8_push(&original, { .op = Numeric8Op.PRINT, .left = 2 });
+    numeric8_push(&original, { .op = Numeric8Op.PRINT, .left = 3 });
+    numeric8_push(&original, { .op = Numeric8Op.RET });
+    Numeric8Program replacement = numeric8_remove(original, 3);
+    numeric8_mutation = 2;
+    if (!expect(numeric8_program_fails(replacement),
+            "replacement failure remains a failure")) return 1;
+    Numeric8Failure original_failure = numeric8_failure(original);
+    if (!expect(!numeric8_failure_same(replacement, original_failure),
+            "shrink must not accept a different failure signature")) return 1;
+    Numeric8Program reduced = numeric8_shrink(original);
+    bool has_add = false;
+    bool has_cadd = false;
+    for (int i = 0; i < reduced.len; i++) {
+        if (reduced.ops[i].op == Numeric8Op.ADD) has_add = true;
+        if (reduced.ops[i].op == Numeric8Op.CADD) has_cadd = true;
+    }
+    numeric8_mutation = 0;
+    if (!expect(has_add && has_cadd, "shrink preserves the original operation mix")) {
+        return 1;
+    }
+    return 0;
+}
+
 fn int numeric8_run_program(Numeric8Program program) {
     if (!numeric8_program_fails(program)) return 0;
     Numeric8Program reduced = numeric8_shrink(program);
@@ -644,6 +734,7 @@ fn int numeric8_oracle_main() {
     if (numeric8_reference_selftest() != 0) return 1;
     if (numeric8_mutation_selftest() != 0) return 1;
     if (numeric8_shrink_selftest() != 0) return 1;
+    if (numeric8_shrink_signature_selftest() != 0) return 1;
     numeric8_coverage_reset();
     for (int index = 0; index < 64; index++) {
         Numeric8Program program = numeric8_valid_program(index);
