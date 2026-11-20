@@ -17,6 +17,7 @@ endc
 mov %r0, 0x10029
 acasc async: input_m, result_m -> async_out
     cinc.u16 %r0
+    print %r0
     store.u16 [result_m + 0], %r0
 endc
 await %r0

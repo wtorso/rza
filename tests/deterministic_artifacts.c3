@@ -377,7 +377,8 @@ fn int? check_numeric16_artifact() {
     if (!expect(first == second && first.starts_with(source_prefix(source.str_view())),
             "numeric16 artifact repeat/path hash")) return 1;
     String[] required = {
-        "memcpy(&value, (char*)p + 1, 2)", "r1 = rez_i16_from_bits(value)",
+        "memcpy(&value, (char*)p + 1, 2)", "memcpy((char*)p + 1, &value, 2)",
+        "r1 = rez_i16_from_bits(value)",
         "rez_i16_add", "rez_u16_cadd", "rez_i16_div_invalid",
         "rez_shift16_invalid", "rez_u16_shl",
     };

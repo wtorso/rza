@@ -19,4 +19,22 @@ view raw_v_m, raw_m, 1, 2
 store.i16 [raw_v_m + 0], %r0
 load.i16 %r6, [raw_v_m + 0]
 print %r6
+mov.u16 %r6, 0x2211
+store.u16 [raw_m + 0], %r6
+mov.u16 %r6, 0x4433
+store.u16 [raw_m + 2], %r6
+store.i16 [raw_m + 1], %r0
+load.u8 %r7, [raw_m + 0]
+print %r7
+load.u8 %r7, [raw_m + 3]
+print %r7
+mov.u16 %r6, 0x6655
+store.u16 [raw_m + 0], %r6
+mov.u16 %r6, 0x8877
+store.u16 [raw_m + 2], %r6
+store.u16 [raw_m + 0], %r1
+load.u8 %r7, [raw_m + 2]
+print %r7
+load.u8 %r7, [raw_m + 3]
+print %r7
 ret
