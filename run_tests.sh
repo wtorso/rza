@@ -13,7 +13,7 @@ if [ -z "${CC:-}" ]; then
     elif command -v clang >/dev/null 2>&1; then CC="clang"
     else echo "FATAL: no C compiler (gcc | zig | clang)" >&2; exit 2; fi
 fi
-rza_cc_init sanitize include/rza .
+rza_cc_init sanitize include/rza . || exit 2
 BUILD=".test-build-$$"
 rm --recursive --force "$BUILD"
 mkdir --parents "$BUILD"
@@ -22,6 +22,13 @@ trap 'rm --recursive --force "$BUILD"' EXIT
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "PASS $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL $1 -- $2"; }
+ok_host() {
+    if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY $1"
+    else
+        ok "$1"
+    fi
+}
 
 run_style() {
     if ! "$BUILD/rza_tests.exe" line-style >"$BUILD/style.out" 2>&1; then
@@ -29,7 +36,7 @@ run_style() {
         cat "$BUILD/style.out"
         return
     fi
-    ok style
+    ok_host style
 }
 
 require_c3c() {
@@ -74,7 +81,7 @@ run_function_style() {
         cat "$BUILD/function_style.out"
         return
     fi
-    ok function_style
+    ok_host function_style
 }
 require_c3c
 run_function_style
@@ -116,7 +123,7 @@ run_good() {
         bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
         return
     fi
-    if ! "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
+    if ! rza_run "$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
         bad "$t" "runtime failed (want exit 0)"; cat "$BUILD/$t.runerr"
         return
     fi
@@ -148,7 +155,7 @@ run_dead() {
         bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
         return
     fi
-    if "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
+    if rza_run "$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
         bad "$t" "exited 0 (want runtime fault)"
         return
     fi
@@ -183,7 +190,7 @@ run_abort() {
         bad "$t" "compiler warnings"; cat "$BUILD/$t.ccerr"
         return
     fi
-    if ! "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
+    if ! rza_run "$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
         bad "$t" "runtime failed (want exit 0 with abort)"; cat "$BUILD/$t.runerr"
         return
     fi
@@ -222,7 +229,7 @@ run_viol() {
             return
         fi
     fi
-    ok "$t"
+    ok_host "$t"
 }
 
 run_viol_contract() {
@@ -245,7 +252,7 @@ run_viol_contract() {
         return
     fi
     FAIL=$fail_before
-    ok run_viol_contract
+    ok_host run_viol_contract
 }
 
 run_cli_contract() {
@@ -283,7 +290,7 @@ run_cli_contract() {
         bad cli_contract "want exit 2 for two input files"
         return
     fi
-    ok cli_contract
+    ok_host cli_contract
 }
 
 run_c3() {
@@ -292,15 +299,33 @@ run_c3() {
     else bad "$name" "C3 scenario failed"; fi
 }
 
-run_lsp_smoke() { run_c3 lsp_smoke lsp; }
-run_fuzz() { run_c3 fuzz fuzz; }
+run_lsp_smoke() {
+    if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY lsp_smoke x86_64 language server"
+    else
+        run_c3 lsp_smoke lsp
+    fi
+}
+run_fuzz() {
+    if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY fuzz parser and checker"
+    else
+        run_c3 fuzz fuzz
+    fi
+}
 run_ownership_fuzz() { run_c3 ownership_fuzz ownership; }
 run_execution_oracle() { run_c3 execution_oracle oracle; }
 run_numeric8_oracle() { run_c3 numeric8_oracle numeric8-oracle; }
 run_fault_smoke() { run_c3 fault_smoke faults; }
 run_proc_contracts() { run_c3 proc_contracts contracts; }
 run_contract_fuzz() { run_c3 contract_fuzz contract-fuzz; }
-run_deterministic_artifacts() { run_c3 deterministic_artifacts artifacts; }
+run_deterministic_artifacts() {
+    if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY deterministic_artifacts generated C text"
+    else
+        run_c3 deterministic_artifacts artifacts
+    fi
+}
 run_tiny_budgets() { run_c3 tiny_budgets budgets; }
 
 run_benchmark_sources() {
@@ -323,7 +348,7 @@ run_async_mutants() {
         bad async_cancel_mutation "build failed"
         return
     fi
-    if "$base/no_cancel.exe" >"$base/no_cancel.out" 2>&1; then
+    if rza_run "$base/no_cancel.exe" >"$base/no_cancel.out" 2>&1; then
         bad async_cancel_mutation "host accepted execution without cancellation"
         return
     fi
@@ -336,7 +361,7 @@ run_async_mutants() {
         bad async_view_mutation "build failed"
         return
     fi
-    if ! "$base/widened.exe" >"$base/widened.out" 2>&1; then
+    if ! rza_run "$base/widened.exe" >"$base/widened.out" 2>&1; then
         bad async_view_mutation "widened view still faults"
         return
     fi
@@ -349,7 +374,7 @@ run_async_mutants() {
         bad async_generation_exhaustion "build failed"
         return
     fi
-    if "$base/exhausted.exe" >"$base/exhausted.out" 2>"$base/exhausted.err"; then
+    if rza_run "$base/exhausted.exe" >"$base/exhausted.out" 2>"$base/exhausted.err"; then
         bad async_generation_exhaustion "generation wrap was accepted"
         return
     fi
@@ -362,6 +387,10 @@ run_async_mutants() {
 }
 
 run_c3_unit() {
+    if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY c3_unit x86_64 compiler internals"
+        return
+    fi
     local c3c_bin="c3c"
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
@@ -410,7 +439,7 @@ run_lib() {
         bad "$t" "compiler warnings (want zero)"; cat "$BUILD/$t.ccerr"
         return
     fi
-    if ! "./$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
+    if ! rza_run "$BUILD/$t.exe" >"$BUILD/$t.out" 2>"$BUILD/$t.runerr"; then
         bad "$t" "runtime failed (want exit 0)"; cat "$BUILD/$t.runerr"
         return
     fi
@@ -447,6 +476,27 @@ run_lib_compile() {
     ok "$t"
 }
 
+run_crc32c_portable() {
+    if [ -z "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY crc32c_portable_vectors non-x86 target only"
+        return
+    fi
+    if ! rza_cc tests/crc32c_portable_vectors.c -o "$BUILD/crc32c_portable.exe" \
+            2>"$BUILD/crc32c_portable.ccerr"; then
+        bad crc32c_portable "compile failed"; cat "$BUILD/crc32c_portable.ccerr"
+        return
+    fi
+    if [ -s "$BUILD/crc32c_portable.ccerr" ]; then
+        bad crc32c_portable "compiler warnings"; cat "$BUILD/crc32c_portable.ccerr"
+        return
+    fi
+    if ! rza_run "$BUILD/crc32c_portable.exe"; then
+        bad crc32c_portable "known vector mismatch"
+        return
+    fi
+    ok crc32c_portable
+}
+
 run_runtime_safety() {
     if ! rza_cc tests/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
             2>"$BUILD/runtime_safety.ccerr"; then
@@ -458,7 +508,7 @@ run_runtime_safety() {
         cat "$BUILD/runtime_safety.ccerr"
         return
     fi
-    if ! "$BUILD/runtime_safety.exe"; then
+    if ! rza_run "$BUILD/runtime_safety.exe"; then
         bad runtime_safety "runtime checks failed"
         return
     fi
@@ -471,7 +521,7 @@ run_shop() {
         bad shop "compile failed"; cat "$BUILD/shop.ccerr"
         return
     fi
-    if ! "$BUILD/shop.exe" >"$BUILD/shop.out" 2>"$BUILD/shop.runerr"; then
+    if ! rza_run "$BUILD/shop.exe" >"$BUILD/shop.out" 2>"$BUILD/shop.runerr"; then
         bad shop "runtime failed"; cat "$BUILD/shop.runerr"
         return
     fi
@@ -502,7 +552,7 @@ run_reference() {
         i=$((i + 1))
     done
     echo "leave f0" >>"$BUILD/deep.rz3"
-    if ! "$BUILD/rez3check.exe" "$BUILD/deep.rz3" >"$BUILD/deep.ref.out"; then
+    if ! rza_run "$BUILD/rez3check.exe" "$BUILD/deep.rz3" >"$BUILD/deep.ref.out"; then
         bad reference "deep decay failed"; cat "$BUILD/deep.ref.out"
         return
     fi
@@ -513,7 +563,7 @@ run_reference() {
     # Старый link после raise остаётся жив: его owner/home не менялись.
     printf 'frame A -\nframe B A\ncell X B\nlink M X B\nraise X A\ncasc C M > OUT A\n' \
         >"$BUILD/raise_old.ref.rz3"
-    if ! "$BUILD/rez3check.exe" "$BUILD/raise_old.ref.rz3" \
+    if ! rza_run "$BUILD/rez3check.exe" "$BUILD/raise_old.ref.rz3" \
             >"$BUILD/raise_old.ref.out"; then
         bad reference "live mediator rejected after raise"; cat "$BUILD/raise_old.ref.out"
         return
@@ -523,7 +573,7 @@ run_reference() {
         return
     fi
     printf '%s\n' 'await %r0' >"$BUILD/await.ref.rz3"
-    if ! "$BUILD/rez3check.exe" "$BUILD/await.ref.rz3" >"$BUILD/await.ref.out"; then
+    if ! rza_run "$BUILD/rez3check.exe" "$BUILD/await.ref.rz3" >"$BUILD/await.ref.out"; then
         bad reference "valid await rejected"; cat "$BUILD/await.ref.out"
         return
     fi
@@ -536,7 +586,7 @@ run_reference() {
 
 check_ref_reject() {
     local name=$1 expected=$2 status
-    "$BUILD/rez3check.exe" >"$BUILD/$name.out"
+    rza_run "$BUILD/rez3check.exe" >"$BUILD/$name.out"
     status=$?
     if [ "$status" -ne 1 ]; then
         bad "$name" "want exit 1, got $status"; cat "$BUILD/$name.out"
@@ -595,7 +645,7 @@ run_build_parallel() {
         bad build_parallel "native compiler missing: $expected"
         return
     fi
-    ok build_parallel
+    ok_host build_parallel
 }
 
 run_viol_contract
@@ -720,6 +770,7 @@ run_viol viol_cap_out_overflow STRUCT
 run_viol viol_frame_static_budget STRUCT
 run_viol viol_total_static_budget STRUCT
 run_runtime_safety
+run_crc32c_portable
 run_shop
 run_reference
 run_reference_invalid
@@ -824,6 +875,15 @@ echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
 EXPECTED_PASS=226
+if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+    case ${RZA_TARGET_EXPECTED_PASS:-} in
+        ''|*[!0-9]*)
+            echo "FATAL: RZA_TARGET_EXPECTED_PASS must be a decimal integer" >&2
+            exit 2
+            ;;
+    esac
+    EXPECTED_PASS=$RZA_TARGET_EXPECTED_PASS
+fi
 if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=225; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"

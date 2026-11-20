@@ -101,6 +101,80 @@ jobs:
             echo 'LSP process remains' >&2
             exit 1
           fi
+  cross:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            target: aarch64-linux-musl
+            qemu: qemu-aarch64-static
+          - arch: riscv64
+            target: riscv64-linux-musl
+            qemu: qemu-riscv64-static
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install C3 0.8.5_1
+        shell: bash
+        run: |
+          mkdir --parents build/toolchain
+          curl -fL https://github.com/c3lang/c3c/releases/download/v0.8.5_1/c3-linux.tar.gz \
+            -o build/toolchain/c3.tar.gz
+          printf '%s  %s\n' \
+            '939135bc6fbe9d67bf3b19c08146b93ab10996718aafff692294ae6c0b3a3f88' \
+            build/toolchain/c3.tar.gz | sha256sum --check
+          tar -xzf build/toolchain/c3.tar.gz -C build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/c3" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/c3/c3c" --version
+      - name: Install Zig 0.16.0
+        shell: bash
+        run: |
+          curl -fL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz \
+            -o build/toolchain/zig.tar.xz
+          printf '%s  %s\n' \
+            '70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00' \
+            build/toolchain/zig.tar.xz | sha256sum --check
+          tar -xJf build/toolchain/zig.tar.xz -C build/toolchain
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-linux-0.16.0/zig" version
+      - name: Install QEMU and ELF tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends qemu-user-static binutils
+          "${{ matrix.qemu }}" --version
+          readelf --version
+      - name: Target suite
+        shell: bash
+        env:
+          CC: zig cc -target ${{ matrix.target }} -static
+          RZA_TARGET_ARCH: ${{ matrix.arch }}
+          RZA_TARGET_LAUNCHER: ${{ matrix.qemu }}
+          RZA_TARGET_LOG: ${{ github.workspace }}/build/target-${{ matrix.arch }}.exec.log
+          RZA_TARGET_EXPECTED_PASS: "134"
+        run: |
+          bash tests/target_runner_cases.sh
+          bash run_tests.sh
+          executions=$(wc -l < "$RZA_TARGET_LOG")
+          test "$executions" -eq 682
+          printf 'TARGET %s PASS=134 EXECUTIONS=%s\n' "$RZA_TARGET_ARCH" "$executions"
+      - name: Hygiene
+        shell: bash
+        run: |
+          git diff --check
+          test -z "$(git status --porcelain)"
+          shopt -s nullglob
+          dirs=(build/rza-tests-*)
+          if (( ${#dirs[@]} )); then
+            printf 'temporary test directories remain: %s\n' "${dirs[*]}" >&2
+            exit 1
+          fi
+          if pgrep -f '[r]ez3asm --lsp'; then
+            echo 'LSP process remains' >&2
+            exit 1
+          fi
   windows:
     runs-on: windows-latest
     timeout-minutes: 30

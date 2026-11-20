@@ -36,7 +36,7 @@ fn int? run_ownership_case(OwnershipCase expected, String name, bool inject) {
         print_result(compiled);
         return 1;
     }
-    ProcessResult runtime = run_simple({ executable })!;
+    ProcessResult runtime = run_program({ executable })!;
     if (!expect(ownership_runtime_matches(runtime, expected), name)) {
         print_result(runtime);
         return 1;
@@ -80,7 +80,7 @@ fn int? run_ownership_view_mutation(OwnershipCase expected, String name) {
         print_result(compiled);
         return 1;
     }
-    ProcessResult runtime = run_simple({ executable })!;
+    ProcessResult runtime = run_program({ executable })!;
     if (ownership_runtime_matches(runtime, expected)) return 0;
     return 1;
 }

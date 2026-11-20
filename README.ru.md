@@ -56,6 +56,67 @@ ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I . \
 41
 ```
 
+### Сгенерированные программы на Linux ARM64 и RV64
+
+`rez3asm` остаётся x86_64 host-компилятором. Его C23-вывод можно кросс-компилировать
+для little-endian Linux AArch64 и RV64; сам C3 compiler на эти архитектуры не
+переносится. Публичная опция выбора target в RZA CLI не добавляется.
+
+Проверенная конфигурация:
+
+- Zig 0.16.0 с Clang 21.1.0 в роли cross-compiler.
+- `aarch64-linux-musl`: little-endian LP64, static musl, внешний sysroot не нужен,
+  launcher `/usr/bin/qemu-aarch64-static` без префикса `-L`.
+- `riscv64-linux-musl`: little-endian LP64D, static musl, внешний sysroot не нужен,
+  launcher `/usr/bin/qemu-riscv64-static` без префикса `-L`.
+- QEMU 11.1.3 и `readelf` для запуска и проверки архитектуры.
+
+Начиная с того же `build/hello.c`:
+
+```sh
+zig cc -target aarch64-linux-musl -std=c23 -O2 -static \
+  -pedantic -Wall -Wextra -Werror -I include/rza -I . \
+  build/hello.c -o build/hello-arm64
+qemu-aarch64-static build/hello-arm64
+
+zig cc -target riscv64-linux-musl -std=c23 -O2 -static \
+  -pedantic -Wall -Wextra -Werror -I include/rza -I . \
+  build/hello.c -o build/hello-rv64
+qemu-riscv64-static build/hello-rv64
+```
+
+Обе программы печатают `41`. На non-x86 пути SSE4.2 и другой x86-specific код
+исключаются при компиляции; CRC32C использует portable fallback с независимыми
+известными векторами. ARM CRC acceleration не заявляется.
+
+Внутренний test runner принимает связанные настройки архитектуры и launcher:
+
+```sh
+CC="zig cc -target aarch64-linux-musl -static" \
+RZA_TARGET_ARCH=aarch64 \
+RZA_TARGET_LAUNCHER=qemu-aarch64-static \
+RZA_TARGET_LOG="$PWD/build/target-aarch64.exec.log" \
+RZA_TARGET_EXPECTED_PASS=134 \
+bash run_tests.sh
+```
+
+Для RV64 укажите `riscv64`, `riscv64-linux-musl`, `qemu-riscv64-static` и отдельный
+log path. Каждый target executable централизованно проверяется на ELF64,
+little-endian и требуемый machine ID до запуска QEMU. Отсутствие настроек или
+инструментов — infrastructure failure, а не fallback на host execution.
+
+Проверенный target run имеет `PASS=134` и 682 logged executions на каждую
+архитектуру. Log включает mutation/shrink попытки, поэтому 682 не является числом
+семантических тестов. Он включает numeric8 oracle 64 valid + 64 fault и 20 RZA
+workload-проверок. C3/compiler internals, LSP, статическая диагностика,
+deterministic artifacts, release/package, native Rust comparisons и timing —
+host-only или отдельные native gates, а не доказательство ARM/RV64 execution.
+
+Результаты относятся только к cross-build и QEMU user-mode validation. Реальное
+hardware, big-endian, другие libc/ABI, ARM32, RV32 и cross-target ASan/UBSan не
+проверялись; выводов о performance нет. Release-архивы по-прежнему содержат только
+x86_64 host compiler; ARM/RV64 compiler assets не создаются.
+
 ### Проверка без генерации C
 
 ```sh
@@ -391,11 +452,11 @@ packaging-проверками.
 
 `RUST_CC` выбирает linker для Rust static libraries, но не заменяет C compiler для
 сгенерированного RZA-кода. CI запускает Linux GCC/Clang/Zig, Windows Zig, Windows
-MSVC `cl.exe`, а также unit, packaging, Extension Host и production-dependency
-проверки VS Code. Linux Clang дополнительно запускает полный suite с ASan и UBSan.
-Linux GCC и оба Windows-компилятора дополнительно проверяют воспроизводимые
-пакеты и staged install. Release workflow поддерживает ручной dry run и публикацию
-из version tags.
+MSVC `cl.exe`, Linux AArch64/RV64 QEMU target jobs, а также unit, packaging,
+Extension Host и production-dependency проверки VS Code. Linux Clang дополнительно
+запускает полный suite с ASan и UBSan. Linux GCC и оба Windows-компилятора
+дополнительно проверяют воспроизводимые пакеты и staged install. Release workflow
+поддерживает ручной dry run и публикацию из version tags.
 
 ## Структура репозитория
 

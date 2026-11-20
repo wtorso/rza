@@ -8,7 +8,7 @@ if [ "$#" -ne 1 ]; then
 fi
 BUILD=$1
 . ./cc.sh
-rza_cc_init release include/rza .
+rza_cc_init release include/rza . || exit 2
 RUSTC=${RUSTC:-rustc}
 RUST_CC=${RUST_CC:-$CC}
 RUSTC_LINKER_ARGS=()
@@ -40,6 +40,10 @@ build_rza() {
 }
 
 build_c() {
+    if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY ${1}_c native C comparison"
+        return
+    fi
     local name=$1
     rza_cc "bench/$name.c" bench/bench_check.c -o "$BUILD/${name}_c"
 }
@@ -53,6 +57,10 @@ link_rust() {
 }
 
 build_rust() {
+    if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+        echo "HOST_ONLY ${1}_rust native Rust comparison"
+        return
+    fi
     local name=$1
     $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --crate-type=staticlib \
         -D warnings -O "bench/$name.rs" -o "$BUILD/lib$name.$RUST_LIB_EXT"
@@ -62,7 +70,15 @@ build_rust() {
 
 check_output() {
     local name=$1 expected=$2
-    "$BUILD/$name" >"$BUILD/$name.out"
+    case "$name" in
+        *_c|*_rust|*_c_[0-9]|*_rust_[0-9]|crc32c_vector|crc32c_table_vector)
+            if [ -n "${RZA_TARGET_ARCH:-}" ]; then
+                echo "HOST_ONLY $name native comparison"
+                return
+            fi
+            ;;
+    esac
+    rza_run "$BUILD/$name" >"$BUILD/$name.out"
     diff --unified "bench/$expected.expected" "$BUILD/$name.out"
     echo "PASS $name"
 }
@@ -145,14 +161,16 @@ for variant in 1 2 3; do
     esac
     rza_cc -DPROTOCOL_VARIANT="$variant" "$BUILD/protocol.c" \
         bench/rza_protocol_host.c bench/bench_check.c -o "$BUILD/protocol_rza_$variant"
-    rza_cc -DPROTOCOL_VARIANT="$variant" bench/protocol.c \
-        bench/bench_check.c -o "$BUILD/protocol_c_$variant"
-    sed "s/^const VARIANT: u8 = 0;/const VARIANT: u8 = $variant;/" \
-        bench/protocol.rs >"$BUILD/protocol_$variant.rs"
-    $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --crate-type=staticlib -D warnings -O \
-        "$BUILD/protocol_$variant.rs" -o "$BUILD/libprotocol_$variant.$RUST_LIB_EXT"
-    link_rust bench/bench_check.c "$BUILD/libprotocol_$variant.$RUST_LIB_EXT" \
-        $RUST_LIBS -o "$BUILD/protocol_rust_$variant"
+    if [ -z "${RZA_TARGET_ARCH:-}" ]; then
+        rza_cc -DPROTOCOL_VARIANT="$variant" bench/protocol.c \
+            bench/bench_check.c -o "$BUILD/protocol_c_$variant"
+        sed "s/^const VARIANT: u8 = 0;/const VARIANT: u8 = $variant;/" \
+            bench/protocol.rs >"$BUILD/protocol_$variant.rs"
+        $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --crate-type=staticlib -D warnings -O \
+            "$BUILD/protocol_$variant.rs" -o "$BUILD/libprotocol_$variant.$RUST_LIB_EXT"
+        link_rust bench/bench_check.c "$BUILD/libprotocol_$variant.$RUST_LIB_EXT" \
+            $RUST_LIBS -o "$BUILD/protocol_rust_$variant"
+    fi
     for name in protocol_rza protocol_c protocol_rust; do
         check_output "${name}_$variant" "$expected"
     done
@@ -163,32 +181,39 @@ done
 sed -e '1i; Full-table variant: 1024 distinct keys; no free slot returns 0.' \
     -e 's/and %r1, %r1, 255/and %r1, %r1, 1023/' bench/table.rza \
     >"$BUILD/table_full.rza"
-sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.c >"$BUILD/table_full.c"
-sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.rs >"$BUILD/table_full.rs"
 "$RZA_COMPILER" "$BUILD/table_full.rza" --emit-lib -o "$BUILD/table_full.rza.c"
 rza_cc "$BUILD/table_full.rza.c" bench/rza_table_host.c \
     bench/bench_check.c -o "$BUILD/table_full_rza"
-rza_cc "$BUILD/table_full.c" bench/bench_check.c \
-    -o "$BUILD/table_full_c"
-$RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 -D warnings --crate-type=staticlib \
-    -O "$BUILD/table_full.rs" -o "$BUILD/libtable_full.$RUST_LIB_EXT"
-link_rust bench/bench_check.c "$BUILD/libtable_full.$RUST_LIB_EXT" \
-    $RUST_LIBS -o "$BUILD/table_full_rust"
+if [ -z "${RZA_TARGET_ARCH:-}" ]; then
+    sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.c >"$BUILD/table_full.c"
+    sed 's/) & 255) + 1/) \& 1023) + 1/' bench/table.rs >"$BUILD/table_full.rs"
+    rza_cc "$BUILD/table_full.c" bench/bench_check.c \
+        -o "$BUILD/table_full_c"
+    $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 -D warnings --crate-type=staticlib \
+        -O "$BUILD/table_full.rs" -o "$BUILD/libtable_full.$RUST_LIB_EXT"
+    link_rust bench/bench_check.c "$BUILD/libtable_full.$RUST_LIB_EXT" \
+        $RUST_LIBS -o "$BUILD/table_full_rust"
+fi
 for name in table_full_rza table_full_c table_full_rust; do
     check_output "$name" table_full
 done
 
-rza_cc bench/crc32c.c bench/crc32c_vector.c \
-    -o "$BUILD/crc32c_vector"
-check_output crc32c_vector crc32c_vector
-rza_cc -DCRC32C_TABLE bench/crc32c_table.c bench/crc32c_vector.c \
-    -o "$BUILD/crc32c_table_vector"
-check_output crc32c_table_vector crc32c_vector
-$RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --test -D warnings -O bench/workloads_test.rs \
-    -o "$BUILD/workloads_test"
-"$BUILD/workloads_test"
-rza_cc bench/timer.c bench/timer_test.c -o "$BUILD/timer_test"
-"$BUILD/timer_test" >"$BUILD/timer_test.out"
-grep --quiet '^result=42 backend=software ' "$BUILD/timer_test.out"
-grep --quiet '^PASS timer warmup/batch/argument checks$' "$BUILD/timer_test.out"
-echo "PASS crc32c/table workloads: all variants agree"
+if [ -z "${RZA_TARGET_ARCH:-}" ]; then
+    rza_cc bench/crc32c.c bench/crc32c_vector.c \
+        -o "$BUILD/crc32c_vector"
+    check_output crc32c_vector crc32c_vector
+    rza_cc -DCRC32C_TABLE bench/crc32c_table.c bench/crc32c_vector.c \
+        -o "$BUILD/crc32c_table_vector"
+    check_output crc32c_table_vector crc32c_vector
+    $RUSTC "${RUSTC_LINKER_ARGS[@]}" --edition=2021 --test -D warnings -O \
+        bench/workloads_test.rs -o "$BUILD/workloads_test"
+    "$BUILD/workloads_test"
+    rza_cc bench/timer.c bench/timer_test.c -o "$BUILD/timer_test"
+    "$BUILD/timer_test" >"$BUILD/timer_test.out"
+    grep --quiet '^result=42 backend=software ' "$BUILD/timer_test.out"
+    grep --quiet '^PASS timer warmup/batch/argument checks$' "$BUILD/timer_test.out"
+    echo "PASS crc32c/table workloads: all variants agree"
+else
+    echo "HOST_ONLY native C/Rust comparisons, vector drivers and timing"
+    echo "PASS RZA target workloads: all applicable variants agree"
+fi

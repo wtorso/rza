@@ -33,7 +33,7 @@ fn int? contract_valid_case(String name, String source, String expected) {
         print_result(compiled);
         return 1;
     }
-    ProcessResult runtime = run_simple({executable})!;
+    ProcessResult runtime = run_program({executable})!;
     if (!expect(runtime.status == 0 && normalize_lines(runtime.stdout_text) == expected &&
             runtime.stderr_text.len == 0, "valid contract runtime")) {
         print_result(runtime);

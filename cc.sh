@@ -8,6 +8,60 @@ rza_cc_is_msvc() {
     esac
 }
 
+rza_target_tools_check() {
+    local arch=$1 launcher_text=$2 expected_qemu base
+    local -a launcher
+    case "$arch" in
+        aarch64) expected_qemu=qemu-aarch64 ;;
+        riscv64) expected_qemu=qemu-riscv64 ;;
+        *) echo "FATAL: unsupported target architecture: $arch" >&2; return 2 ;;
+    esac
+    read -r -a launcher <<<"$launcher_text"
+    if [ "${#launcher[@]}" -eq 0 ]; then
+        echo "FATAL: empty target launcher" >&2
+        return 2
+    fi
+    base=${launcher[0]##*/}
+    case "$base" in
+        "$expected_qemu"|"$expected_qemu-static") ;;
+        *) echo "FATAL: launcher does not match $arch: $base" >&2; return 2 ;;
+    esac
+    if ! command -v "${launcher[0]}" >/dev/null 2>&1; then
+        echo "FATAL: target launcher not found: ${launcher[0]}" >&2
+        return 2
+    fi
+    if ! command -v readelf >/dev/null 2>&1; then
+        echo "FATAL: readelf is required for target execution" >&2
+        return 2
+    fi
+    if ! command -v awk >/dev/null 2>&1; then
+        echo "FATAL: awk is required for target execution" >&2
+        return 2
+    fi
+    if [ -n "${CC:-}" ] && ! command -v "${CC%% *}" >/dev/null 2>&1; then
+        echo "FATAL: target compiler not found: ${CC%% *}" >&2
+        return 2
+    fi
+}
+
+rza_target_init() {
+    local arch=${RZA_TARGET_ARCH:-}
+    local launcher=${RZA_TARGET_LAUNCHER:-}
+    local log=${RZA_TARGET_LOG:-}
+    if [ -z "$arch" ] && [ -z "$launcher" ] && [ -z "$log" ]; then return 0; fi
+    if [ -z "$arch" ] || [ -z "$launcher" ] || [ -z "$log" ]; then
+        echo "FATAL: target arch, launcher and log are required together" >&2
+        return 2
+    fi
+    case ${RZA_TARGET_EXPECTED_PASS:-} in
+        *[!0-9]*)
+            echo "FATAL: RZA_TARGET_EXPECTED_PASS must be a decimal integer" >&2
+            return 2
+            ;;
+    esac
+    rza_target_tools_check "$arch" "$launcher" || return
+}
+
 rza_cc_init() {
     local mode=${1:?usage: rza_cc_init sanitize|release [include-dir ...]}
     shift
@@ -16,6 +70,7 @@ rza_cc_init() {
         *) echo "FATAL: unknown compiler mode: $mode" >&2; return 2 ;;
     esac
     CC=${CC:-cc}
+    rza_target_init || return
     if [ -z "${CFLAGS:-}" ]; then
         if rza_cc_is_msvc; then
             CFLAGS="/nologo /std:clatest /W4 /WX /TC"
@@ -65,6 +120,18 @@ rza_cc_init() {
 
 rza_cc() {
     bash ./cc.sh "$@"
+}
+
+rza_run() {
+    if [ -z "${RZA_TARGET_ARCH:-}" ]; then
+        if [ -n "${RZA_TARGET_LAUNCHER:-}" ] || [ -n "${RZA_TARGET_LOG:-}" ]; then
+            echo "FATAL: target launcher and log require target arch" >&2
+            return 2
+        fi
+        "$@"
+        return
+    fi
+    bash tests/target_run.sh "$@"
 }
 
 rza_cc_compile() {

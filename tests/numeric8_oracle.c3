@@ -545,7 +545,7 @@ fn bool numeric8_program_fails(Numeric8Program program) {
     String executable = string::tformat("%s.exe", path);
     ProcessResult compiled = compile_c(generated, executable) ?? unreachable();
     if (compiled.status != 0 || compiled.stderr_text.len != 0) return true;
-    ProcessResult runtime = run_simple({ executable }) ?? unreachable();
+    ProcessResult runtime = run_program({ executable }) ?? unreachable();
     bool mismatch = runtime.status != expected.status ||
         normalize_lines(runtime.stdout_text) != normalize_lines(expected.output.str_view()) ||
         normalize_lines(runtime.stderr_text) != normalize_lines(expected.errors.str_view());

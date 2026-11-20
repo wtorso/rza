@@ -128,7 +128,7 @@ fn int? test_abi_faults() {
     ProcessResult compiled = compile_c("tests/abi_faults.c", executable)!;
     if (!expect(compiled.status == 0 && compiled.stderr_text.len == 0,
             "ABI fault compilation")) return 1;
-    ProcessResult runtime = run_simple({ executable })!;
+    ProcessResult runtime = run_program({ executable })!;
     if (!expect(runtime.status == 0 && runtime.stderr_text.len == 0,
             "ABI fault runtime")) return 1;
     return 0;

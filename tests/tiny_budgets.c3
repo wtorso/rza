@@ -44,7 +44,7 @@ fn int? compile_and_run_empty(String generated, String executable) {
         return 1;
     }
     String[] run = { executable };
-    ProcessResult result = run_simple(run)!;
+    ProcessResult result = run_program(run)!;
     if (!expect(result.status == 0 && result.stdout_text.len == 0 &&
             result.stderr_text.len == 0, "budget runtime output")) {
         print_result(result);

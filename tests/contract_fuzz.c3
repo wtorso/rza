@@ -245,7 +245,7 @@ fn bool? contract_valid_matches(String path, String generated, String executable
     if (compiled.status != 0 || compiled.stderr_text.len != 0) {
         return contract_report_mismatch(report, compiled, "valid contract C compilation");
     }
-    ProcessResult runtime = run_simple({executable})!;
+    ProcessResult runtime = run_program({executable})!;
     String expected = contract_expected_output(world);
     if (runtime.status != 0 || normalize_lines(runtime.stdout_text) != expected ||
             runtime.stderr_text.len != 0) {

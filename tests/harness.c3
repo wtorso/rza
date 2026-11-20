@@ -104,6 +104,25 @@ fn ProcessResult? run_simple_input(String[] command, String input) {
         process_stderr_buf[..]);
 }
 
+fn ProcessResult? run_program(String[] command) {
+    String arch = env_or("RZA_TARGET_ARCH", "");
+    if (arch.len == 0) {
+        if (env_or("RZA_TARGET_LAUNCHER", "").len > 0 ||
+                env_or("RZA_TARGET_LOG", "").len > 0) {
+            io::eprintn("FATAL: target launcher and log require target arch");
+            return TEST_ERROR~;
+        }
+        return run_simple(command);
+    }
+    List{String} wrapped;
+    wrapped.init(mem);
+    defer wrapped.free();
+    wrapped.push("bash");
+    wrapped.push("tests/target_run.sh");
+    wrapped.push_all(command);
+    return run_simple(wrapped.array_view());
+}
+
 fn ProcessResult? compile_c(String generated, String executable) {
     List{String} command;
     command.init(mem);
