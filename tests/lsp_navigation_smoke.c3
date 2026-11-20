@@ -2,6 +2,7 @@ module rza_tests;
 
 import std::collections::object;
 import std::core::dstring;
+import std::io;
 import std::os::process;
 
 char[1048576] navigation_source_buf;
@@ -270,19 +271,21 @@ fn int? navigation_regression_checks(Process* child) {
 	return 0;
 }
 
-const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64\n"
+const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"loadb %r0, [pair_m + 0].tag\n"
 	"load %r1, [pair_m + 0].value\n"
+	"load.i8 %r2, [pair_m + 0].signed\n"
 	"ret\n";
 
-const String PARTIAL_FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64\n"
+const String PARTIAL_FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"loadb %r0, [pair_m + 0].tag\n"
 	"load %r1, [pair_m + 0].value\n"
-	"load %r2, [pair_m + 0].\n"
+	"load.i8 %r2, [pair_m + 0].signed\n"
+	"load %r3, [pair_m + 0].\n"
 	"ret\n";
 
 fn int? navigation_field_hover(Process* child, int id, int line, int character,
@@ -292,8 +295,11 @@ fn int? navigation_field_hover(Process* child, int id, int line, int character,
 	DString expected = dstring::temp();
 	expected.appendf("%s\n```\n%s field of `Pair`; offset %d bytes.",
 		field, type, offset);
-	if (!expect(hover_markdown(response).contains(expected.str_view()),
-			"field hover type and offset")) return 1;
+	if (!hover_markdown(response).contains(expected.str_view())) {
+		io::eprintfn("field hover id=%d expected=%s actual=%s", id,
+			expected.str_view(), hover_markdown(response));
+		return 1;
+	}
 	return 0;
 }
 
@@ -302,9 +308,18 @@ fn int? navigation_field_type_checks(Process* child) {
 	if (!expect(json_diagnostics(response)!.len() == 0, "valid field hover document")) return 1;
 	if (navigation_field_hover(child, 160, 3, 25, "tag", "u8", 0)! != 0) return 1;
 	if (navigation_field_hover(child, 161, 4, 25, "value", "i64", 8)! != 0) return 1;
+	if (navigation_field_hover(child, 164, 5, 30, "signed", "i8", 16)! != 0) return 1;
 	response = lsp_call_json(child, change_message(PARTIAL_FIELD_HOVER_TEXT, 21))!;
 	if (!expect(json_diagnostics(response)!.len() > 0, "partial field hover document")) return 1;
 	if (navigation_field_hover(child, 162, 3, 25, "tag", "u8", 0)! != 0) return 1;
 	if (navigation_field_hover(child, 163, 4, 25, "value", "i64", 8)! != 0) return 1;
+	if (navigation_field_hover(child, 165, 5, 30, "signed", "i8", 16)! != 0) return 1;
+	char[] numeric = read_file("tests/numeric8_wrap.rza", navigation_source_buf[..])!;
+	response = lsp_call_json(child, change_message((String)numeric, 22))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "numeric8 active LSP document")) return 1;
+	response = lsp_call_json(child, change_message("shr.u8 %r0, %r0, 1\nret\n", 23))!;
+	Object* diagnostic = json_diagnostics(response)!.get_at(0);
+	if (!expect((diagnostic.get_string("message") ?? "").contains("unknown op shr.u8"),
+			"invalid numeric signedness diagnostic")) return 1;
 	return 0;
 }

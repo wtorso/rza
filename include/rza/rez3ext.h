@@ -322,6 +322,174 @@ bool rez_view_cell(
     return value;
 }
 
+[[maybe_unused]] static int64_t rez_u8_from_bits(uint64_t bits) {
+    return rez_i64_value(bits & UINT64_C(0xff));
+}
+
+[[maybe_unused]] static int64_t rez_i8_from_bits(uint64_t bits) {
+    uint64_t low = bits & UINT64_C(0xff);
+    if ((low & UINT64_C(0x80)) != 0) low |= ~UINT64_C(0xff);
+    return rez_i64_value(low);
+}
+
+[[maybe_unused]] static int64_t rez_i8_add(int64_t left, int64_t right) {
+    return rez_i8_from_bits(rez_i64_bits(left) + rez_i64_bits(right));
+}
+
+[[maybe_unused]] static int64_t rez_i8_sub(int64_t left, int64_t right) {
+    return rez_i8_from_bits(rez_i64_bits(left) - rez_i64_bits(right));
+}
+
+[[maybe_unused]] static int64_t rez_i8_mul(int64_t left, int64_t right) {
+    return rez_i8_from_bits(rez_i64_bits(left) * rez_i64_bits(right));
+}
+
+[[maybe_unused]] static int64_t rez_u8_add(int64_t left, int64_t right) {
+    return rez_u8_from_bits(rez_i64_bits(left) + rez_i64_bits(right));
+}
+
+[[maybe_unused]] static int64_t rez_u8_sub(int64_t left, int64_t right) {
+    return rez_u8_from_bits(rez_i64_bits(left) - rez_i64_bits(right));
+}
+
+[[maybe_unused]] static int64_t rez_u8_mul(int64_t left, int64_t right) {
+    return rez_u8_from_bits(rez_i64_bits(left) * rez_i64_bits(right));
+}
+
+[[maybe_unused]] static bool rez_i8_cadd(
+    int64_t left, int64_t right, int64_t *result
+) {
+    int64_t value = rez_i8_from_bits(rez_i64_bits(left)) +
+        rez_i8_from_bits(rez_i64_bits(right));
+    if (value < -128 || value > 127) return true;
+    *result = rez_i8_from_bits(rez_i64_bits(value));
+    return false;
+}
+
+[[maybe_unused]] static bool rez_i8_csub(
+    int64_t left, int64_t right, int64_t *result
+) {
+    int64_t value = rez_i8_from_bits(rez_i64_bits(left)) -
+        rez_i8_from_bits(rez_i64_bits(right));
+    if (value < -128 || value > 127) return true;
+    *result = rez_i8_from_bits(rez_i64_bits(value));
+    return false;
+}
+
+[[maybe_unused]] static bool rez_i8_cmul(
+    int64_t left, int64_t right, int64_t *result
+) {
+    int64_t value = rez_i8_from_bits(rez_i64_bits(left)) *
+        rez_i8_from_bits(rez_i64_bits(right));
+    if (value < -128 || value > 127) return true;
+    *result = rez_i8_from_bits(rez_i64_bits(value));
+    return false;
+}
+
+[[maybe_unused]] static bool rez_u8_cadd(
+    int64_t left, int64_t right, int64_t *result
+) {
+    int64_t value = rez_u8_from_bits(rez_i64_bits(left)) +
+        rez_u8_from_bits(rez_i64_bits(right));
+    if (value > 255) return true;
+    *result = rez_u8_from_bits(rez_i64_bits(value));
+    return false;
+}
+
+[[maybe_unused]] static bool rez_u8_csub(
+    int64_t left, int64_t right, int64_t *result
+) {
+    int64_t value = rez_u8_from_bits(rez_i64_bits(left)) -
+        rez_u8_from_bits(rez_i64_bits(right));
+    if (value < 0) return true;
+    *result = rez_u8_from_bits(rez_i64_bits(value));
+    return false;
+}
+
+[[maybe_unused]] static bool rez_u8_cmul(
+    int64_t left, int64_t right, int64_t *result
+) {
+    int64_t value = rez_u8_from_bits(rez_i64_bits(left)) *
+        rez_u8_from_bits(rez_i64_bits(right));
+    if (value > 255) return true;
+    *result = rez_u8_from_bits(rez_i64_bits(value));
+    return false;
+}
+
+[[maybe_unused]] static bool rez_i8_div_invalid(int64_t left, int64_t right) {
+    int64_t dividend = rez_i8_from_bits(rez_i64_bits(left));
+    int64_t divisor = rez_i8_from_bits(rez_i64_bits(right));
+    return divisor == 0 || (dividend == -128 && divisor == -1);
+}
+
+[[maybe_unused]] static bool rez_u8_div_invalid(int64_t left, int64_t right) {
+    (void)left;
+    return rez_u8_from_bits(rez_i64_bits(right)) == 0;
+}
+
+[[maybe_unused]] static int64_t rez_i8_div(int64_t left, int64_t right) {
+    int64_t dividend = rez_i8_from_bits(rez_i64_bits(left));
+    int64_t divisor = rez_i8_from_bits(rez_i64_bits(right));
+    assert(!rez_i8_div_invalid(left, right));
+    return rez_i8_from_bits(rez_i64_bits(dividend / divisor));
+}
+
+[[maybe_unused]] static int64_t rez_i8_mod(int64_t left, int64_t right) {
+    int64_t dividend = rez_i8_from_bits(rez_i64_bits(left));
+    int64_t divisor = rez_i8_from_bits(rez_i64_bits(right));
+    assert(!rez_i8_div_invalid(left, right));
+    return rez_i8_from_bits(rez_i64_bits(dividend % divisor));
+}
+
+[[maybe_unused]] static int64_t rez_u8_div(int64_t left, int64_t right) {
+    int64_t dividend = rez_u8_from_bits(rez_i64_bits(left));
+    int64_t divisor = rez_u8_from_bits(rez_i64_bits(right));
+    assert(!rez_u8_div_invalid(left, right));
+    return rez_u8_from_bits(rez_i64_bits(dividend / divisor));
+}
+
+[[maybe_unused]] static int64_t rez_u8_mod(int64_t left, int64_t right) {
+    int64_t dividend = rez_u8_from_bits(rez_i64_bits(left));
+    int64_t divisor = rez_u8_from_bits(rez_i64_bits(right));
+    assert(!rez_u8_div_invalid(left, right));
+    return rez_u8_from_bits(rez_i64_bits(dividend % divisor));
+}
+
+[[maybe_unused]] static bool rez_shift8_invalid(int64_t shift) {
+    return shift < 0 || shift >= 8;
+}
+
+[[maybe_unused]] static int64_t rez_i8_shl(int64_t value, int64_t shift) {
+    assert(!rez_shift8_invalid(shift));
+    return rez_i8_from_bits(rez_i64_bits(value) << (unsigned)shift);
+}
+
+[[maybe_unused]] static int64_t rez_u8_shl(int64_t value, int64_t shift) {
+    assert(!rez_shift8_invalid(shift));
+    return rez_u8_from_bits(rez_i64_bits(value) << (unsigned)shift);
+}
+
+[[maybe_unused]] static int64_t rez_i8_shr(int64_t value, int64_t shift) {
+    uint64_t bits;
+    assert(!rez_shift8_invalid(shift));
+    bits = rez_i64_bits(value) & UINT64_C(0xff);
+    if (shift == 0) return rez_i8_from_bits(bits);
+    if ((bits & UINT64_C(0x80)) != 0) bits |= ~UINT64_C(0xff);
+    return rez_i8_from_bits(bits >> (unsigned)shift);
+}
+
+[[maybe_unused]] static int64_t rez_i8_ushr(int64_t value, int64_t shift) {
+    uint64_t bits;
+    assert(!rez_shift8_invalid(shift));
+    bits = (rez_i64_bits(value) & UINT64_C(0xff)) >> (unsigned)shift;
+    return rez_i8_from_bits(bits);
+}
+
+[[maybe_unused]] static int64_t rez_u8_ushr(int64_t value, int64_t shift) {
+    assert(!rez_shift8_invalid(shift));
+    return rez_u8_from_bits((rez_i64_bits(value) & UINT64_C(0xff)) >> (unsigned)shift);
+}
+
 [[maybe_unused]] static int64_t rez_i64_add(int64_t left, int64_t right) {
     return rez_i64_value(rez_i64_bits(left) + rez_i64_bits(right));
 }

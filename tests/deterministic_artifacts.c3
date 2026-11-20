@@ -307,6 +307,52 @@ fn int? artifacts_run() {
     if (check_fault_helper_artifact()! != 0) return 1;
     if (check_frame_free_artifact()! != 0) return 1;
     if (check_self_move_artifact()! != 0) return 1;
+    if (check_numeric8_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
+    return 0;
+}
+
+fn String artifact_body(String text) {
+    sz? newline = text.index_of_char('\n');
+    if (catch newline) return "";
+    return text[newline + 1..];
+}
+
+fn int? check_numeric8_artifact() {
+    DString source = dstring::temp("cav main, field\nres raw, main, 2\n"
+        "med raw_m, raw, main\nmov.i8 %r0, 0x80\nstore.i8 [raw_m + 0], %r0\n"
+        "load.i8 %r1, [raw_m + 0]\nadd.i8 %r1, %r1, 1\n"
+        "mov.u8 %r2, 2\ncadd.u8 %r2, %r2, 3\ndiv.i8 %r3, %r1, 2\n"
+        "shl.u8 %r4, %r2, 1\nprint %r3\nret\n");
+    path::mkdir(path::tnew(temp_path("numeric8-first"))!, true)!;
+    path::mkdir(path::tnew(temp_path("numeric8-second"))!, true)!;
+    String first_source = temp_path("numeric8-first/input.rza");
+    String second_source = temp_path("numeric8-second/renamed.rza");
+    write_file(first_source, source.str_view())!;
+    write_file(second_source, source.str_view())!;
+    String first = dstring::temp(emit_artifact(first_source,
+        temp_path("numeric8-first/output.c"))!).str_view();
+    String second = emit_artifact(second_source, temp_path("numeric8-second/output.c"))!;
+    if (!expect(first == second && first.starts_with(source_prefix(source.str_view())),
+            "numeric8 artifact repeat/path hash")) return 1;
+    String[] required = {
+        "rez_i8_from_bits", "rez_i8_add", "rez_u8_cadd",
+        "rez_i8_div_invalid", "rez_shift8_invalid", "rez_u8_shl",
+    };
+    foreach (needle : required) {
+        if (!expect(first.contains(needle), "numeric8 artifact semantic helper")) return 1;
+    }
+    String legacy_source = "res raw, field, 2\nmed raw_m, raw, field\n"
+        "mov %r0, 255\nstoreb [raw_m + 0], %r0\nloadb %r1, [raw_m + 0]\n"
+        "print %r1\nret\n";
+    String typed_source = "res raw, field, 2\nmed raw_m, raw, field\n"
+        "mov %r0, 255\nstore.u8 [raw_m + 0], %r0\nload.u8 %r1, [raw_m + 0]\n"
+        "print %r1\nret\n";
+    write_file(temp_path("legacy-byte.rza"), legacy_source)!;
+    String legacy = emit_artifact(temp_path("legacy-byte.rza"), temp_path("legacy-byte.c"))!;
+    write_file(temp_path("typed-byte.rza"), typed_source)!;
+    String typed = emit_artifact(temp_path("typed-byte.rza"), temp_path("typed-byte.c"))!;
+    if (!expect(artifact_body(legacy) == artifact_body(typed),
+            "legacy and typed byte access bodies differ")) return 1;
     return 0;
 }

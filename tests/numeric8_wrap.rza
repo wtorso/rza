@@ -1,0 +1,68 @@
+mov.i8 %r0, 127
+add.i8 %r0, %r0, 1
+print %r0
+sub.i8 %r0, %r0, 1
+print %r0
+mov.i8 %r1, -128
+mul.i8 %r1, %r1, -1
+print %r1
+inc.i8 %r0
+print %r0
+dec.i8 %r0
+print %r0
+mov.u8 %r0, 255
+add.u8 %r0, %r0, 1
+print %r0
+dec.u8 %r0
+print %r0
+sub.u8 %r0, %r0, 1
+print %r0
+mov.u8 %r1, 16
+mul.u8 %r1, %r1, 16
+print %r1
+mov %r2, 511
+mov %r3, 1
+add.i8 %r4, %r2, %r3
+print %r4
+add.u8 %r5, %r2, %r3
+print %r5
+mov %r2, -129
+add.i8 %r4, %r2, 1
+print %r4
+add.u8 %r5, %r2, 1
+print %r5
+mov %r2, 256
+inc.i8 %r2
+print %r2
+mov %r2, 256
+inc.u8 %r2
+print %r2
+mov.i8 %r0, 0xf0
+mov.i8 %r1, 0x9f
+and.i8 %r2, %r0, %r1
+print %r2
+or.i8 %r2, %r0, %r1
+print %r2
+xor.i8 %r2, %r0, %r1
+print %r2
+mov.u8 %r0, 0xf0
+mov.u8 %r1, 0x9f
+and.u8 %r2, %r0, %r1
+print %r2
+or.u8 %r2, %r0, %r1
+print %r2
+xor.u8 %r2, %r0, %r1
+print %r2
+mov.i8 %r0, -128
+mov.i8 %r1, 0
+slt.i8 %r2, %r0, %r1
+print %r2
+slt.i8 %r2, %r1, %r0
+print %r2
+mov.u8 %r0, 255
+mov.u8 %r1, 0
+ult.u8 %r2, %r0, %r1
+print %r2
+ult.u8 %r2, %r1, %r0
+print %r2
+ret

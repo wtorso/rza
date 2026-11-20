@@ -1,0 +1,3 @@
+mov.u8 %r0, 255
+cadd.u8 %r0, %r0, 1
+ret

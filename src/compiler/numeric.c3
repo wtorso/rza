@@ -33,7 +33,8 @@ enum AluOp : char {
 	SHL,
 	SHR,
 	USHR,
-	CRC32C
+	CRC32C,
+	ULT
 }
 
 enum TypeKind : char {
@@ -66,9 +67,22 @@ struct TypeDesc {
 	bool storage_only;
 	ConversionClass conversion_class;
 	uint target_capabilities;
+	bool typed_syntax;
 }
 
 const TypeDesc[] TYPE_DESCS = {
+	{
+		.source_name = "i8",
+		.type = ScalarType.I8,
+		.kind = TypeKind.INTEGER,
+		.bit_width = 8,
+		.alignment_bytes = 1,
+		.signedness = Signedness.SIGNED,
+		.storage_only = false,
+		.conversion_class = ConversionClass.INTEGER,
+		.target_capabilities = 0,
+		.typed_syntax = true
+	},
 	{
 		.source_name = "u8",
 		.type = ScalarType.U8,
@@ -78,7 +92,8 @@ const TypeDesc[] TYPE_DESCS = {
 		.signedness = Signedness.UNSIGNED,
 		.storage_only = false,
 		.conversion_class = ConversionClass.INTEGER,
-		.target_capabilities = 0
+		.target_capabilities = 0,
+		.typed_syntax = true
 	},
 	{
 		.source_name = "i64",
@@ -89,7 +104,8 @@ const TypeDesc[] TYPE_DESCS = {
 		.signedness = Signedness.SIGNED,
 		.storage_only = false,
 		.conversion_class = ConversionClass.INTEGER,
-		.target_capabilities = 0
+		.target_capabilities = 0,
+		.typed_syntax = false
 	}
 };
 
@@ -97,11 +113,15 @@ struct OpDesc {
 	String source_name;
 	Op op;
 	AluOp alu_op;
-	ScalarType access_type;
-	bool has_access_type;
+	ScalarType scalar_type;
+	bool has_scalar_type;
 	bool write;
 	bool cascade_ok;
 	bool sync_only;
+	bool typed;
+	bool typed_enabled;
+	bool typed_only;
+	Signedness required_signedness;
 }
 
 const OpDesc[] OP_DESCS = {
@@ -113,35 +133,78 @@ const OpDesc[] OP_DESCS = {
 	{ .source_name = "raise", .op = Op.RAISE },
 	{ .source_name = "decay", .op = Op.DECAY },
 	{ .source_name = "probe", .op = Op.PROBE },
-	{ .source_name = "load", .op = Op.LOAD, .access_type = ScalarType.I64,
-		.has_access_type = true, .cascade_ok = true },
-	{ .source_name = "loadb", .op = Op.LOAD, .access_type = ScalarType.U8,
-		.has_access_type = true, .cascade_ok = true },
-	{ .source_name = "store", .op = Op.STORE, .access_type = ScalarType.I64,
-		.has_access_type = true, .write = true, .cascade_ok = true },
-	{ .source_name = "storeb", .op = Op.STORE, .access_type = ScalarType.U8,
-		.has_access_type = true, .write = true, .cascade_ok = true },
-	{ .source_name = "mov", .op = Op.MOV, .cascade_ok = true },
-	{ .source_name = "inc", .op = Op.ALU1, .alu_op = AluOp.INC, .cascade_ok = true },
-	{ .source_name = "dec", .op = Op.ALU1, .alu_op = AluOp.DEC, .cascade_ok = true },
-	{ .source_name = "cinc", .op = Op.ALU1, .alu_op = AluOp.CINC, .cascade_ok = true },
-	{ .source_name = "cdec", .op = Op.ALU1, .alu_op = AluOp.CDEC, .cascade_ok = true },
-	{ .source_name = "add", .op = Op.ALU3, .alu_op = AluOp.ADD, .cascade_ok = true },
-	{ .source_name = "sub", .op = Op.ALU3, .alu_op = AluOp.SUB, .cascade_ok = true },
-	{ .source_name = "mul", .op = Op.ALU3, .alu_op = AluOp.MUL, .cascade_ok = true },
-	{ .source_name = "cadd", .op = Op.ALU3, .alu_op = AluOp.CADD, .cascade_ok = true },
-	{ .source_name = "csub", .op = Op.ALU3, .alu_op = AluOp.CSUB, .cascade_ok = true },
-	{ .source_name = "cmul", .op = Op.ALU3, .alu_op = AluOp.CMUL, .cascade_ok = true },
-	{ .source_name = "crc32c", .op = Op.ALU3, .alu_op = AluOp.CRC32C, .cascade_ok = true },
-	{ .source_name = "div", .op = Op.ALU3, .alu_op = AluOp.DIV, .cascade_ok = true },
-	{ .source_name = "mod", .op = Op.ALU3, .alu_op = AluOp.MOD, .cascade_ok = true },
-	{ .source_name = "and", .op = Op.ALU3, .alu_op = AluOp.AND, .cascade_ok = true },
-	{ .source_name = "or", .op = Op.ALU3, .alu_op = AluOp.OR, .cascade_ok = true },
-	{ .source_name = "xor", .op = Op.ALU3, .alu_op = AluOp.XOR, .cascade_ok = true },
-	{ .source_name = "shl", .op = Op.ALU3, .alu_op = AluOp.SHL, .cascade_ok = true },
-	{ .source_name = "shr", .op = Op.ALU3, .alu_op = AluOp.SHR, .cascade_ok = true },
-	{ .source_name = "ushr", .op = Op.ALU3, .alu_op = AluOp.USHR, .cascade_ok = true },
-	{ .source_name = "slt", .op = Op.ALU3, .alu_op = AluOp.SLT, .cascade_ok = true },
+	{ .source_name = "load", .op = Op.LOAD, .scalar_type = ScalarType.I64,
+		.has_scalar_type = true, .cascade_ok = true, .typed_enabled = true },
+	{ .source_name = "loadb", .op = Op.LOAD, .scalar_type = ScalarType.U8,
+		.has_scalar_type = true, .cascade_ok = true },
+	{ .source_name = "store", .op = Op.STORE, .scalar_type = ScalarType.I64,
+		.has_scalar_type = true, .write = true, .cascade_ok = true, .typed_enabled = true },
+	{ .source_name = "storeb", .op = Op.STORE, .scalar_type = ScalarType.U8,
+		.has_scalar_type = true, .write = true, .cascade_ok = true },
+	{ .source_name = "mov", .op = Op.MOV, .scalar_type = ScalarType.I64,
+		.has_scalar_type = true, .cascade_ok = true, .typed_enabled = true },
+	{ .source_name = "inc", .op = Op.ALU1, .alu_op = AluOp.INC,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "dec", .op = Op.ALU1, .alu_op = AluOp.DEC,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "cinc", .op = Op.ALU1, .alu_op = AluOp.CINC,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "cdec", .op = Op.ALU1, .alu_op = AluOp.CDEC,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "add", .op = Op.ALU3, .alu_op = AluOp.ADD,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "sub", .op = Op.ALU3, .alu_op = AluOp.SUB,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "mul", .op = Op.ALU3, .alu_op = AluOp.MUL,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "cadd", .op = Op.ALU3, .alu_op = AluOp.CADD,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "csub", .op = Op.ALU3, .alu_op = AluOp.CSUB,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "cmul", .op = Op.ALU3, .alu_op = AluOp.CMUL,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "crc32c", .op = Op.ALU3, .alu_op = AluOp.CRC32C,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true },
+	{ .source_name = "div", .op = Op.ALU3, .alu_op = AluOp.DIV,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "mod", .op = Op.ALU3, .alu_op = AluOp.MOD,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "and", .op = Op.ALU3, .alu_op = AluOp.AND,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "or", .op = Op.ALU3, .alu_op = AluOp.OR,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "xor", .op = Op.ALU3, .alu_op = AluOp.XOR,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "shl", .op = Op.ALU3, .alu_op = AluOp.SHL,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "shr", .op = Op.ALU3, .alu_op = AluOp.SHR,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true, .required_signedness = Signedness.SIGNED },
+	{ .source_name = "ushr", .op = Op.ALU3, .alu_op = AluOp.USHR,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true },
+	{ .source_name = "slt", .op = Op.ALU3, .alu_op = AluOp.SLT,
+		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
+		.typed_enabled = true, .required_signedness = Signedness.SIGNED },
+	{ .source_name = "ult", .op = Op.ALU3, .alu_op = AluOp.ULT, .cascade_ok = true,
+		.typed_enabled = true, .typed_only = true,
+		.required_signedness = Signedness.UNSIGNED },
 	{ .source_name = "print", .op = Op.PRINT, .cascade_ok = true },
 	{ .source_name = "jmp", .op = Op.JMP, .cascade_ok = true },
 	{ .source_name = "brz", .op = Op.BRZ, .cascade_ok = true },
@@ -177,6 +240,38 @@ fn OpDesc* find_op_desc(String source_name) {
 		if (OP_DESCS[i].source_name == source_name) return &OP_DESCS[i];
 	}
 	return null;
+}
+
+fn bool resolve_typed_op_desc(String source_name, OpDesc* out) {
+	sz? separator = source_name.index_of_char('.');
+	if (catch separator) return false;
+	if (separator == 0 || separator + 1 >= source_name.len) return false;
+	String base = source_name[:separator];
+	String suffix = source_name[separator + 1..];
+	if (@ok(suffix.index_of_char('.'))) return false;
+	OpDesc* desc = find_op_desc(base);
+	if (desc == null || !desc.typed_enabled) return false;
+	ScalarType type = find_scalar_type(suffix) ?? ScalarType.NONE;
+	TypeDesc* type_desc = scalar_type_desc(type);
+	if (type_desc == null || !type_desc.typed_syntax) return false;
+	if (desc.required_signedness != Signedness.NONE &&
+			desc.required_signedness != type_desc.signedness) return false;
+	*out = *desc;
+	out.source_name = source_name;
+	out.scalar_type = type;
+	out.has_scalar_type = true;
+	out.typed = true;
+	return true;
+}
+
+fn bool resolve_op_desc(String source_name, OpDesc* out) {
+	OpDesc* desc = find_op_desc(source_name);
+	if (desc != null) {
+		if (desc.typed_only) return false;
+		*out = *desc;
+		return true;
+	}
+	return resolve_typed_op_desc(source_name, out);
 }
 
 fn bool op_desc_cascade_ok(OpDesc* desc, bool is_async) {

@@ -1,0 +1,5 @@
+layout Entry: value:i8
+res entry, field, Entry
+med entry_m, entry, field
+loadb %r0, [entry_m + 0].value
+ret

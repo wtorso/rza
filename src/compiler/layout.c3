@@ -225,7 +225,7 @@ fn bool check_typed_access(
 ) {
 	Cell* cell = &cells[meds[mediator_index].cell];
 	assert(cell.layout >= 0);
-	assert(desc != null && desc.has_access_type);
+	assert(desc != null && desc.has_scalar_type);
 	String opname = desc.source_name;
 	if (field_name.len == 0) {
 		viol(line, "STRUCT", cat({ "typed cell requires field selector in ", opname }));
@@ -236,7 +236,7 @@ fn bool check_typed_access(
 		viol(line, "STRUCT", cat({ "unknown layout field ", field_name }));
 		return false;
 	}
-	if (layout_fields[found].scalar_type != desc.access_type) {
+	if (layout_fields[found].scalar_type != desc.scalar_type) {
 		viol(line, "STRUCT", cat({ "opcode does not match layout field ", field_name }));
 		return false;
 	}

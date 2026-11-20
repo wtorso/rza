@@ -34,12 +34,12 @@ fn void numeric_operation_descriptors_cover_legacy_surface() @test {
     assert(find_op_desc("add.i64") == null);
     assert(find_op_desc("load.u16") == null);
     OpDesc* add = find_op_desc("add");
-    assert(add.op == Op.ALU3 && add.alu_op == AluOp.ADD && !add.has_access_type);
+    assert(add.op == Op.ALU3 && add.alu_op == AluOp.ADD && add.has_scalar_type);
     OpDesc* load = find_op_desc("loadb");
-    assert(load.op == Op.LOAD && load.has_access_type);
-    assert(load.access_type == ScalarType.U8 && !load.write);
+    assert(load.op == Op.LOAD && load.has_scalar_type);
+    assert(load.scalar_type == ScalarType.U8 && !load.write);
     OpDesc* store = find_op_desc("store");
-    assert(store.op == Op.STORE && store.access_type == ScalarType.I64 && store.write);
+    assert(store.op == Op.STORE && store.scalar_type == ScalarType.I64 && store.write);
     assert(op_desc_cascade_ok(add, true));
     OpDesc* view = find_op_desc("view");
     assert(op_desc_cascade_ok(view, false));

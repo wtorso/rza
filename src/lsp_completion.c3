@@ -141,8 +141,8 @@ fn void completion_procs(CompletionWriter* writer, NavPosition* pos) {
 }
 
 fn CompletionContext memory_completion_context(String op, int commas) {
-	OpDesc* desc = find_op_desc(op);
-	if (desc == null || !desc.has_access_type) return CompletionContext.NONE;
+	OpDesc desc;
+	if (!resolve_op_desc(op, &desc) || !desc.has_scalar_type) return CompletionContext.NONE;
 	if (desc.op == Op.LOAD && commas == 1) return CompletionContext.MED;
 	if (desc.op == Op.STORE && commas == 0) return CompletionContext.MED;
 	return CompletionContext.NONE;

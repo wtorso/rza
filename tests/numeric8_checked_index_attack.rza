@@ -1,0 +1,6 @@
+res data, field, 1
+med data_m, data, field
+mov.u8 %r0, 255
+cinc.u8 %r0
+store.u8 [data_m + 0], %r0
+ret

@@ -504,6 +504,9 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     if (ins.scalar_type == ScalarType.U8) {
         out.appendf("r%d = (int64_t)*(unsigned char*)((char*)%s + %s);",
                     ins.a, ptr, oex.str_view());
+    } else if (ins.scalar_type == ScalarType.I8) {
+        out.appendf("r%d = rez_i8_from_bits((uint64_t)*(unsigned char*)((char*)%s + %s));",
+                    ins.a, ptr, oex.str_view());
     } else {
         out.appendf("memcpy(&r%d, (char*)%s + %s, 8);",
                     ins.a, ptr, oex.str_view());
@@ -535,7 +538,7 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     emit_casc_view_guard(out, ind, ins, in_casc);
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
-    if (ins.scalar_type == ScalarType.U8) {
+    if (ins.scalar_type != ScalarType.I64) {
         out.appendf("*(unsigned char*)((char*)%s + %s) = (unsigned char)r%d;",
                     ptr, sex.str_view(), ins.a);
     } else {
@@ -572,7 +575,151 @@ fn String alu_emit_name(AluOp op) {
     }
 }
 
+fn String numeric8_rhs(Instr* ins) {
+    DString out = dstring::new(workmem);
+    defer out.free();
+    if (ins.operand_kind != OperandKind.IMMEDIATE) {
+        out.appendf("r%d", ins.c);
+        return out.copy_str(workmem);
+    }
+    bool shift = ins.alu_op == AluOp.SHL || ins.alu_op == AluOp.SHR ||
+        ins.alu_op == AluOp.USHR;
+    if (shift) {
+        long value = immediate_i64(ins.immediate);
+        if (value == -9223372036854775807 - 1) {
+            out.append("INT64_MIN");
+        } else {
+            out.appendf("%dLL", value);
+        }
+    } else {
+        out.appendf("0x%02xULL", (uint)ins.immediate.bits);
+    }
+    return out.copy_str(workmem);
+}
+
+fn String numeric8_wrap_helper(AluOp op, ScalarType type) {
+    bool signed = type == ScalarType.I8;
+    assert(signed || type == ScalarType.U8);
+    switch (op) {
+        case AluOp.ADD: return signed ? "rez_i8_add" : "rez_u8_add";
+        case AluOp.SUB: return signed ? "rez_i8_sub" : "rez_u8_sub";
+        case AluOp.MUL: return signed ? "rez_i8_mul" : "rez_u8_mul";
+        default: unreachable();
+    }
+}
+
+fn String numeric8_checked_helper(AluOp op, ScalarType type) {
+    bool signed = type == ScalarType.I8;
+    assert(signed || type == ScalarType.U8);
+    switch (op) {
+        case AluOp.CADD: return signed ? "rez_i8_cadd" : "rez_u8_cadd";
+        case AluOp.CSUB: return signed ? "rez_i8_csub" : "rez_u8_csub";
+        case AluOp.CMUL: return signed ? "rez_i8_cmul" : "rez_u8_cmul";
+        default: unreachable();
+    }
+}
+
+fn void emit_numeric8_division(Output* out, int ind, Instr* ins, String rhs) {
+    bool signed = ins.scalar_type == ScalarType.I8;
+    assert(signed || ins.scalar_type == ScalarType.U8);
+    String guard = signed ? "rez_i8_div_invalid" : "rez_u8_div_invalid";
+    pad(out, ind);
+    out.appendf("if (%s(r%d, %s)) {\n", guard, ins.b, rhs);
+    emit_fault(out, ind + 1, ins.line, "division", "");
+    pad(out, ind);
+    out.append_string("}\n");
+    String helper;
+    if (ins.alu_op == AluOp.DIV) {
+        helper = signed ? "rez_i8_div" : "rez_u8_div";
+    } else {
+        helper = signed ? "rez_i8_mod" : "rez_u8_mod";
+    }
+    pad(out, ind);
+    out.appendf("r%d = %s(r%d, %s);\n", ins.a, helper, ins.b, rhs);
+}
+
+fn void emit_numeric8_shift(Output* out, int ind, Instr* ins, String rhs) {
+    pad(out, ind);
+    out.appendf("if (rez_shift8_invalid(%s)) {\n", rhs);
+    emit_fault(out, ind + 1, ins.line, "shift", "");
+    pad(out, ind);
+    out.append_string("}\n");
+    bool signed = ins.scalar_type == ScalarType.I8;
+    assert(signed || ins.scalar_type == ScalarType.U8);
+    String helper;
+    switch (ins.alu_op) {
+        case AluOp.SHL: helper = signed ? "rez_i8_shl" : "rez_u8_shl";
+        case AluOp.SHR: helper = "rez_i8_shr";
+        case AluOp.USHR: helper = signed ? "rez_i8_ushr" : "rez_u8_ushr";
+        default: unreachable();
+    }
+    pad(out, ind);
+    out.appendf("r%d = %s(r%d, %s);\n", ins.a, helper, ins.b, rhs);
+}
+
+fn void emit_numeric8_alu3(Output* out, int ind, Instr* ins) {
+    String rhs = numeric8_rhs(ins);
+    if (ins.alu_op == AluOp.CADD || ins.alu_op == AluOp.CSUB || ins.alu_op == AluOp.CMUL) {
+        String helper = numeric8_checked_helper(ins.alu_op, ins.scalar_type);
+        emit_checked_arith(out, ind, ins, helper, rhs);
+        return;
+    }
+    if (ins.alu_op == AluOp.DIV || ins.alu_op == AluOp.MOD) {
+        emit_numeric8_division(out, ind, ins, rhs);
+        return;
+    }
+    if (ins.alu_op == AluOp.SHL || ins.alu_op == AluOp.SHR || ins.alu_op == AluOp.USHR) {
+        emit_numeric8_shift(out, ind, ins, rhs);
+        return;
+    }
+    bool self_slt = ins.alu_op == AluOp.SLT &&
+        ins.operand_kind == OperandKind.REGISTER && ins.b == ins.c;
+    if (self_slt) {
+        pad(out, ind);
+        out.appendf("r%d = 0;\n", ins.a);
+        return;
+    }
+    if (ins.alu_op == AluOp.ADD || ins.alu_op == AluOp.SUB || ins.alu_op == AluOp.MUL) {
+        String helper = numeric8_wrap_helper(ins.alu_op, ins.scalar_type);
+        pad(out, ind);
+        out.appendf("r%d = %s(r%d, %s);\n", ins.a, helper, ins.b, rhs);
+        return;
+    }
+    if (ins.alu_op == AluOp.SLT || ins.alu_op == AluOp.ULT) {
+        String canonical = ins.scalar_type == ScalarType.I8
+            ? "rez_i8_from_bits" : "rez_u8_from_bits";
+        pad(out, ind);
+        out.appendf("r%d = %s(rez_i64_bits(r%d)) < %s(%s);\n",
+                    ins.a, canonical, ins.b, canonical, rhs);
+        return;
+    }
+    String operator;
+    switch (ins.alu_op) {
+        case AluOp.AND: operator = "&";
+        case AluOp.OR: operator = "|";
+        case AluOp.XOR: operator = "^";
+        default: unreachable("non-bitwise numeric8 operation");
+    }
+    String canonical = ins.scalar_type == ScalarType.I8
+        ? "rez_i8_from_bits" : "rez_u8_from_bits";
+    pad(out, ind);
+    out.appendf("r%d = %s(rez_i64_bits(r%d) %s rez_i64_bits(%s));\n",
+                ins.a, canonical, ins.b, operator, rhs);
+}
+
+fn void emit_numeric8_alu1(Output* out, int ind, Instr* ins) {
+    AluOp op = ins.alu_op == AluOp.INC ? AluOp.ADD : AluOp.SUB;
+    assert(ins.alu_op == AluOp.INC || ins.alu_op == AluOp.DEC);
+    String helper = numeric8_wrap_helper(op, ins.scalar_type);
+    pad(out, ind);
+    out.appendf("r%d = %s(r%d, 1);\n", ins.a, helper, ins.a);
+}
+
 fn void emit_alu3(Output* out, int ind, Instr* ins) {
+    if (ins.scalar_type != ScalarType.I64) {
+        emit_numeric8_alu3(out, ind, ins);
+        return;
+    }
     DString rhs = dstring::new(workmem);
     defer rhs.free();
     bool immediate = ins.operand_kind == OperandKind.IMMEDIATE;
@@ -892,7 +1039,20 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
 
 fn void emit_mov(Output* out, int ind, Instr* ins) {
     bool immediate = ins.operand_kind == OperandKind.IMMEDIATE;
-    if (!immediate && ins.a == ins.b) return;
+    if (ins.scalar_type == ScalarType.I64 && !immediate && ins.a == ins.b) return;
+    if (ins.scalar_type != ScalarType.I64) {
+        assert(ins.scalar_type == ScalarType.I8 || ins.scalar_type == ScalarType.U8);
+        String helper = ins.scalar_type == ScalarType.I8
+            ? "rez_i8_from_bits" : "rez_u8_from_bits";
+        pad(out, ind);
+        if (immediate) {
+            out.appendf("r%d = %s(0x%02xULL);\n",
+                        ins.a, helper, (uint)ins.immediate.bits);
+        } else {
+            out.appendf("r%d = %s((uint64_t)r%d);\n", ins.a, helper, ins.b);
+        }
+        return;
+    }
     long value = immediate_i64(ins.immediate);
     pad(out, ind);
     if (immediate) {
@@ -919,9 +1079,13 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
                 emit_mov(out, ind, ins);
             case Op.ALU3: emit_alu3(out, ind, ins);
             case Op.ALU1:
-                pad(out, ind);
-                out.appendf("r%d = %s(r%d, 1);\n", ins.a,
-                            ins.alu_op == AluOp.INC ? "rez_i64_add" : "rez_i64_sub", ins.a);
+                if (ins.scalar_type != ScalarType.I64) {
+                    emit_numeric8_alu1(out, ind, ins);
+                } else {
+                    pad(out, ind);
+                    out.appendf("r%d = %s(r%d, 1);\n", ins.a,
+                                ins.alu_op == AluOp.INC ? "rez_i64_add" : "rez_i64_sub", ins.a);
+                }
             case Op.PRINT:
                 pad(out, ind);
                 out.appendf("printf(\"%%lld\\n\", (long long)r%d);\n", ins.a);
@@ -1275,9 +1439,13 @@ fn void emit_body(Output* out, int func) {
             case Op.ALU3:
                 emit_alu3(out, ind, ins);
             case Op.ALU1:
-                pad(out, ind);
-                out.appendf("r%d = %s(r%d, 1);\n", ins.a,
-                            ins.alu_op == AluOp.INC ? "rez_i64_add" : "rez_i64_sub", ins.a);
+                if (ins.scalar_type != ScalarType.I64) {
+                    emit_numeric8_alu1(out, ind, ins);
+                } else {
+                    pad(out, ind);
+                    out.appendf("r%d = %s(r%d, 1);\n", ins.a,
+                                ins.alu_op == AluOp.INC ? "rez_i64_add" : "rez_i64_sub", ins.a);
+                }
             case Op.PRINT:
                 pad(out, ind);
                 out.appendf("printf(\"%%lld\\n\", (long long)r%d);\n", ins.a);

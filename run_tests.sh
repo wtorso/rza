@@ -50,7 +50,9 @@ run_function_style() {
             tests/ownership_fuzz.c3 tests/execution_oracle.c3 tests/execution_proc_oracle.c3 \
             tests/execution_proc_model.c3 tests/execution_cascade_oracle.c3 \
             tests/execution_cascade_model.c3 tests/execution_shrink.c3 \
-            tests/execution_coverage.c3 tests/lsp_client.c3 tests/fault_scenarios.c3 \
+            tests/execution_coverage.c3 tests/numeric8_oracle.c3 \
+            tests/numeric8_reference.c3 tests/numeric8_coverage.c3 \
+            tests/lsp_client.c3 tests/fault_scenarios.c3 \
             tests/fault_smoke.c3 tests/proc_contracts.c3 tests/contract_model.c3 \
             tests/contract_fuzz.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
             tests/lsp_completion_smoke.c3 tests/lsp_references_smoke.c3 \
@@ -294,6 +296,7 @@ run_lsp_smoke() { run_c3 lsp_smoke lsp; }
 run_fuzz() { run_c3 fuzz fuzz; }
 run_ownership_fuzz() { run_c3 ownership_fuzz ownership; }
 run_execution_oracle() { run_c3 execution_oracle oracle; }
+run_numeric8_oracle() { run_c3 numeric8_oracle numeric8-oracle; }
 run_fault_smoke() { run_c3 fault_smoke faults; }
 run_proc_contracts() { run_c3 proc_contracts contracts; }
 run_contract_fuzz() { run_c3 contract_fuzz contract-fuzz; }
@@ -364,13 +367,14 @@ run_c3_unit() {
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
     if ! "$c3c_bin" compile-test src/rez3asm.c3 src/compiler/model.c3 \
-            src/compiler/numeric.c3 src/compiler/layout.c3 src/compiler/checker.c3 \
-            src/compiler/emitter.c3 src/lsp_server.c3 src/lsp_navigation.c3 \
-            src/lsp_completion.c3 src/lsp_references.c3 src/memory_guard.c3 \
-            src/scratch_memory.c3 tests/output_writer_test.c3 \
+            src/compiler/numeric.c3 src/compiler/numeric_parse.c3 src/compiler/layout.c3 \
+            src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp_server.c3 \
+            src/lsp_navigation.c3 src/lsp_completion.c3 src/lsp_references.c3 \
+            src/memory_guard.c3 src/scratch_memory.c3 tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
-            tests/numeric_model_test.c3 tests/layout_test.c3 tests/view_test.c3 \
-            tests/lsp_navigation_test.c3 tests/harness.c3 tests/function_length.c3 \
+            tests/numeric_model_test.c3 tests/numeric8_test.c3 tests/layout_test.c3 \
+            tests/view_test.c3 tests/lsp_navigation_test.c3 tests/harness.c3 \
+            tests/function_length.c3 \
             tests/source_style.c3 tests/source_style_test.c3 tests/function_length_test.c3 \
             -o c3_tests --output-dir "$BUILD" >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
@@ -639,6 +643,24 @@ run_viol viol_host_await STRUCT
 run_good i64_immediates
 run_good storeb
 run_good slt
+run_good numeric8_access
+run_good numeric8_wrap
+run_good numeric8_div_shift
+run_good numeric8_async
+run_dead numeric8_cadd_i8_overflow "FAULT line 2: arithmetic overflow"
+run_dead numeric8_cadd_u8_overflow "FAULT line 2: arithmetic overflow"
+run_dead numeric8_cinc_i8_overflow "FAULT line 2: arithmetic overflow"
+run_dead numeric8_cdec_u8_underflow "FAULT line 2: arithmetic overflow"
+run_dead numeric8_div_i8_min_minus_one "FAULT line 2: division"
+run_dead numeric8_div_u8_zero "FAULT line 3: division"
+run_dead numeric8_shift_u8_eight "FAULT line 2: shift"
+run_dead numeric8_checked_index_attack "FAULT line 4: arithmetic overflow"
+run_viol viol_numeric8_i8_literal STRUCT tests/viol_numeric8_i8_literal.stderr
+run_viol viol_numeric8_u8_literal STRUCT tests/viol_numeric8_u8_literal.stderr
+run_viol viol_numeric8_negative_hex STRUCT tests/viol_numeric8_negative_hex.stderr
+run_viol viol_numeric8_opcode_type STRUCT tests/viol_numeric8_opcode_type.stderr
+run_viol viol_numeric8_layout_mismatch STRUCT tests/viol_numeric8_layout_mismatch.stderr
+run_viol viol_numeric8_reserved STRUCT tests/viol_numeric8_reserved.stderr
 run_viol viol_i64_immediate STRUCT
 run_viol viol_i64_hex STRUCT
 run_viol viol_storeb STRUCT
@@ -787,6 +809,7 @@ run_cli_contract
 run_lsp_smoke
 run_ownership_fuzz
 run_execution_oracle
+run_numeric8_oracle
 run_fault_smoke
 run_proc_contracts
 run_contract_fuzz
@@ -800,8 +823,8 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=207
-if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=206; fi
+EXPECTED_PASS=226
+if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=225; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

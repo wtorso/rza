@@ -1,0 +1,4 @@
+mov.u8 %r0, 1
+mov.u8 %r1, 0
+div.u8 %r2, %r0, %r1
+ret

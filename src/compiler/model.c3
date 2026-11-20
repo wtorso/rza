@@ -61,6 +61,7 @@ struct Frame {
 enum ScalarType : char {
 	NONE,
 	U8,
+	I8,
 	I64
 }
 

@@ -1,0 +1,29 @@
+res input, field, 1
+res result, field, 1
+med input_m, input, field
+med result_m, result, field
+proc checked(input_m: ro, result_m: rw):
+    load.u8 %r1, [input_m + 0]
+    cadd.u8 %r2, %r1, 1
+    store.u8 [result_m + 0], %r2
+    ret
+mov.u8 %r0, 41
+store.u8 [input_m + 0], %r0
+casc sync: input_m, result_m -> sync_out[field]
+    load.i8 %r0, [input_m + 0]
+    cadd.i8 %r1, %r0, 1
+    store.i8 [result_m + 0], %r1
+endc
+acasc async: input_m, result_m -> async_out
+    load.u8 %r0, [input_m + 0]
+    cinc.u8 %r0
+    store.u8 [result_m + 0], %r0
+endc
+await %r0
+print %r0
+load.u8 %r0, [result_m + 0]
+print %r0
+call checked
+load.u8 %r0, [result_m + 0]
+print %r0
+ret

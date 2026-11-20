@@ -1,0 +1,42 @@
+mov.i8 %r0, -128
+div.i8 %r1, %r0, 2
+print %r1
+mod.i8 %r1, %r0, 3
+print %r1
+div.i8 %r1, %r0, -2
+print %r1
+mod.i8 %r1, %r0, -2
+print %r1
+mov.i8 %r0, -7
+div.i8 %r1, %r0, 2
+print %r1
+mod.i8 %r1, %r0, 2
+print %r1
+mov.u8 %r0, 255
+div.u8 %r1, %r0, 2
+print %r1
+mod.u8 %r1, %r0, 2
+print %r1
+mov.i8 %r0, 0x80
+shl.i8 %r1, %r0, 0
+print %r1
+shl.i8 %r1, %r0, 1
+print %r1
+shr.i8 %r1, %r0, 0
+print %r1
+shr.i8 %r1, %r0, 7
+print %r1
+ushr.i8 %r1, %r0, 7
+print %r1
+mov.u8 %r0, 0x80
+shl.u8 %r1, %r0, 1
+print %r1
+ushr.u8 %r1, %r0, 7
+print %r1
+mov.u8 %r0, 0xff
+ushr.u8 %r1, %r0, 3
+print %r1
+mov.i8 %r0, 0x7f
+shl.i8 %r1, %r0, 1
+print %r1
+ret

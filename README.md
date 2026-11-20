@@ -131,8 +131,9 @@ byte-identical before they can be published. Checksums verify integrity; they ar
 
 ## Memory and execution
 
-Programs use sixteen signed 64-bit registers, `%r0` through `%r15`. Memory is
-organized into cells and is never addressed through a raw pointer in RZA code.
+Programs use sixteen 64-bit registers, `%r0` through `%r15`, as bit containers.
+Each instruction defines how their bits are interpreted. Memory is organized into
+cells and is never addressed through a raw pointer in RZA code.
 
 - `field` is the root frame and lives for the whole program.
 - `cav name, parent` creates a frame that owns a fixed-size memory arena.
@@ -186,6 +187,33 @@ right shift; `ushr` is a logical right shift. Division by zero, overflowing
 signed division or remainder, and invalid shift counts produce `FAULT`. A
 constant out-of-bounds access is rejected during validation; a
 register-dependent out-of-bounds access is a runtime `FAULT`.
+
+### 8-bit typed operations
+
+The `.i8` and `.u8` suffixes select signed and unsigned 8-bit semantics for `mov`,
+`load`, `store`, `add`, `sub`, `mul`, `inc`, `dec`, `cadd`, `csub`, `cmul`, `cinc`,
+`cdec`, `and`, `or`, `xor`, `div`, `mod`, `shl`, and `ushr`. `.i8` also supports
+`shr` and `slt`; `.u8` also supports `ult`. These are the only typed suffixes:
+`.i64`, wider integer types, floating point, and invalid operation/type pairs are
+rejected. Legacy `loadb`/`storeb` remain aliases for `load.u8`/`store.u8`.
+
+Typed operations read the low eight bits of their register operands. An `i8`
+result sign-extends into its 64-bit register; a `u8` result zero-extends. Typed
+stores write the low eight bits. A typed layout field requires the exactly
+matching load/store type. Raw cells retain byte offsets, while typed cells retain
+element indices.
+
+Wrapping arithmetic is modulo 256. Checked arithmetic faults outside the signed
+range -128..127 or unsigned range 0..255. Signed division truncates toward zero;
+zero divisors and -128/-1 fault for both signed division and remainder. Unsigned
+division and remainder fault only on zero. Shift counts must be 0..7: `shl`
+discards high bits, `shr.i8` fills the sign bit, and `ushr` fills zeroes.
+
+Decimal literals are -128..127 for `i8` and 0..255 for `u8`; any leading minus,
+including `-0`, is rejected for `u8`. Typed hexadecimal literals range from `0x0`
+through `0xff`, allow leading zeroes, and cannot have a negative sign. For `i8`,
+patterns `0x80` through `0xff` represent negative values after sign extension.
+`print` still prints the resulting register as signed i64.
 
 `crc32c DST, STATE, WORD` updates CRC32C over the eight little-endian bytes of
 `WORD`. Initial and final XOR remain explicit. The runtime uses SSE4.2 when the
@@ -241,9 +269,10 @@ ret
 ```
 
 The value after `+` is an element index for a typed cell, not a byte offset. The
-compiler calculates the record stride and field offsets. Use `load`/`store` for
-`i64` fields and `loadb`/`storeb` for `u8` fields. Raw cells instead use byte
-offsets and have no field selector.
+compiler calculates the record stride and field offsets. Use legacy `load`/`store`
+for `i64` fields, and `load.i8`/`store.i8` or `load.u8`/`store.u8` for the matching
+8-bit field types. The `loadb`/`storeb` aliases remain available for `u8`. Raw
+cells instead use byte offsets and have no field selector.
 
 See [the ring buffer example](examples/ring_buffer.rza) for typed state, an array
 of records, and fixed-capacity index arithmetic.
@@ -317,7 +346,7 @@ and workload; they do not establish a universal advantage over C or Rust.
 
 ## Current limits
 
-- Only flat `u8`/`i64` records and fixed-size arrays are supported. Nested and
+- Only flat `u8`/`i8`/`i64` records and fixed-size arrays are supported. Nested and
   packed layouts, unions, bitfields, and a portable wire ABI are not implemented.
 - There are no OS threads, garbage collection, recursion, physical memory moves,
   transactional rollback, or general-purpose networking primitives.
@@ -336,8 +365,8 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=207 FAIL=0` on POSIX and Windows MSVC, and
-`PASS=206 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
+Expected results are `PASS=226 FAIL=0` on POSIX and Windows MSVC, and
+`PASS=225 FAIL=0` on Windows Zig. Benchmark correctness checks require `rustc`
 and run on POSIX and Windows MSVC. Windows Zig retains its previous scope because
 Rust static-library linking conflicts with Zig compiler-rt weak symbols; do not mask it
 with `FORCE:MULTIPLE`. The full timing script `bench/run.sh` remains Linux-only; MSVC runs

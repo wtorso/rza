@@ -949,7 +949,7 @@ fn int resolve_mem_med(
 ) {
 	String mname;
 	String field_name;
-	assert(desc != null && desc.has_access_type);
+	assert(desc != null && desc.has_scalar_type);
 	String opname = desc.source_name;
 	*field_index = -1;
 	if (!parse_mem(tok, line, &mname, off, off_reg, &field_name)) return -1;
@@ -983,7 +983,7 @@ fn int resolve_mem_med(
 			viol(line, "STRUCT", "field access requires typed cell");
 			return -1;
 		}
-		int width = scalar_width(desc.access_type);
+		int width = scalar_width(desc.scalar_type);
 		int size  = meds[mi].extent;
 		bool fixed_bad = *off >= 0 && size >= 0 && (*off > size || width > size - *off);
 		if (*off_reg < 0 && (*off < 0 || fixed_bad)) {
@@ -1016,7 +1016,7 @@ fn void op_load2(String rest, int line, OpDesc* desc) {
 			.y = field,
 			.b = off,
 			.c = off_reg,
-			.scalar_type = desc.access_type
+			.scalar_type = desc.scalar_type
 		}
 	);
 }
@@ -1039,29 +1039,32 @@ fn void op_store2(String rest, int line, OpDesc* desc) {
 			.y = field,
 			.b = off,
 			.c = off_reg,
-			.scalar_type = desc.access_type
+			.scalar_type = desc.scalar_type
 		}
 	);
 }
 
 // --- данные и поток ----------------------------------------------------------------
-fn void op_mov(String rest, int line) {
+fn void op_mov(String rest, int line, OpDesc* desc) {
 	assert(line > 0);
 	assert(rest.len <= SOURCE_BYTES_MAX);
 	String[2] buf;
-	if (!split_ops_exact(rest, 2, line, "mov", &buf)) return;
+	if (!split_ops_exact(rest, 2, line, desc.source_name, &buf)) return;
 	int dst = parse_reg(buf[0], line);
 	if (dst < 0) return;
 	if (is_int(buf[1])) {
 		Immediate value;
-		if (!parse_i64(buf[1], line, &value)) return;
+		bool valid = desc.typed
+			? parse_typed_immediate(buf[1], desc.scalar_type, line, &value)
+			: parse_i64(buf[1], line, &value);
+		if (!valid) return;
 		add_instr({
 			.op = Op.MOV,
 			.line = line,
 			.a = dst,
 			.immediate = value,
 			.operand_kind = OperandKind.IMMEDIATE,
-			.scalar_type = ScalarType.I64
+			.scalar_type = desc.scalar_type
 		});
 		return;
 	}
@@ -1073,7 +1076,7 @@ fn void op_mov(String rest, int line) {
 		.a = dst,
 		.b = src,
 		.operand_kind = OperandKind.REGISTER,
-		.scalar_type = ScalarType.I64
+		.scalar_type = desc.scalar_type
 	});
 }
 
@@ -1087,7 +1090,12 @@ fn void op_alu3(String rest, int line, OpDesc* desc) {
 	if (d < 0 || a < 0) return;
 	if (is_int(buf[2])) {
 		Immediate value;
-		if (!parse_i64(buf[2], line, &value)) return;
+		bool shift_count = desc.alu_op == AluOp.SHL || desc.alu_op == AluOp.SHR ||
+			desc.alu_op == AluOp.USHR;
+		bool valid = desc.typed && !shift_count
+			? parse_typed_immediate(buf[2], desc.scalar_type, line, &value)
+			: parse_i64(buf[2], line, &value);
+		if (!valid) return;
 		add_instr({
 			.op = Op.ALU3,
 			.line = line,
@@ -1096,7 +1104,7 @@ fn void op_alu3(String rest, int line, OpDesc* desc) {
 			.immediate = value,
 			.alu_op = desc.alu_op,
 			.operand_kind = OperandKind.IMMEDIATE,
-			.scalar_type = ScalarType.I64
+			.scalar_type = desc.scalar_type
 		});
 		return;
 	}
@@ -1110,7 +1118,7 @@ fn void op_alu3(String rest, int line, OpDesc* desc) {
 		.c = b,
 		.alu_op = desc.alu_op,
 		.operand_kind = OperandKind.REGISTER,
-		.scalar_type = ScalarType.I64
+		.scalar_type = desc.scalar_type
 	});
 }
 
@@ -1130,7 +1138,7 @@ fn void op_alu1(String rest, int line, OpDesc* desc) {
 			.immediate = immediate_from_i64(1),
 			.alu_op = is_inc ? AluOp.CADD : AluOp.CSUB,
 			.operand_kind = OperandKind.IMMEDIATE,
-			.scalar_type = ScalarType.I64
+			.scalar_type = desc.scalar_type
 		});
 		return;
 	}
@@ -1139,7 +1147,7 @@ fn void op_alu1(String rest, int line, OpDesc* desc) {
 		.line = line,
 		.a = r,
 		.alu_op = desc.alu_op,
-		.scalar_type = ScalarType.I64
+		.scalar_type = desc.scalar_type
 	});
 }
 
@@ -1551,8 +1559,8 @@ fn void parse_instr(String line, int n, bool in_casc) {
 	}
 	String op   = line[:sp];
 	String rest = (sp < line.len) ? line[sp + 1..].trim() : "";
-	OpDesc* desc = find_op_desc(op);
-	if (desc == null) {
+	OpDesc resolved;
+	if (!resolve_op_desc(op, &resolved)) {
 		if (in_casc) {
 			cascade_op_viol(op, n);
 		} else {
@@ -1560,6 +1568,7 @@ fn void parse_instr(String line, int n, bool in_casc) {
 		}
 		return;
 	}
+	OpDesc* desc = &resolved;
 	if (in_casc && !op_desc_cascade_ok(desc, cascades[cur_casc].is_async)) {
 		cascade_op_viol(op, n);
 		return;
@@ -1575,7 +1584,7 @@ fn void parse_instr(String line, int n, bool in_casc) {
 		case Op.PROBE: op_probe(rest, n);
 		case Op.LOAD: op_load2(rest, n, desc);
 		case Op.STORE: op_store2(rest, n, desc);
-		case Op.MOV: op_mov(rest, n);
+		case Op.MOV: op_mov(rest, n, desc);
 		case Op.ALU3: op_alu3(rest, n, desc);
 		case Op.ALU1: op_alu1(rest, n, desc);
 		case Op.PRINT: op_print(rest, n);
