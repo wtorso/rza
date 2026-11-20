@@ -84,12 +84,12 @@ fi
 
 cross_cc="$PWD/build/toolchain/zig-x86_64-linux-0.16.0/zig cc -target aarch64-linux-musl -static"
 run_target_negative missing_target_log "target arch" "$PATH" "$cross_cc" \
-    /usr/bin/qemu-aarch64-static 134 || exit 1
+    /usr/bin/qemu-aarch64 134 || exit 1
 run_target_negative missing_target_compiler "compiler" "$PATH" /nonexistent-target-cc \
-    /usr/bin/qemu-aarch64-static 134 || exit 1
+    /usr/bin/qemu-aarch64 134 || exit 1
 run_target_negative mismatched_launcher "launcher" "$PATH" "$cross_cc" /bin/true 134 || exit 1
 run_target_negative invalid_expected_pass "RZA_TARGET_EXPECTED_PASS" "$PATH" "$cross_cc" \
-    /usr/bin/qemu-aarch64-static invalid || exit 1
+    /usr/bin/qemu-aarch64 invalid || exit 1
 
 mkdir --parents "$work/no-readelf-bin" "$work/no-awk-bin"
 cp -as /usr/bin/. "$work/no-readelf-bin/"
@@ -98,6 +98,6 @@ rm --force "$work/no-readelf-bin/readelf" "$work/no-awk-bin/awk"
 ln -s "$PWD/build/toolchain/c3/c3c" "$work/no-readelf-bin/c3c"
 ln -s "$PWD/build/toolchain/c3/c3c" "$work/no-awk-bin/c3c"
 run_target_negative missing_readelf "readelf" "$work/no-readelf-bin" "$cross_cc" \
-    /usr/bin/qemu-aarch64-static 134 || exit 1
+    /usr/bin/qemu-aarch64 134 || exit 1
 run_target_negative missing_awk "awk" "$work/no-awk-bin" "$cross_cc" \
-    /usr/bin/qemu-aarch64-static 134 || exit 1
+    /usr/bin/qemu-aarch64 134 || exit 1
