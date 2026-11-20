@@ -65,7 +65,7 @@ the RZA CLI.
 
 The validated configuration is:
 
-- Zig 0.16.0 with Clang 21.1.0 as the cross-compiler.
+- Zig 0.17.1 with Clang 22.1.8 as the cross-compiler.
 - `aarch64-linux-musl`: little-endian LP64, static musl, no external sysroot,
   launched with `/usr/bin/qemu-aarch64-static` and no `-L` prefix.
 - `riscv64-linux-musl`: little-endian LP64D, static musl, no external sysroot,

@@ -64,7 +64,7 @@ ${CC:-cc} -std=c23 -O2 -pedantic -Wall -Wextra -Werror -I include/rza -I . \
 
 Проверенная конфигурация:
 
-- Zig 0.16.0 с Clang 21.1.0 в роли cross-compiler.
+- Zig 0.17.1 с Clang 22.1.8 в роли cross-compiler.
 - `aarch64-linux-musl`: little-endian LP64, static musl, внешний sysroot не нужен,
   launcher `/usr/bin/qemu-aarch64-static` без префикса `-L`.
 - `riscv64-linux-musl`: little-endian LP64D, static musl, внешний sysroot не нужен,

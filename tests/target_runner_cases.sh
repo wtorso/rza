@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 work=build/target-runner-cases
 rm --recursive --force "$work"
 mkdir --parents "$work"
-zig=build/toolchain/zig-x86_64-linux-0.16.0/zig
+zig=build/toolchain/zig-x86_64-linux-0.17.1/zig
 test -x "$zig"
 printf 'int main(void) { return 42; }\n' >"$work/probe.c"
 "$zig" cc -target aarch64-linux-musl -std=c23 -pedantic -Wall -Wextra -Werror \

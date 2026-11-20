@@ -37,18 +37,18 @@ jobs:
           tar -xzf build/toolchain/c3.tar.gz -C build/toolchain
           printf '%s\n' "$PWD/build/toolchain/c3" >> "$GITHUB_PATH"
           "$PWD/build/toolchain/c3/c3c" --version
-      - name: Install Zig 0.16.0
+      - name: Install Zig 0.17.1
         if: matrix.cc == 'zig cc'
         shell: bash
         run: |
-          curl -fL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz \
+          curl -fL https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz \
             -o build/toolchain/zig.tar.xz
           printf '%s  %s\n' \
-            '70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00' \
+            '3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a' \
             build/toolchain/zig.tar.xz | sha256sum --check
           tar -xJf build/toolchain/zig.tar.xz -C build/toolchain
-          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
-          "$PWD/build/toolchain/zig-x86_64-linux-0.16.0/zig" version
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-linux-0.17.1" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-linux-0.17.1/zig" version
       - name: Quickstart
         shell: bash
         env:
@@ -128,17 +128,17 @@ jobs:
           tar -xzf build/toolchain/c3.tar.gz -C build/toolchain
           printf '%s\n' "$PWD/build/toolchain/c3" >> "$GITHUB_PATH"
           "$PWD/build/toolchain/c3/c3c" --version
-      - name: Install Zig 0.16.0
+      - name: Install Zig 0.17.1
         shell: bash
         run: |
-          curl -fL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz \
+          curl -fL https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz \
             -o build/toolchain/zig.tar.xz
           printf '%s  %s\n' \
-            '70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00' \
+            '3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a' \
             build/toolchain/zig.tar.xz | sha256sum --check
           tar -xJf build/toolchain/zig.tar.xz -C build/toolchain
-          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
-          "$PWD/build/toolchain/zig-x86_64-linux-0.16.0/zig" version
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-linux-0.17.1" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-linux-0.17.1/zig" version
       - name: Install QEMU and ELF tools
         shell: bash
         run: |
@@ -194,17 +194,17 @@ jobs:
           test -n "$c3c_dir"
           printf '%s\n' "$c3c_dir" >> "$GITHUB_PATH"
           "$c3c_dir/c3c.exe" --version
-      - name: Install Zig 0.16.0
+      - name: Install Zig 0.17.1
         shell: bash
         run: |
-          curl.exe -fL https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip \
+          curl.exe -fL https://ziglang.org/download/0.17.1/zig-x86_64-windows-0.17.1.zip \
             -o build/toolchain/zig.zip
           printf '%s  %s\n' \
-            '68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e' \
+            'b03f477a1943673e02aca0f570e8030dffd536ce1f45cbc4d3326ec31159562e' \
             build/toolchain/zig.zip | sha256sum --check
           unzip -q build/toolchain/zig.zip -d build/toolchain
-          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-windows-0.16.0" >> "$GITHUB_PATH"
-          "$PWD/build/toolchain/zig-x86_64-windows-0.16.0/zig.exe" version
+          printf '%s\n' "$PWD/build/toolchain/zig-x86_64-windows-0.17.1" >> "$GITHUB_PATH"
+          "$PWD/build/toolchain/zig-x86_64-windows-0.17.1/zig.exe" version
       - name: Quickstart
         shell: bash
         run: |

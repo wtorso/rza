@@ -82,7 +82,7 @@ if [ -z "${RZA_TARGET_ARCH:-}" ]; then
     exit 0
 fi
 
-cross_cc="$PWD/build/toolchain/zig-x86_64-linux-0.16.0/zig cc -target aarch64-linux-musl -static"
+cross_cc="$PWD/build/toolchain/zig-x86_64-linux-0.17.1/zig cc -target aarch64-linux-musl -static"
 run_target_negative missing_target_log "target arch" "$PATH" "$cross_cc" \
     /usr/bin/qemu-aarch64 134 || exit 1
 run_target_negative missing_target_compiler "compiler" "$PATH" /nonexistent-target-cc \
