@@ -43,19 +43,19 @@ expect_case() {
     passed=$((passed + 1))
 }
 
-expect_case missing-arch 2 "" qemu-aarch64-static "$work/aarch64" 0
+expect_case missing-arch 2 "" qemu-aarch64 "$work/aarch64" 0
 expect_case missing-launcher 2 aarch64 "" "$work/aarch64" 0
-expect_case missing-log 2 aarch64 qemu-aarch64-static "$work/aarch64" 0
-expect_case invalid-arch 2 arm64 qemu-aarch64-static "$work/aarch64" 0
+expect_case missing-log 2 aarch64 qemu-aarch64 "$work/aarch64" 0
+expect_case invalid-arch 2 arm64 qemu-aarch64 "$work/aarch64" 0
 expect_case missing-qemu 2 aarch64 /nonexistent-qemu "$work/aarch64" 0
-expect_case missing-readelf 2 aarch64 /usr/bin/qemu-aarch64-static "$work/aarch64" 0
+expect_case missing-readelf 2 aarch64 /usr/bin/qemu-aarch64 "$work/aarch64" 0
 expect_case fake-launcher 2 aarch64 /bin/true "$work/aarch64" 0
-expect_case text-input 1 aarch64 qemu-aarch64-static "$work/text" 0
-expect_case host-aarch64 1 aarch64 qemu-aarch64-static "$work/x86_64" 0
-expect_case host-riscv64 1 riscv64 qemu-riscv64-static "$work/x86_64" 0
-expect_case wrong-target 1 riscv64 qemu-riscv64-static "$work/aarch64" 0
-expect_case aarch64-ok 42 aarch64 qemu-aarch64-static "$work/aarch64" 1
-expect_case riscv64-ok 42 riscv64 qemu-riscv64-static "$work/riscv64" 1
+expect_case text-input 1 aarch64 qemu-aarch64 "$work/text" 0
+expect_case host-aarch64 1 aarch64 qemu-aarch64 "$work/x86_64" 0
+expect_case host-riscv64 1 riscv64 qemu-riscv64 "$work/x86_64" 0
+expect_case wrong-target 1 riscv64 qemu-riscv64 "$work/aarch64" 0
+expect_case aarch64-ok 42 aarch64 qemu-aarch64 "$work/aarch64" 1
+expect_case riscv64-ok 42 riscv64 qemu-riscv64 "$work/riscv64" 1
 
 . ./cc.sh
 
@@ -76,7 +76,7 @@ expect_init() {
 
 expect_rza_run() {
     local name=$1 expected=$2 arch=$3 program=$4 expected_log=$5
-    local log="$work/$name.exec.log" status=0 lines=0 launcher="qemu-$arch-static"
+    local log="$work/$name.exec.log" status=0 lines=0 launcher="qemu-$arch"
     rm --force "$log"
     if [ -z "$arch" ]; then launcher=""; log=""; fi
     set +e
@@ -93,12 +93,12 @@ expect_rza_run() {
     passed=$((passed + 1))
 }
 
-expect_init init-missing-log 2 aarch64 qemu-aarch64-static "" 134
+expect_init init-missing-log 2 aarch64 qemu-aarch64 "" 134
 expect_init init-missing-launcher 2 aarch64 "" "$work/init.log" 134
-expect_init init-missing-arch 2 "" qemu-aarch64-static "$work/init.log" 134
+expect_init init-missing-arch 2 "" qemu-aarch64 "$work/init.log" 134
 expect_init init-native 0 "" "" "" 134
-expect_init init-target 0 aarch64 qemu-aarch64-static "$work/init.log" 134
-expect_init init-invalid-pass 2 aarch64 qemu-aarch64-static "$work/init.log" invalid
+expect_init init-target 0 aarch64 qemu-aarch64 "$work/init.log" 134
+expect_init init-invalid-pass 2 aarch64 qemu-aarch64 "$work/init.log" invalid
 expect_rza_run hook-native 42 "" "$work/x86_64" 0
 expect_rza_run hook-reject 1 aarch64 "$work/x86_64" 0
 expect_rza_run hook-target 42 aarch64 "$work/aarch64" 1
