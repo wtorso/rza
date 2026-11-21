@@ -268,8 +268,9 @@ Signed results sign-extend and unsigned results zero-extend into the 64-bit
 register. Typed stores write exactly that low-width bit pattern. A layout field
 requires the exact matching load/store type. Raw cells retain byte offsets; typed
 cells use element indices. Fields have alignment 2 for 16-bit and 4 for 32-bit
-types. Raw accesses may be unaligned and use defined byte copies (`memcpy` in the
-C23 output), never narrow pointer casts. Memory uses target byte order, not a
+types. Raw multi-byte accesses may be unaligned and use defined byte copies
+(`memcpy` in the C23 output), never narrow pointer casts. Byte accesses use
+defined unsigned-char loads and stores. Memory uses target byte order, not a
 portable wire format.
 
 Tests place independent canaries around raw stores and next to a 32-bit layout

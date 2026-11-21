@@ -267,9 +267,10 @@ Typed-операции читают только младшие 8, 16 или 32 
 расширением. Typed-store записывает ровно этот младший bit pattern. Тип load/store
 обязан точно совпадать с типом поля layout. Raw-ячейки используют byte offsets,
 typed-ячейки — element indices. Alignment равен 2 для 16-битных и 4 для 32-битных
-типов. Raw-доступ может быть unaligned и использует определённое копирование байтов
-(`memcpy` в C23), а не narrow pointer casts. Представление памяти следует target
-byte order и не является portable wire format.
+типов. Raw multi-byte доступ может быть unaligned и использует определённое
+копирование байтов (`memcpy` в C23), а не narrow pointer casts. Доступ к отдельным
+байтам использует определённые unsigned-char loads/stores. Представление памяти
+следует target byte order и не является portable wire format.
 
 Тесты размещают независимые canaries вокруг raw stores и рядом с 32-битным полем
 layout; generated C обязан копировать ровно два или четыре байта соответственно.

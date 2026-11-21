@@ -40,6 +40,13 @@ fn void view_access_uses_destination_extent() @test {
         "STRUCT", "load element index out of bounds");
 }
 
+fn void view_dynamic_length_still_rejects_index_beyond_cell() @test {
+    expect_layout_error("layout Entry: key:i64\nres entries, field, Entry[2]\n"
+        "med entries_m, entries, field\nview entries_v_m, entries_m, 0, %r0\n"
+        "load %r1, [entries_v_m + 2].key\n", 5,
+        "STRUCT", "load element index out of bounds");
+}
+
 fn void view_declaration_diagnostics() @test {
     expect_layout_error("res raw, field, 8\nmed raw_m, raw, field\n"
         "view missing_source_m, absent_m, 0, 1\n", 3,

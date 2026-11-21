@@ -241,7 +241,9 @@ fn bool check_typed_access(
 		return false;
 	}
 	int extent = meds[mediator_index].extent;
-	if (index_reg < 0 && (index < 0 || (extent >= 0 && index >= extent))) {
+	bool outside_cell = index < 0 || index >= cell.element_count;
+	bool outside_extent = extent >= 0 && index >= extent;
+	if (index_reg < 0 && (outside_cell || outside_extent)) {
 		viol(line, "STRUCT", cat({ opname, " element index out of bounds" }));
 		return false;
 	}

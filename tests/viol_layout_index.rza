@@ -7,3 +7,6 @@ load %r0, [entries_m + -1].key
 load %r0, [entries_m + 2].key
 load %r0, [scalar_m + 1].key
 load %r0, [entries_m + 2147483648].key
+mov %r0, 1
+view entries_v_m, entries_m, 0, %r0
+load %r0, [entries_v_m + 2].key
