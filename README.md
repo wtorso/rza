@@ -403,9 +403,10 @@ diagnostics, hover, definitions, references, and context-aware completion throug
 language server. Rename supports layouts, fields, frames, cells, mediators, and procedures,
 uses versioned edits, and is returned only when the renamed program passes the checker. Since
 each `.rza` file is a self-contained program, navigation and rename stay within the current
-document; labels are not included. Lightweight modes for
-[Emacs and Neovim](https://github.com/wtorso/rza-editors) provide syntax highlighting without
-requiring the compiler.
+document; labels are not included. Lightweight support for
+[Emacs](editors/emacs) and [Vim](editors/vim) is included in this repository.
+[Neovim](https://github.com/wtorso/rza-nvim) adds optional LSP integration through the same
+compiler. See [editor support](editors/README.md) for installation and ownership details.
 
 ## Benchmarks
 

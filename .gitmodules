@@ -1,3 +1,6 @@
 [submodule "editors/vscode"]
 	path = editors/vscode
 	url = ../rza-vscode
+[submodule "editors/nvim"]
+	path = editors/nvim
+	url = ../rza-nvim

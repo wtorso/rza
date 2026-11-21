@@ -20,6 +20,7 @@ stage_sources() {
     local root=$1 file
     git ls-files -z --cached --others --exclude-standard |
         while IFS= read -r -d '' file; do
+            if [ "$file" = ".gitmodules" ]; then continue; fi
             if [ ! -f "$file" ]; then continue; fi
             mkdir --parents "$root/$(dirname "$file")"
             cp -p "$file" "$root/$file"
