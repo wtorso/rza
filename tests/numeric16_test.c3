@@ -11,7 +11,7 @@ fn void numeric16_typed_surface_is_closed() @test {
     assert(unsigned_half != null && unsigned_half.signedness == Signedness.UNSIGNED);
     assert(unsigned_half.typed_syntax);
     assert(!scalar_type_desc(ScalarType.I64).typed_syntax);
-    assert(!@ok(find_scalar_type("i32")));
+    assert(find_scalar_type("i32") ?? ScalarType.NONE == ScalarType.I32);
     assert(!@ok(find_scalar_type("u64")));
     assert(!@ok(find_scalar_type("f32")));
     OpDesc desc;
@@ -22,7 +22,7 @@ fn void numeric16_typed_surface_is_closed() @test {
     assert(resolve_op_desc("store.i16", &desc));
     assert(desc.op == Op.STORE && desc.scalar_type == ScalarType.I16 && desc.write);
     assert(!resolve_op_desc("mov.i64", &desc));
-    assert(!resolve_op_desc("load.u32", &desc));
+    assert(!resolve_op_desc("load.u64", &desc));
     assert(!resolve_op_desc("loadb.u16", &desc));
 }
 
@@ -98,7 +98,7 @@ fn void numeric16_lsp_uses_typed_memory_context() @test {
     assert(memory_completion_context("store.i16", 0) == CompletionContext.MED);
     assert(memory_completion_context("store.u16", 0) == CompletionContext.MED);
     assert(memory_completion_context("load.i64", 1) == CompletionContext.NONE);
-    assert(memory_completion_context("load.u32", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("load.u64", 1) == CompletionContext.NONE);
 }
 
 fn void numeric16_wrap_and_compare_resolve_by_type() @test {
@@ -170,7 +170,7 @@ fn void numeric16_reject_in_context(String token, int context) {
 
 fn void numeric16_malformed_ops_fail_closed_in_every_context() @test {
     String[] tokens = {
-        "shr.u16", "slt.u16", "ult.i16", "ult", "load.u32", "mov.i64",
+        "shr.u16", "slt.u16", "ult.i16", "ult", "load.u64", "mov.i64",
         "loadb.u16", "add..i16", "add.i16.more",
     };
     foreach (token : tokens) {

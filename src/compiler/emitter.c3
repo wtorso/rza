@@ -515,6 +515,14 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
         out.appendf("memcpy(&value, (char*)%s + %s, 2);\n", ptr, oex.str_view());
         pad(out, ind + 1);
         out.appendf("r%d = %s(value); }\n", ins.a, helper);
+    } else if (ins.scalar_type == ScalarType.I32 || ins.scalar_type == ScalarType.U32) {
+        String helper = ins.scalar_type == ScalarType.I32
+            ? "rez_i32_from_bits" : "rez_u32_from_bits";
+        out.append_string("{ uint32_t value;\n");
+        pad(out, ind + 1);
+        out.appendf("memcpy(&value, (char*)%s + %s, 4);\n", ptr, oex.str_view());
+        pad(out, ind + 1);
+        out.appendf("r%d = %s(value); }\n", ins.a, helper);
     } else {
         out.appendf("memcpy(&r%d, (char*)%s + %s, 8);",
                     ins.a, ptr, oex.str_view());
@@ -550,6 +558,12 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
         out.appendf("{ uint16_t value = (uint16_t)r%d;\n", ins.a);
         pad(out, ind + 1);
         out.appendf("memcpy((char*)%s + %s, &value, 2);\n", ptr, sex.str_view());
+        pad(out, ind);
+        out.append_string("}\n");
+    } else if (ins.scalar_type == ScalarType.I32 || ins.scalar_type == ScalarType.U32) {
+        out.appendf("{ uint32_t value = (uint32_t)r%d;\n", ins.a);
+        pad(out, ind + 1);
+        out.appendf("memcpy((char*)%s + %s, &value, 4);\n", ptr, sex.str_view());
         pad(out, ind);
         out.append_string("}\n");
     } else if (ins.scalar_type != ScalarType.I64) {
@@ -612,54 +626,72 @@ fn String numeric8_rhs(Instr* ins) {
 }
 
 fn String numeric8_wrap_helper(AluOp op, ScalarType type) {
-    bool signed = type == ScalarType.I8 || type == ScalarType.I16;
-    assert(signed || type == ScalarType.U8 || type == ScalarType.U16);
+    bool signed = type == ScalarType.I8 || type == ScalarType.I16 || type == ScalarType.I32;
+    assert(signed || type == ScalarType.U8 || type == ScalarType.U16 ||
+        type == ScalarType.U32);
     switch (op) {
         case AluOp.ADD:
             if (type == ScalarType.I16) return "rez_i16_add";
             if (type == ScalarType.U16) return "rez_u16_add";
+            if (type == ScalarType.I32) return "rez_i32_add";
+            if (type == ScalarType.U32) return "rez_u32_add";
             return signed ? "rez_i8_add" : "rez_u8_add";
         case AluOp.SUB:
             if (type == ScalarType.I16) return "rez_i16_sub";
             if (type == ScalarType.U16) return "rez_u16_sub";
+            if (type == ScalarType.I32) return "rez_i32_sub";
+            if (type == ScalarType.U32) return "rez_u32_sub";
             return signed ? "rez_i8_sub" : "rez_u8_sub";
         case AluOp.MUL:
             if (type == ScalarType.I16) return "rez_i16_mul";
             if (type == ScalarType.U16) return "rez_u16_mul";
+            if (type == ScalarType.I32) return "rez_i32_mul";
+            if (type == ScalarType.U32) return "rez_u32_mul";
             return signed ? "rez_i8_mul" : "rez_u8_mul";
         default: unreachable();
     }
 }
 
 fn String numeric8_checked_helper(AluOp op, ScalarType type) {
-    bool signed = type == ScalarType.I8 || type == ScalarType.I16;
-    assert(signed || type == ScalarType.U8 || type == ScalarType.U16);
+    bool signed = type == ScalarType.I8 || type == ScalarType.I16 || type == ScalarType.I32;
+    assert(signed || type == ScalarType.U8 || type == ScalarType.U16 ||
+        type == ScalarType.U32);
     switch (op) {
         case AluOp.CADD:
             if (type == ScalarType.I16) return "rez_i16_cadd";
             if (type == ScalarType.U16) return "rez_u16_cadd";
+            if (type == ScalarType.I32) return "rez_i32_cadd";
+            if (type == ScalarType.U32) return "rez_u32_cadd";
             return signed ? "rez_i8_cadd" : "rez_u8_cadd";
         case AluOp.CSUB:
             if (type == ScalarType.I16) return "rez_i16_csub";
             if (type == ScalarType.U16) return "rez_u16_csub";
+            if (type == ScalarType.I32) return "rez_i32_csub";
+            if (type == ScalarType.U32) return "rez_u32_csub";
             return signed ? "rez_i8_csub" : "rez_u8_csub";
         case AluOp.CMUL:
             if (type == ScalarType.I16) return "rez_i16_cmul";
             if (type == ScalarType.U16) return "rez_u16_cmul";
+            if (type == ScalarType.I32) return "rez_i32_cmul";
+            if (type == ScalarType.U32) return "rez_u32_cmul";
             return signed ? "rez_i8_cmul" : "rez_u8_cmul";
         default: unreachable();
     }
 }
 
 fn void emit_numeric8_division(Output* out, int ind, Instr* ins, String rhs) {
-    bool signed = ins.scalar_type == ScalarType.I8 || ins.scalar_type == ScalarType.I16;
-    assert(signed || ins.scalar_type == ScalarType.U8 || ins.scalar_type == ScalarType.U16);
+    bool signed = ins.scalar_type == ScalarType.I8 || ins.scalar_type == ScalarType.I16 ||
+        ins.scalar_type == ScalarType.I32;
+    assert(signed || ins.scalar_type == ScalarType.U8 || ins.scalar_type == ScalarType.U16 ||
+        ins.scalar_type == ScalarType.U32);
     String guard;
     switch (ins.scalar_type) {
         case ScalarType.I8: guard = "rez_i8_div_invalid"; break;
         case ScalarType.U8: guard = "rez_u8_div_invalid"; break;
         case ScalarType.I16: guard = "rez_i16_div_invalid"; break;
         case ScalarType.U16: guard = "rez_u16_div_invalid"; break;
+        case ScalarType.I32: guard = "rez_i32_div_invalid"; break;
+        case ScalarType.U32: guard = "rez_u32_div_invalid"; break;
         default: unreachable("unsupported narrow division");
     }
     pad(out, ind);
@@ -672,21 +704,29 @@ fn void emit_numeric8_division(Output* out, int ind, Instr* ins, String rhs) {
         helper = signed ? "rez_i8_div" : "rez_u8_div";
         if (ins.scalar_type == ScalarType.I16) helper = "rez_i16_div";
         if (ins.scalar_type == ScalarType.U16) helper = "rez_u16_div";
+        if (ins.scalar_type == ScalarType.I32) helper = "rez_i32_div";
+        if (ins.scalar_type == ScalarType.U32) helper = "rez_u32_div";
     } else {
         helper = signed ? "rez_i8_mod" : "rez_u8_mod";
         if (ins.scalar_type == ScalarType.I16) helper = "rez_i16_mod";
         if (ins.scalar_type == ScalarType.U16) helper = "rez_u16_mod";
+        if (ins.scalar_type == ScalarType.I32) helper = "rez_i32_mod";
+        if (ins.scalar_type == ScalarType.U32) helper = "rez_u32_mod";
     }
     pad(out, ind);
     out.appendf("r%d = %s(r%d, %s);\n", ins.a, helper, ins.b, rhs);
 }
 
 fn void emit_numeric8_shift(Output* out, int ind, Instr* ins, String rhs) {
-    bool signed = ins.scalar_type == ScalarType.I8 || ins.scalar_type == ScalarType.I16;
+    bool signed = ins.scalar_type == ScalarType.I8 || ins.scalar_type == ScalarType.I16 ||
+        ins.scalar_type == ScalarType.I32;
     bool half = ins.scalar_type == ScalarType.I16 || ins.scalar_type == ScalarType.U16;
-    assert(signed || ins.scalar_type == ScalarType.U8 || ins.scalar_type == ScalarType.U16);
+    bool word = ins.scalar_type == ScalarType.I32 || ins.scalar_type == ScalarType.U32;
+    assert(signed || ins.scalar_type == ScalarType.U8 || ins.scalar_type == ScalarType.U16 || word);
+    String guard = half ? "rez_shift16_invalid" : "rez_shift8_invalid";
+    if (word) guard = "rez_shift32_invalid";
     pad(out, ind);
-    out.appendf("if (%s(%s)) {\n", half ? "rez_shift16_invalid" : "rez_shift8_invalid", rhs);
+    out.appendf("if (%s(%s)) {\n", guard, rhs);
     emit_fault(out, ind + 1, ins.line, "shift", "");
     pad(out, ind);
     out.append_string("}\n");
@@ -696,11 +736,17 @@ fn void emit_numeric8_shift(Output* out, int ind, Instr* ins, String rhs) {
             helper = signed ? "rez_i8_shl" : "rez_u8_shl";
             if (ins.scalar_type == ScalarType.I16) helper = "rez_i16_shl";
             if (ins.scalar_type == ScalarType.U16) helper = "rez_u16_shl";
-        case AluOp.SHR: helper = half ? "rez_i16_shr" : "rez_i8_shr";
+            if (ins.scalar_type == ScalarType.I32) helper = "rez_i32_shl";
+            if (ins.scalar_type == ScalarType.U32) helper = "rez_u32_shl";
+        case AluOp.SHR:
+            helper = half ? "rez_i16_shr" : "rez_i8_shr";
+            if (word) helper = "rez_i32_shr";
         case AluOp.USHR:
             helper = signed ? "rez_i8_ushr" : "rez_u8_ushr";
             if (ins.scalar_type == ScalarType.I16) helper = "rez_i16_ushr";
             if (ins.scalar_type == ScalarType.U16) helper = "rez_u16_ushr";
+            if (ins.scalar_type == ScalarType.I32) helper = "rez_i32_ushr";
+            if (ins.scalar_type == ScalarType.U32) helper = "rez_u32_ushr";
         default: unreachable();
     }
     pad(out, ind);
@@ -742,6 +788,8 @@ fn void emit_numeric8_alu3(Output* out, int ind, Instr* ins) {
             case ScalarType.U8: canonical = "rez_u8_from_bits"; break;
             case ScalarType.I16: canonical = "rez_i16_from_bits"; break;
             case ScalarType.U16: canonical = "rez_u16_from_bits"; break;
+            case ScalarType.I32: canonical = "rez_i32_from_bits"; break;
+            case ScalarType.U32: canonical = "rez_u32_from_bits"; break;
             default: unreachable("unsupported narrow comparison");
         }
         pad(out, ind);
@@ -762,6 +810,8 @@ fn void emit_numeric8_alu3(Output* out, int ind, Instr* ins) {
         case ScalarType.U8: canonical = "rez_u8_from_bits"; break;
         case ScalarType.I16: canonical = "rez_i16_from_bits"; break;
         case ScalarType.U16: canonical = "rez_u16_from_bits"; break;
+        case ScalarType.I32: canonical = "rez_i32_from_bits"; break;
+        case ScalarType.U32: canonical = "rez_u32_from_bits"; break;
         default: unreachable("unsupported narrow comparison");
     }
     pad(out, ind);
@@ -1109,6 +1159,8 @@ fn void emit_mov(Output* out, int ind, Instr* ins) {
             case ScalarType.U8: helper = "rez_u8_from_bits"; break;
             case ScalarType.I16: helper = "rez_i16_from_bits"; break;
             case ScalarType.U16: helper = "rez_u16_from_bits"; break;
+            case ScalarType.I32: helper = "rez_i32_from_bits"; break;
+            case ScalarType.U32: helper = "rez_u32_from_bits"; break;
             default: unreachable("unsupported typed move");
         }
         pad(out, ind);

@@ -1,0 +1,5 @@
+layout Pair: tag:u8, word:i32, guard:u16, tail:u32
+res pair, field, Pair
+med pair_m, pair, field
+load.i8 %r0, [pair_m + 0].word
+ret

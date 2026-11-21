@@ -1,0 +1,42 @@
+mov.i32 %r0, -2147483648
+div.i32 %r1, %r0, 2
+print %r1
+mod.i32 %r1, %r0, 3
+print %r1
+div.i32 %r1, %r0, -2
+print %r1
+mod.i32 %r1, %r0, -2
+print %r1
+mov.i32 %r0, -2147483647
+div.i32 %r1, %r0, 2
+print %r1
+mod.i32 %r1, %r0, 2
+print %r1
+mov.u32 %r0, 4294967295
+div.u32 %r1, %r0, 2
+print %r1
+mod.u32 %r1, %r0, 2
+print %r1
+mov.i32 %r0, 0x80000000
+shl.i32 %r1, %r0, 0
+print %r1
+shl.i32 %r1, %r0, 1
+print %r1
+shr.i32 %r1, %r0, 0
+print %r1
+shr.i32 %r1, %r0, 31
+print %r1
+ushr.i32 %r1, %r0, 31
+print %r1
+mov.u32 %r0, 0x80000000
+shl.u32 %r1, %r0, 1
+print %r1
+ushr.u32 %r1, %r0, 31
+print %r1
+mov.u32 %r0, 0xffffffff
+ushr.u32 %r1, %r0, 3
+print %r1
+mov.i32 %r0, 0x7fffffff
+shl.i32 %r1, %r0, 1
+print %r1
+ret

@@ -8,8 +8,8 @@ fn void numeric8_typed_surface_is_closed() @test {
     assert(signed_byte.signedness == Signedness.SIGNED && signed_byte.typed_syntax);
     assert(scalar_type_desc(ScalarType.U8).typed_syntax);
     assert(!scalar_type_desc(ScalarType.I64).typed_syntax);
-    assert(!@ok(find_scalar_type("i32")));
-    assert(!@ok(find_scalar_type("u32")));
+    assert(find_scalar_type("i32") ?? ScalarType.NONE == ScalarType.I32);
+    assert(!@ok(find_scalar_type("u64")));
     assert(!@ok(find_scalar_type("f32")));
     OpDesc desc;
     assert(resolve_op_desc("mov.i8", &desc));
@@ -19,7 +19,7 @@ fn void numeric8_typed_surface_is_closed() @test {
     assert(resolve_op_desc("store.i8", &desc));
     assert(desc.op == Op.STORE && desc.scalar_type == ScalarType.I8 && desc.write);
     assert(!resolve_op_desc("mov.i64", &desc));
-    assert(!resolve_op_desc("load.u32", &desc));
+    assert(!resolve_op_desc("load.u64", &desc));
     assert(!resolve_op_desc("loadb.u8", &desc));
     assert(resolve_op_desc("add.i8", &desc));
     assert(!resolve_op_desc("shr.u8", &desc));
@@ -95,7 +95,7 @@ fn void numeric8_lsp_uses_typed_memory_context() @test {
     assert(memory_completion_context("store.i8", 0) == CompletionContext.MED);
     assert(memory_completion_context("store.u8", 0) == CompletionContext.MED);
     assert(memory_completion_context("load.i64", 1) == CompletionContext.NONE);
-    assert(memory_completion_context("load.u32", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("load.u64", 1) == CompletionContext.NONE);
 }
 
 fn void numeric8_wrap_and_compare_resolve_by_type() @test {
@@ -186,7 +186,7 @@ fn void numeric8_reject_in_context(String token, int context) {
 
 fn void numeric8_malformed_ops_fail_closed_in_every_context() @test {
     String[] tokens = {
-        "shr.u8", "load.u32", "ult", "loadb.u8", "add..i8", "add.i8.more",
+        "shr.u8", "load.u64", "ult", "loadb.u8", "add..i8", "add.i8.more",
     };
     foreach (token : tokens) {
         for (int context = 0; context < 4; context++) {

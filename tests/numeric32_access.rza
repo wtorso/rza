@@ -1,0 +1,43 @@
+res raw, field, 8
+med raw_m, raw, field
+mov.i32 %r0, 0xffffffff
+print %r0
+mov.u32 %r1, 0x000ffffffff
+print %r1
+store.i32 [raw_m + 1], %r0
+load.i32 %r2, [raw_m + 1]
+print %r2
+store.u32 [raw_m + 0], %r1
+load.u32 %r2, [raw_m + 0]
+print %r2
+mov %r3, 0x1ffffffff
+mov.i32 %r4, %r3
+print %r4
+mov.u32 %r5, %r3
+print %r5
+view raw_v_m, raw_m, 1, 4
+store.i32 [raw_v_m + 0], %r0
+load.i32 %r6, [raw_v_m + 0]
+print %r6
+mov.u8 %r6, 0x11
+store.u8 [raw_m + 0], %r6
+mov.u8 %r6, 0x22
+store.u8 [raw_m + 5], %r6
+mov.u8 %r6, 0x33
+store.u8 [raw_m + 6], %r6
+mov.u8 %r6, 0x44
+store.u8 [raw_m + 7], %r6
+store.i32 [raw_m + 1], %r3
+load.u8 %r7, [raw_m + 0]
+print %r7
+load.u8 %r7, [raw_m + 5]
+print %r7
+load.u8 %r7, [raw_m + 6]
+print %r7
+load.u8 %r7, [raw_m + 7]
+print %r7
+mov %r3, 0x10000002a
+store.u32 [raw_m + 1], %r3
+load.u32 %r7, [raw_m + 1]
+print %r7
+ret

@@ -1,5 +1,5 @@
 layout
 layout entry: key:i64
 layout Empty:
-layout Bad: value:u32
+layout Bad: value:u64
 layout Broken

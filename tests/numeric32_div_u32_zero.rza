@@ -1,0 +1,4 @@
+mov.u32 %r0, 1
+mov.u32 %r1, 0
+div.u32 %r2, %r0, %r1
+ret

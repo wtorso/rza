@@ -37,7 +37,7 @@ fn int scalar_width(ScalarType type) {
 }
 
 fn int align_layout_offset(int offset, int alignment) {
-	assert(alignment == 1 || alignment == 2 || alignment == 8);
+	assert(alignment == 1 || alignment == 2 || alignment == 4 || alignment == 8);
 	int mask = alignment - 1;
 	if (offset < 0 || offset > CELL_SIZE_BYTES_MAX - mask) return -1;
 	return (offset + mask) & ~mask;

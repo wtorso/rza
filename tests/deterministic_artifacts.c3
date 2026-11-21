@@ -309,6 +309,7 @@ fn int? artifacts_run() {
     if (check_self_move_artifact()! != 0) return 1;
     if (check_numeric8_artifact()! != 0) return 1;
     if (check_numeric16_artifact()! != 0) return 1;
+    if (check_numeric32_artifact()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }
@@ -384,6 +385,42 @@ fn int? check_numeric16_artifact() {
     };
     foreach (needle : required) {
         if (!expect(first.contains(needle), "numeric16 artifact semantic helper")) return 1;
+    }
+    return 0;
+}
+
+fn int? check_numeric32_artifact() {
+    DString source = dstring::temp("cav main, field\nres raw, main, 8\n"
+        "med raw_m, raw, main\nmov.i32 %r0, 0x80000000\nstore.i32 [raw_m + 1], %r0\n"
+        "load.i32 %r1, [raw_m + 1]\nadd.i32 %r1, %r1, 1\n"
+        "mov.u32 %r2, 2\ncadd.u32 %r2, %r2, 3\ndiv.i32 %r3, %r1, 2\n"
+        "shl.u32 %r4, %r2, 1\nprint %r3\nret\n");
+    path::mkdir(path::tnew(temp_path("numeric32-first"))!, true)!;
+    path::mkdir(path::tnew(temp_path("numeric32-second"))!, true)!;
+    String first_source = temp_path("numeric32-first/input.rza");
+    String second_source = temp_path("numeric32-second/renamed.rza");
+    write_file(first_source, source.str_view())!;
+    write_file(second_source, source.str_view())!;
+    String first = dstring::temp(emit_artifact(first_source,
+        temp_path("numeric32-first/output.c"))!).str_view();
+    String second = emit_artifact(second_source, temp_path("numeric32-second/output.c"))!;
+    if (!expect(first == second && first.starts_with(source_prefix(source.str_view())),
+            "numeric32 artifact repeat/path hash")) return 1;
+    String[] exact_access = {
+        "memcpy(&value, (char*)p + 1, 4)", "memcpy((char*)p + 1, &value, 4)",
+        "r1 = rez_i32_from_bits(value)",
+    };
+    foreach (needle : exact_access) {
+        if (!expect(first.contains(needle), "numeric32 artifact exact four-byte access")) {
+            return 1;
+        }
+    }
+    String[] guards = {
+        "rez_i32_add", "rez_u32_cadd", "rez_i32_div_invalid",
+        "rez_shift32_invalid", "rez_u32_shl",
+    };
+    foreach (needle : guards) {
+        if (!expect(first.contains(needle), "numeric32 artifact semantic guard")) return 1;
     }
     return 0;
 }

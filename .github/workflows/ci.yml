@@ -153,13 +153,13 @@ jobs:
           RZA_TARGET_ARCH: ${{ matrix.arch }}
           RZA_TARGET_LAUNCHER: ${{ matrix.qemu }}
           RZA_TARGET_LOG: ${{ github.workspace }}/build/target-${{ matrix.arch }}.exec.log
-          RZA_TARGET_EXPECTED_PASS: "153"
+          RZA_TARGET_EXPECTED_PASS: "172"
         run: |
           bash tests/target_runner_cases.sh
           bash run_tests.sh
           executions=$(wc -l < "$RZA_TARGET_LOG")
-          test "$executions" -eq 864
-          printf 'TARGET %s PASS=153 EXECUTIONS=%s\n' "$RZA_TARGET_ARCH" "$executions"
+          test "$executions" -eq 1037
+          printf 'TARGET %s PASS=172 EXECUTIONS=%s\n' "$RZA_TARGET_ARCH" "$executions"
       - name: Hygiene
         shell: bash
         run: |
