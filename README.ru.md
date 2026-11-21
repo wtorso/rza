@@ -96,7 +96,7 @@ CC="zig cc -target aarch64-linux-musl -static" \
 RZA_TARGET_ARCH=aarch64 \
 RZA_TARGET_LAUNCHER=qemu-aarch64-static \
 RZA_TARGET_LOG="$PWD/build/target-aarch64.exec.log" \
-RZA_TARGET_EXPECTED_PASS=172 \
+RZA_TARGET_EXPECTED_PASS=192 \
 bash run_tests.sh
 ```
 
@@ -105,12 +105,12 @@ log path. Каждый target executable централизованно пров
 little-endian и требуемый machine ID до запуска QEMU. Отсутствие настроек или
 инструментов — infrastructure failure, а не fallback на host execution.
 
-Проверенный target run имеет `PASS=172` и 1037 logged executions на каждую
-архитектуру. Log включает mutation/shrink попытки, поэтому 1037 не является числом
-семантических тестов. Он включает numeric8, numeric16 и numeric32 oracles, каждый
-с 64 valid + 64 fault программами, и 56 непосредственные RZA workload-проверки.
-Также в него входят девять numeric8 shrink-signature executions, добавленных после
-исходного platform baseline. C3/compiler internals, LSP, статическая диагностика,
+Проверенный target run имеет `PASS=192` и 1211 logged executions на каждую
+архитектуру. Log включает mutation/shrink попытки, поэтому 1211 не является числом
+семантических тестов. Он включает numeric8, numeric16, numeric32 и numeric64 oracles,
+каждый с 64 valid + 64 fault программами, и 75 непосредственных RZA
+workload-проверок. Также в него входят девять numeric8 shrink-signature executions,
+добавленных после исходного platform baseline. C3/compiler internals, LSP, статическая диагностика,
 deterministic artifacts, release/package, native Rust comparisons и timing —
 host-only или отдельные native gates, а не доказательство ARM/RV64 execution.
 
@@ -252,44 +252,49 @@ division/remainder и недопустимый сдвиг вызывают `FAUL
 Постоянный выход за границы отклоняется при проверке; зависящий от регистра —
 во время выполнения.
 
-### 8-, 16- и 32-битные типизированные операции
+### 8-, 16-, 32- и 64-битные типизированные операции
 
-Суффиксы `.i8`, `.u8`, `.i16`, `.u16`, `.i32` и `.u32` выбирают знаковую или
-беззнаковую семантику для `mov`, `load`, `store`, `add`, `sub`, `mul`, `inc`,
-`dec`, `cadd`, `csub`, `cmul`, `cinc`, `cdec`, `and`, `or`, `xor`, `div`, `mod`,
-`shl` и `ushr`. Знаковые типы также поддерживают `shr` и `slt`, беззнаковые — `ult`.
-Каждая ширина имеет 43 сочетания операции и типа, всего 129. Typed `.i64`, `u64`,
-floating point и недопустимые пары по-прежнему отклоняются. `loadb`/`storeb`
-остаются алиасами только `load.u8`/`store.u8`.
+Суффиксы `.i8`, `.u8`, `.i16`, `.u16`, `.i32`, `.u32`, `.i64` и `.u64` выбирают
+знаковую или беззнаковую семантику для `mov`, `load`, `store`, `add`, `sub`, `mul`,
+`inc`, `dec`, `cadd`, `csub`, `cmul`, `cinc`, `cdec`, `and`, `or`, `xor`, `div`,
+`mod`, `shl` и `ushr`. Знаковые типы также поддерживают `shr` и `slt`, беззнаковые —
+`ult`. Каждая ширина имеет 43 сочетания операции и типа, всего 172. Floating point и
+недопустимые пары по-прежнему отклоняются. `loadb`/`storeb` остаются алиасами
+только `load.u8`/`store.u8`.
 
-Typed-операции читают только младшие 8, 16 или 32 бита регистровых операндов.
+Typed-операции читают только младшие 8, 16, 32 или 64 бита регистровых операндов.
 Знаковый результат знаково расширяется в 64-битный регистр, беззнаковый — нулевым
-расширением. Typed-store записывает ровно этот младший bit pattern. Тип load/store
-обязан точно совпадать с типом поля layout. Raw-ячейки используют byte offsets,
-typed-ячейки — element indices. Alignment равен 2 для 16-битных и 4 для 32-битных
-типов. Raw multi-byte доступ может быть unaligned и использует определённое
-копирование байтов (`memcpy` в C23), а не narrow pointer casts. Доступ к отдельным
-байтам использует определённые unsigned-char loads/stores. Представление памяти
-следует target byte order и не является portable wire format.
+расширением. Typed-store записывает ровно этот младший bit pattern; 64-битные
+значения используют весь контейнер. Тип load/store обязан точно совпадать с типом
+поля layout. Raw-ячейки используют byte offsets, typed-ячейки — element indices.
+Alignment равен 2 для 16-битных, 4 для 32-битных и 8 для 64-битных типов. Raw
+multi-byte доступ может быть unaligned и использует определённое копирование байтов
+(`memcpy` в C23), а не narrow pointer casts. Доступ к отдельным байтам использует
+определённые unsigned-char loads/stores. Представление памяти следует target byte
+order и не является portable wire format.
 
-Тесты размещают независимые canaries вокруг raw stores и рядом с 32-битным полем
-layout; generated C обязан копировать ровно два или четыре байта соответственно.
-Async-тест печатает checked 32-битный результат непосредственно в callback и после
-result-load, поэтому неканонические старшие биты не могут просочиться в наблюдение.
+Тесты размещают независимые canaries вокруг raw stores и рядом с 32- и 64-битными
+полями layout; generated C обязан копировать ровно два, четыре или восемь байтов
+соответственно. Async-тесты печатают checked 32-битный результат непосредственно в
+callback и после result-load, а также доказывают, что 64-битный checked overflow
+предотвращает callback output, result stores и async OUT publication.
 
-Wrapping-арифметика выполняется modulo 256, 65536 или 4294967296. Checked-арифметика
-вызывает `FAULT` вне -128..127, -32768..32767 или -2147483648..2147483647 для signed
-и 0..255, 0..65535 или 0..4294967295 для unsigned. Знаковое деление округляется к
-нулю; нулевой делитель и signed minimum / -1 вызывают `FAULT` для div и mod.
-Беззнаковые div/mod вызывают `FAULT` только на нулевом делителе. Счётчики сдвига —
-0..7, 0..15 или 0..31: `shl` отбрасывает старшие биты, знаковый `shr` заполняет
-знаковый бит, `ushr` — нули.
+Wrapping-арифметика выполняется modulo 256, 65536, 4294967296 или 2^64.
+Checked-арифметика вызывает `FAULT` вне -128..127, -32768..32767,
+-2147483648..2147483647 или -9223372036854775808..9223372036854775807 для signed
+и 0..255, 0..65535, 0..4294967295 или 0..18446744073709551615 для unsigned.
+Знаковое деление округляется к нулю; нулевой делитель и signed minimum / -1
+вызывают `FAULT` для div и mod. Беззнаковые div/mod вызывают `FAULT` только на
+нулевом делителе. Счётчики сдвига — 0..7, 0..15, 0..31 или 0..63: `shl` отбрасывает
+старшие биты, знаковый `shr` заполняет знаковый бит, `ushr` — нули.
 
 Decimal-литералы используют те же signed/unsigned диапазоны. Любой leading minus
-для unsigned, включая `-0`, отклоняется. Typed hex — `0x0`..`0xff`, `0x0`..`0xffff`
-и `0x0`..`0xffffffff`; ведущие нули разрешены, отрицательный hex запрещён. Signed
-hex с установленным старшим битом обозначает отрицательное значение после
-знакового расширения. `print` по-прежнему печатает signed i64.
+для unsigned, включая `-0`, отклоняется. Typed hex — `0x0`..`0xff`, `0x0`..`0xffff`,
+`0x0`..`0xffffffff` и `0x0`..`0xffffffffffffffff`; ведущие нули разрешены.
+Отрицательный hex запрещён, кроме typed i64 value immediates с legacy compatibility.
+Shift-count immediates используют legacy i64 parsing, включая negative hex, а
+отрицательный count становится runtime shift fault. `print` по-прежнему печатает
+signed i64, в том числе для u64 выше INT64_MAX.
 
 `crc32c DST, STATE, WORD` обновляет CRC32C над 8 байтами `WORD` в little-endian.
 Initial/final XOR остаются явными. Runtime использует SSE4.2 при поддержке CPU,
@@ -423,11 +428,12 @@ workload; они не доказывают универсальное преим
 
 ## Текущие ограничения
 
-- Поддерживаются только плоские записи `u8`/`i8`/`u16`/`i16`/`u32`/`i32`/`i64` и
-  fixed-size arrays. Nested и packed layouts, unions, bitfields и portable wire ABI
-  не реализованы.
-- Fixed-width integer работа не завершена: `u64` и typed `.i64` не активны, поэтому
-  финальная 64-битная группа ещё впереди. Floating point и Stage 3 не начинались.
+- Поддерживаются только плоские записи
+  `u8`/`i8`/`u16`/`i16`/`u32`/`i32`/`u64`/`i64` и fixed-size arrays. Nested и packed
+  layouts, unions, bitfields и portable wire ABI не реализованы.
+- Fixed-width integer core покрывает 8-, 16-, 32- и 64-битные операции. Завершение
+  Stage 2 требует финального numeric64 acceptance; floating point и Stage 3 не
+  начинались.
 - Нет OS threads, garbage collection, рекурсии, физического перемещения памяти,
   transactional rollback или сетевых примитивов общего назначения.
 - Нет общего SIMD/intrinsic интерфейса и собственного native optimizing backend.
@@ -445,7 +451,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Ожидаемый результат: `PASS=278 FAIL=0` на POSIX и Windows MSVC, `PASS=277 FAIL=0`
+Ожидаемый результат: `PASS=305 FAIL=0` на POSIX и Windows MSVC, `PASS=304 FAIL=0`
 на Windows Zig. Benchmark correctness требует `rustc` и запускается на POSIX и
 Windows MSVC. Windows Zig сохраняет прежний объём из-за конфликта weak symbols
 Rust compiler-builtins и Zig compiler-rt при связывании static library; не маскируйте его

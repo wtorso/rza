@@ -1,0 +1,13 @@
+res result, field, 8
+med result_m, result, field
+acasc async: result_m -> async_out
+    mov.u64 %r0, 0xffffffffffffffff
+    cinc.u64 %r0
+    print %r0
+    store.u64 [result_m + 0], %r0
+endc
+await %r0
+print %r0
+load.u64 %r0, [result_m + 0]
+print %r0
+ret

@@ -310,6 +310,8 @@ fn int? artifacts_run() {
     if (check_numeric8_artifact()! != 0) return 1;
     if (check_numeric16_artifact()! != 0) return 1;
     if (check_numeric32_artifact()! != 0) return 1;
+    if (check_numeric64_artifact()! != 0) return 1;
+    if (check_numeric64_fault_abi()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
 }
@@ -422,5 +424,123 @@ fn int? check_numeric32_artifact() {
     foreach (needle : guards) {
         if (!expect(first.contains(needle), "numeric32 artifact semantic guard")) return 1;
     }
+    return 0;
+}
+
+fn int? check_numeric64_artifact() {
+    DString source = dstring::temp("cav main, field\nres raw, main, 16\n"
+        "med raw_m, raw, main\nmov.u64 %r0, 0xffffffffffffffff\nstore.u64 [raw_m + 1], %r0\n"
+        "load.u64 %r1, [raw_m + 1]\nadd.i64 %r1, %r1, 1\n"
+        "mov.u64 %r2, 2\ncadd.u64 %r2, %r2, 3\ndiv.i64 %r3, %r1, 2\n"
+        "shl.u64 %r4, %r2, 1\nprint %r3\nret\n");
+    path::mkdir(path::tnew(temp_path("numeric64-first"))!, true)!;
+    path::mkdir(path::tnew(temp_path("numeric64-second"))!, true)!;
+    String first_source = temp_path("numeric64-first/input.rza");
+    String second_source = temp_path("numeric64-second/renamed.rza");
+    write_file(first_source, source.str_view())!;
+    write_file(second_source, source.str_view())!;
+    String first = dstring::temp(emit_artifact(first_source,
+        temp_path("numeric64-first/output.c"))!).str_view();
+    String second = emit_artifact(second_source, temp_path("numeric64-second/output.c"))!;
+    if (!expect(first == second && first.starts_with(source_prefix(source.str_view())),
+            "numeric64 artifact repeat/path hash")) return 1;
+    String[] exact_access = {
+        "memcpy(&value, (char*)p + 1, 8)", "memcpy((char*)p + 1, &r0, 8)",
+        "r1 = rez_u64_from_bits(value)",
+    };
+    foreach (needle : exact_access) {
+        if (!expect(first.contains(needle), "numeric64 artifact exact eight-byte access")) {
+            return 1;
+        }
+    }
+    String[] guards = {
+        "rez_i64_add", "rez_u64_cadd", "rez_i64_div_invalid",
+        "rez_shift64_invalid", "rez_u64_shl",
+    };
+    foreach (needle : guards) {
+        if (!expect(first.contains(needle), "numeric64 artifact semantic guard")) return 1;
+    }
+    return 0;
+}
+
+
+struct Numeric64FaultCase {
+    String name;
+    String code;
+    int line;
+    String cell;
+    String out_cell;
+    int guard_offset;
+}
+
+fn int? check_numeric64_fault_case(Numeric64FaultCase item) {
+    String source = string::tformat("tests/%s.rza", item.name);
+    String generated = temp_path(string::tformat("%s-lib.c", item.name));
+    String library = emit_lib_artifact(source, generated)!;
+    char[] host = read_file("tests/numeric64_fault_host.c", artifact_source_buf[..])!;
+    DString driver = dstring::temp();
+    driver.appendf("#define NUMERIC64_EXPECTED_CODE %s\n", item.code);
+    driver.appendf("#define NUMERIC64_EXPECTED_LINE %d\n", item.line);
+    if (item.cell.len > 0) {
+        driver.appendf("#define NUMERIC64_DATA_CELL %s\n", item.cell);
+    }
+    if (item.out_cell.len > 0) {
+        driver.appendf("#define NUMERIC64_OUT_CELL %s\n", item.out_cell);
+    }
+    if (item.guard_offset > 0) {
+        driver.appendf("#define NUMERIC64_GUARD_OFFSET %d\n", item.guard_offset);
+    }
+    driver.append_string(library);
+    driver.append_string((String)host);
+    String driver_path = temp_path(string::tformat("%s-driver.c", item.name));
+    String executable = temp_path(string::tformat("%s-driver.exe", item.name));
+    write_file(driver_path, driver.str_view())!;
+    ProcessResult compiled = compile_c(driver_path, executable)!;
+    if (!expect(compiled.status == 0 && compiled.stderr_text.len == 0,
+            "numeric64 ABI fault compilation")) {
+        io::eprintn(item.name);
+        print_result(compiled);
+        return 1;
+    }
+    ProcessResult runtime = run_simple({ executable })!;
+    if (!expect(runtime.status == 0 && runtime.stdout_text.len == 0 &&
+            runtime.stderr_text.len == 0, "numeric64 ABI fault result or canary")) {
+        io::eprintn(item.name);
+        print_result(runtime);
+        return 1;
+    }
+    return 0;
+}
+
+fn int? check_numeric64_fault_abi() {
+    Numeric64FaultCase[] cases = {
+        { .name = "numeric64_cadd_i64_overflow", .code = "RZA_FAULT_ARITHMETIC_OVERFLOW",
+            .line = 2 },
+        { .name = "numeric64_cinc_i64_overflow", .code = "RZA_FAULT_ARITHMETIC_OVERFLOW",
+            .line = 2 },
+        { .name = "numeric64_cdec_u64_underflow", .code = "RZA_FAULT_ARITHMETIC_OVERFLOW",
+            .line = 2 },
+        { .name = "numeric64_div_i64_min_minus_one", .code = "RZA_FAULT_DIVISION",
+            .line = 2 },
+        { .name = "numeric64_div_u64_zero", .code = "RZA_FAULT_DIVISION", .line = 3 },
+        { .name = "numeric64_shift_i64_negative", .code = "RZA_FAULT_SHIFT", .line = 2 },
+        { .name = "numeric64_shift_u64_sixty_four", .code = "RZA_FAULT_SHIFT", .line = 2 },
+        { .name = "numeric64_checked_index_attack", .code = "RZA_FAULT_ARITHMETIC_OVERFLOW",
+            .line = 4, .cell = "c_data" },
+        { .name = "numeric64_checked_index_proc", .code = "RZA_FAULT_ARITHMETIC_OVERFLOW",
+            .line = 5, .cell = "c_data" },
+        { .name = "numeric64_checked_index_sync", .code = "RZA_FAULT_ARITHMETIC_OVERFLOW",
+            .line = 5, .cell = "c_data" },
+        { .name = "numeric64_checked_index_async", .code = "RZA_FAULT_OUT_OF_BOUNDS",
+            .line = 5, .cell = "c_data", .out_cell = "c_out", .guard_offset = 8 },
+        { .name = "numeric64_async_overflow", .code = "RZA_FAULT_ARITHMETIC_OVERFLOW",
+            .line = 5, .cell = "c_result", .out_cell = "c_async_out" },
+    };
+    int failures = 0;
+    foreach (item : cases) {
+        if (check_numeric64_fault_case(item)! != 0) failures++;
+    }
+    if (!expect(failures == 0, "numeric64 ABI fault cases")) return 1;
+    io::printn("NUMERIC64_ABI_FAULTS OK (12 programs)");
     return 0;
 }

@@ -1,0 +1,5 @@
+res raw, field, 16
+med raw_m, raw, field
+view raw_v_m, raw_m, 1, 8
+load.i64 %r0, [raw_v_m + 1]
+ret

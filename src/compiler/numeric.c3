@@ -153,7 +153,19 @@ const TypeDesc[] TYPE_DESCS = {
 		.storage_only = false,
 		.conversion_class = ConversionClass.INTEGER,
 		.target_capabilities = 0,
-		.typed_syntax = false
+		.typed_syntax = true
+	},
+	{
+		.source_name = "u64",
+		.type = ScalarType.U64,
+		.kind = TypeKind.INTEGER,
+		.bit_width = 64,
+		.alignment_bytes = 8,
+		.signedness = Signedness.UNSIGNED,
+		.storage_only = false,
+		.conversion_class = ConversionClass.INTEGER,
+		.target_capabilities = 0,
+		.typed_syntax = true
 	}
 };
 

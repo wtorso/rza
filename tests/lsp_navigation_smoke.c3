@@ -272,7 +272,7 @@ fn int? navigation_regression_checks(Process* child) {
 }
 
 const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
-	"half:u16, signed_half:i16, word:i32, tail:u32\n"
+	"half:u16, signed_half:i16, word:i32, tail:u32, wide:i64, bits:u64\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"loadb %r0, [pair_m + 0].tag\n"
@@ -282,6 +282,8 @@ const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
 	"load.i16 %r4, [pair_m + 0].signed_half\n"
 	"load.i32 %r5, [pair_m + 0].word\n"
 	"load.u32 %r6, [pair_m + 0].tail\n"
+	"load.i64 %r7, [pair_m + 0].wide\n"
+	"load.u64 %r8, [pair_m + 0].bits\n"
 	"ret\n";
 
 const String PARTIAL_FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
@@ -321,6 +323,8 @@ fn int? navigation_field_type_checks(Process* child) {
 	if (navigation_field_hover(child, 167, 7, 32, "signed_half", "i16", 20)! != 0) return 1;
 	if (navigation_field_hover(child, 170, 8, 30, "word", "i32", 24)! != 0) return 1;
 	if (navigation_field_hover(child, 171, 9, 30, "tail", "u32", 28)! != 0) return 1;
+	if (navigation_field_hover(child, 172, 10, 30, "wide", "i64", 32)! != 0) return 1;
+	if (navigation_field_hover(child, 173, 11, 30, "bits", "u64", 40)! != 0) return 1;
 	response = lsp_call_json(child, change_message(PARTIAL_FIELD_HOVER_TEXT, 21))!;
 	if (!expect(json_diagnostics(response)!.len() > 0, "partial field hover document")) return 1;
 	if (navigation_field_hover(child, 162, 3, 25, "tag", "u8", 0)! != 0) return 1;
@@ -332,7 +336,8 @@ fn int? navigation_field_type_checks(Process* child) {
 		"tests/numeric8_wrap.rza", "tests/numeric16_wrap.rza",
 		"tests/numeric16_div_shift.rza", "tests/numeric16_async.rza",
 		"tests/numeric32_wrap.rza", "tests/numeric32_div_shift.rza",
-		"tests/numeric32_async.rza",
+		"tests/numeric32_async.rza", "tests/numeric64_wrap.rza",
+		"tests/numeric64_div_shift.rza", "tests/numeric64_async.rza",
 	};
 	int version = 22;
 	foreach (path : paths) {
@@ -344,7 +349,8 @@ fn int? navigation_field_type_checks(Process* child) {
 	}
 	String[] invalid = {
 		"shr.u8", "shr.u16", "slt.u16", "ult.i16", "shr.u32", "slt.u32",
-		"ult.i32", "add.i64", "add.u64",
+		"shr.u64", "slt.u64", "ult.i64", "ult.i32", "cvt.i64", "bitcast.u64",
+		"add.f32", "add.f64",
 	};
 	foreach (token : invalid) {
 		String source = string::tformat("%s %%r0, %%r0, 1\nret\n", token);

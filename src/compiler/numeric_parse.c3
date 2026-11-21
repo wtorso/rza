@@ -11,7 +11,8 @@ fn bool typed_immediate_error(String text, ScalarType type, int line) {
 
 fn ulong typed_max_bits(ScalarType type) {
 	TypeDesc* desc = scalar_type_desc(type);
-	assert(desc != null && desc.bit_width > 0 && desc.bit_width < 64);
+	assert(desc != null && desc.bit_width > 0 && desc.bit_width <= 64);
+	if (desc.bit_width == 64) return ulong::max;
 	return (1UL << desc.bit_width) - 1;
 }
 
@@ -39,11 +40,20 @@ fn bool parse_typed_decimal(
 	ScalarType type,
 	int line
 ) {
+	TypeDesc* desc = scalar_type_desc(type);
+	assert(desc != null && desc.bit_width > 0 && desc.bit_width <= 64);
+	if (desc.bit_width == 64) {
+		if (desc.signedness != Signedness.UNSIGNED || text[0] == '-') {
+			return typed_immediate_error(text, type, line);
+		}
+		ulong? parsed = text.to_ulong();
+		if (catch parsed) return typed_immediate_error(text, type, line);
+		*immediate = { .bits = parsed, .literal_kind = LiteralKind.DECIMAL };
+		return true;
+	}
 	long? parsed = text.to_long();
 	if (catch parsed) return typed_immediate_error(text, type, line);
 	long value = parsed;
-	TypeDesc* desc = scalar_type_desc(type);
-	assert(desc != null && desc.bit_width > 0 && desc.bit_width < 64);
 	if (desc.signedness == Signedness.SIGNED) {
 		long minimum = -(1L << (desc.bit_width - 1));
 		long maximum = (1L << (desc.bit_width - 1)) - 1;
@@ -64,6 +74,7 @@ fn bool parse_typed_decimal(
 }
 
 fn bool parse_typed_immediate(String text, ScalarType type, int line, Immediate* immediate) {
+	if (type == ScalarType.I64) return parse_i64(text, line, immediate);
 	if (text.len == 0) return typed_immediate_error(text, type, line);
 	bool negative = text[0] == '-';
 	String magnitude = negative ? text[1..] : text;

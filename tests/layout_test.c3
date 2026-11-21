@@ -98,8 +98,8 @@ fn void layout_declaration_diagnostics() @test {
         "malformed layout declaration");
     expect_layout_error("layout entry: key:i64\n", 1, "STRUCT",
         "bad layout name entry");
-    expect_layout_error("layout Bad: value:u64\n", 1, "STRUCT",
-        "unknown layout scalar type u64");
+    expect_layout_error("layout Bad: value:f32\n", 1, "STRUCT",
+        "unknown layout scalar type f32");
     expect_layout_error("layout Entry: key:i64\nlayout Entry: value:i64\n",
         2, "DUP", "duplicate layout Entry");
     expect_layout_error("layout Entry: key:i64, key:i64\n", 1, "DUP",

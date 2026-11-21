@@ -1,0 +1,52 @@
+res input, field, 8
+res result, field, 8
+med input_m, input, field
+med result_m, result, field
+proc checked(input_m: ro, result_m: rw):
+    load.u64 %r1, [input_m + 0]
+    cadd.u64 %r2, %r1, 1
+    store.u64 [result_m + 0], %r2
+    ret
+mov.u64 %r0, 41
+store.u64 [input_m + 0], %r0
+casc sync: input_m, result_m -> sync_out[field]
+    load.i64 %r0, [input_m + 0]
+    cadd.i64 %r1, %r0, 1
+    store.i64 [result_m + 0], %r1
+endc
+mov.u64 %r0, 41
+acasc async: input_m, result_m -> async_out
+    cinc.u64 %r0
+    print %r0
+    store.u64 [result_m + 0], %r0
+endc
+await %r0
+print %r0
+load.u64 %r0, [result_m + 0]
+print %r0
+call checked
+load.u64 %r0, [result_m + 0]
+print %r0
+mov.i64 %r0, 9223372036854775807
+cadd.i64 %r1, %r0, 0
+print %r1
+mov.i64 %r0, -9223372036854775808
+csub.i64 %r1, %r0, 0
+print %r1
+cmul.i64 %r1, %r0, 1
+print %r1
+mov.u64 %r0, 18446744073709551615
+cadd.u64 %r1, %r0, 0
+print %r1
+mov.u64 %r0, 0
+csub.u64 %r1, %r0, 0
+print %r1
+mov.u64 %r0, 18446744073709551615
+cmul.u64 %r1, %r0, 1
+print %r1
+mov %r2, -1
+cadd.i64 %r3, %r2, 0
+print %r3
+cadd.u64 %r4, %r2, 0
+print %r4
+ret

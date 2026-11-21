@@ -1,4 +1,4 @@
 res raw, field, 8
 med raw_m, raw, field
-load.u64 %r0, [raw_m + 0]
+load.f32 %r0, [raw_m + 0]
 ret

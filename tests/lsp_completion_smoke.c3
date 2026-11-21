@@ -38,7 +38,7 @@ const String COMPLETION_TEXT = "layout Ring: read_pos:i64, count:i64, "
 	"ret\n";
 
 const String COMPLETION_TYPE_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
-	"half:u16, signed_half:i16, word:i32, tail:u32\n"
+	"half:u16, signed_half:i16, word:i32, tail:u32, wide:i64, bits:u64\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"load %r0, [pair_m + 0].\n"
@@ -206,7 +206,7 @@ fn int? completion_numeric_context_checks(Process* child) {
 	(void)response;
 	if (expect_completion(child, 128, 24, 16, { "ring_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 129, 25, 19, { "ring_m" }, false)! != 0) return 1;
-	if (expect_completion(child, 131, 26, 15, { }, false)! != 0) return 1;
+	if (expect_completion(child, 131, 26, 15, { "ring_m" }, false)! != 0) return 1;
 	return 0;
 }
 
@@ -246,8 +246,8 @@ fn int? completion_type_detail_checks(Process* child) {
 			"field completion document is intentionally invalid")) return 1;
 	Object* response = position_call(child, "textDocument/completion", 132, GOOD_URI, 3, 23)!;
 	if (!expect(completion_matches(response,
-			{ "tag", "value", "signed", "half", "signed_half", "word", "tail" }, false),
-			"field completion labels")) return 1;
+			{ "tag", "value", "signed", "half", "signed_half", "word", "tail", "wide", "bits" },
+			false), "field completion labels")) return 1;
 	if (!expect(completion_detail_matches(response, "tag", "u8 field"),
 			"u8 completion detail")) return 1;
 	if (!expect(completion_detail_matches(response, "value", "i64 field"),
@@ -262,12 +262,16 @@ fn int? completion_type_detail_checks(Process* child) {
 			"i32 completion detail")) return 1;
 	if (!expect(completion_detail_matches(response, "tail", "u32 field"),
 			"u32 completion detail")) return 1;
+	if (!expect(completion_detail_matches(response, "wide", "i64 field"),
+			"i64 completion detail")) return 1;
+	if (!expect(completion_detail_matches(response, "bits", "u64 field"),
+			"u64 completion detail")) return 1;
 	if (expect_completion(child, 133, 4, 18, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 134, 5, 18, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 135, 6, 14, { "pair_m" }, false)! != 0) return 1;
-	if (expect_completion(child, 136, 7, 15, { }, false)! != 0) return 1;
+	if (expect_completion(child, 136, 7, 15, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 137, 8, 19, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 138, 9, 15, { "pair_m" }, false)! != 0) return 1;
-	if (expect_completion(child, 139, 10, 18, { }, false)! != 0) return 1;
+	if (expect_completion(child, 139, 10, 18, { "pair_m" }, false)! != 0) return 1;
 	return 0;
 }

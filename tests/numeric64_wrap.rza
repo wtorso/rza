@@ -1,0 +1,74 @@
+mov.i64 %r0, 9223372036854775807
+add.i64 %r0, %r0, 1
+print %r0
+sub.i64 %r0, %r0, 1
+print %r0
+mov.i64 %r1, -9223372036854775808
+mul.i64 %r1, %r1, -1
+print %r1
+inc.i64 %r0
+print %r0
+dec.i64 %r0
+print %r0
+mov.u64 %r0, 18446744073709551615
+add.u64 %r0, %r0, 1
+print %r0
+dec.u64 %r0
+print %r0
+sub.u64 %r0, %r0, 1
+print %r0
+mov.u64 %r1, 0x1000000000000000
+mul.u64 %r1, %r1, 16
+print %r1
+mov %r2, -1
+mov %r3, 1
+add.i64 %r4, %r2, %r3
+print %r4
+add.u64 %r5, %r2, %r3
+print %r5
+mov %r2, 0x8000000000000000
+add.i64 %r4, %r2, 1
+print %r4
+add.u64 %r5, %r2, 1
+print %r5
+mov %r2, 0
+inc.i64 %r2
+print %r2
+mov %r2, 0
+inc.u64 %r2
+print %r2
+mov %r2, -1
+mov.i64 %r2, %r2
+print %r2
+mov %r2, -1
+mov.u64 %r2, %r2
+print %r2
+mov.i64 %r0, 0xf000000000000000
+mov.i64 %r1, 0x9ff0000000000000
+and.i64 %r2, %r0, %r1
+print %r2
+or.i64 %r2, %r0, %r1
+print %r2
+xor.i64 %r2, %r0, %r1
+print %r2
+mov.u64 %r0, 0xf000000000000000
+mov.u64 %r1, 0x9ff0000000000000
+and.u64 %r2, %r0, %r1
+print %r2
+or.u64 %r2, %r0, %r1
+print %r2
+xor.u64 %r2, %r0, %r1
+print %r2
+mov.i64 %r0, -9223372036854775808
+mov.i64 %r1, 0
+slt.i64 %r2, %r0, %r1
+print %r2
+slt.i64 %r2, %r1, %r0
+print %r2
+mov.u64 %r0, 18446744073709551615
+mov.u64 %r1, 0
+ult.u64 %r2, %r0, %r1
+print %r2
+ult.u64 %r2, %r1, %r0
+print %r2
+ret

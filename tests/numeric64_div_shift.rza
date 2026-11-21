@@ -1,0 +1,42 @@
+mov.i64 %r0, -9223372036854775808
+div.i64 %r1, %r0, 2
+print %r1
+mod.i64 %r1, %r0, 3
+print %r1
+div.i64 %r1, %r0, -2
+print %r1
+mod.i64 %r1, %r0, -2
+print %r1
+mov.i64 %r0, -9223372036854775807
+div.i64 %r1, %r0, 2
+print %r1
+mod.i64 %r1, %r0, 2
+print %r1
+mov.u64 %r0, 18446744073709551615
+div.u64 %r1, %r0, 2
+print %r1
+mod.u64 %r1, %r0, 2
+print %r1
+mov.i64 %r0, 0x8000000000000000
+shl.i64 %r1, %r0, 0
+print %r1
+shl.i64 %r1, %r0, 1
+print %r1
+shr.i64 %r1, %r0, 0
+print %r1
+shr.i64 %r1, %r0, 63
+print %r1
+ushr.i64 %r1, %r0, 63
+print %r1
+mov.u64 %r0, 0x8000000000000000
+shl.u64 %r1, %r0, 1
+print %r1
+ushr.u64 %r1, %r0, 63
+print %r1
+mov.u64 %r0, 0xffffffffffffffff
+ushr.u64 %r1, %r0, 3
+print %r1
+mov.i64 %r0, 0x7fffffffffffffff
+shl.i64 %r1, %r0, 1
+print %r1
+ret

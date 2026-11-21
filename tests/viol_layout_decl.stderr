@@ -1,5 +1,5 @@
 VIOLATION line 1 [STRUCT]: malformed layout declaration
 VIOLATION line 2 [STRUCT]: bad layout name entry
 VIOLATION line 3 [STRUCT]: empty layout field
-VIOLATION line 4 [STRUCT]: unknown layout scalar type u64
+VIOLATION line 4 [STRUCT]: unknown layout scalar type f32
 VIOLATION line 5 [STRUCT]: malformed layout declaration

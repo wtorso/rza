@@ -31,8 +31,8 @@ fn void numeric_operation_descriptors_cover_legacy_surface() @test {
         "brnz", "call", "await"
     };
     foreach (name : names) assert(find_op_desc(name) != null);
-    assert(find_op_desc("add.i64") == null);
-    assert(find_op_desc("load.u64") == null);
+    assert(find_op_desc("add.f32") == null);
+    assert(find_op_desc("load.f32") == null);
     OpDesc* add = find_op_desc("add");
     assert(add.op == Op.ALU3 && add.alu_op == AluOp.ADD && add.has_scalar_type);
     OpDesc* load = find_op_desc("loadb");
@@ -98,8 +98,8 @@ fn void numeric_instruction_semantics_match_legacy_source() @test {
     assert(instrs[14].alu_op == AluOp.SLT);
     assert(instrs[15].alu_op == AluOp.CRC32C);
     free_checker();
-    start_invalid_layout("add.i64 %r0, %r1, %r2\n");
-    assert(lsp_diags[0].msg == "unknown op add.i64");
+    start_invalid_layout("add.f32 %r0, %r1, %r2\n");
+    assert(lsp_diags[0].msg == "unknown op add.f32");
     free_checker();
 }
 
@@ -141,8 +141,8 @@ fn void numeric_lsp_memory_context_uses_operation_descriptors() @test {
     assert(memory_completion_context("storeb", 0) == CompletionContext.MED);
     assert(memory_completion_context("load", 0) == CompletionContext.NONE);
     assert(memory_completion_context("store", 1) == CompletionContext.NONE);
-    assert(memory_completion_context("load.u64", 1) == CompletionContext.NONE);
-    assert(memory_completion_context("store.i64", 0) == CompletionContext.NONE);
+    assert(memory_completion_context("load.f32", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("store.i64", 0) == CompletionContext.MED);
     assert(memory_completion_context("unknown", 1) == CompletionContext.NONE);
 }
 

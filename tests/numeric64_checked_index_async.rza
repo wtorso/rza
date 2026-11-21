@@ -1,0 +1,8 @@
+res data, field, 8
+med data_m, data, field
+acasc checked: data_m -> out
+    mov.u64 %r0, 1
+    store.u64 [data_m + %r0], %r0
+endc
+await %r1
+ret

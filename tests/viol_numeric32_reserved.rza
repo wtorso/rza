@@ -1,2 +1,2 @@
-mov.u64 %r0, 1
+mov.f32 %r0, 1
 ret
