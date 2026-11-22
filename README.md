@@ -475,17 +475,20 @@ installation. The Release workflow supports manual dry runs and publication from
 
 ## Repository layout
 
-- `src/`: CLI, language server, language model, layouts, checker, C23 emitter, and compiler
-  memory helpers.
+- `src/rez3asm.c3`: command-line entry point.
+- `src/compiler/`: language model, numeric parsing, layouts, checker, and C23 emitter.
+- `src/lsp/`: language server, navigation, completion, and references.
+- `src/memory_guard.c3`, `src/scratch_memory.c3`: bounded compiler memory helpers.
 - `include/rza/`: public fixed-storage C23 runtime headers.
 - `build/bin/`: ignored native compiler output.
 - `install.sh`: native compiler/header installation with `PREFIX` and `DESTDIR`.
 - `release/`: reproducible packaging, smoke checks, and release notes.
 - `examples/`: focused runnable examples and expected output.
-- `tests/`: positive, negative, runtime, ABI, LSP, fuzz, and style checks.
-- `tests/reference/`: C23 reference checker and static reference program.
+- `tests/`: support, unit, integration, oracles, fixtures, host drivers, and reference checks;
+  see the [test suite guide](tests/README.md).
 - `bench/`: comparable workloads, timing, and disassembly checks.
-- `editors/vscode`: VS Code extension as a separate submodule.
+- `editors/`: local Emacs/Vim support, pinned Neovim and VS Code submodules, and the
+  [editor support guide](editors/README.md).
 
 ## License
 
