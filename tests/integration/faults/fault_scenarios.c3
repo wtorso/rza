@@ -88,7 +88,7 @@ fn int? test_cli_failures() {
     if (!expect(missing.status == 2, "missing input")) return 1;
     String directory = temp_path("output-directory");
     path::mkdir(path::tnew(directory)!, true)!;
-    ProcessResult output = run_simple({compiler_path(), "tests/fib.rza",
+    ProcessResult output = run_simple({compiler_path(), "tests/fixtures/core/fib.rza",
         "--emit-c", "-o", directory})!;
     if (!expect(output.status == 2, "output is directory")) return 1;
     return 0;

@@ -29,7 +29,7 @@ test -f "$stage$PREFIX/share/doc/rza/LICENSE"
 version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' project.json)
 test "$("$installed" --version)" = "rez3asm $version"
 "$installed" --help >"$work/help.out" 2>"$work/help.err"
-diff --unified tests/cli_help.expected "$work/help.out"
+diff --unified tests/fixtures/core/cli_help.expected "$work/help.out"
 test ! -s "$work/help.err"
 
 "$installed" examples/hello.rza --emit-c -o "$work/hello.c"

@@ -58,7 +58,7 @@ diff --unified "$work/RELEASE.expected" "$root/RELEASE.txt"
 
 test "$("$compiler" --version)" = "rez3asm $version"
 "$compiler" --help >"$work/help.out" 2>"$work/help.err"
-diff --unified "$root/tests/cli_help.expected" "$work/help.out"
+diff --unified "$root/tests/fixtures/core/cli_help.expected" "$work/help.out"
 test ! -s "$work/help.err"
 "$compiler" "$root/examples/hello.rza" --emit-c -o "$work/hello.c"
 CFLAGS=""

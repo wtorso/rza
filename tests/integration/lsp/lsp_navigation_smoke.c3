@@ -333,11 +333,16 @@ fn int? navigation_field_type_checks(Process* child) {
 	if (navigation_field_hover(child, 168, 6, 30, "half", "u16", 18)! != 0) return 1;
 	if (navigation_field_hover(child, 169, 7, 32, "signed_half", "i16", 20)! != 0) return 1;
 	String[] paths = {
-		"tests/numeric8_wrap.rza", "tests/numeric16_wrap.rza",
-		"tests/numeric16_div_shift.rza", "tests/numeric16_async.rza",
-		"tests/numeric32_wrap.rza", "tests/numeric32_div_shift.rza",
-		"tests/numeric32_async.rza", "tests/numeric64_wrap.rza",
-		"tests/numeric64_div_shift.rza", "tests/numeric64_async.rza",
+		"tests/fixtures/numeric8/numeric8_wrap.rza",
+		"tests/fixtures/numeric16/numeric16_wrap.rza",
+		"tests/fixtures/numeric16/numeric16_div_shift.rza",
+		"tests/fixtures/numeric16/numeric16_async.rza",
+		"tests/fixtures/numeric32/numeric32_wrap.rza",
+		"tests/fixtures/numeric32/numeric32_div_shift.rza",
+		"tests/fixtures/numeric32/numeric32_async.rza",
+		"tests/fixtures/numeric64/numeric64_wrap.rza",
+		"tests/fixtures/numeric64/numeric64_div_shift.rza",
+		"tests/fixtures/numeric64/numeric64_async.rza",
 	};
 	int version = 22;
 	foreach (path : paths) {

@@ -111,16 +111,17 @@ fn int? check_paths_and_indexed() {
             view_first.contains("rez_view_cell(") &&
             view_first.contains("rez_cell_bounds(m_dynamic_m, 0, 8)"),
             "view artifact paths, hash, or dynamic bounds")) return 1;
-    char[] indexed = read_file("tests/indexed.rza", artifact_source_buf[..])!;
-    String first_c = dstring::temp(emit_artifact("tests/indexed.rza",
+    char[] indexed = read_file("tests/fixtures/core/indexed.rza", artifact_source_buf[..])!;
+    String first_c = dstring::temp(emit_artifact("tests/fixtures/core/indexed.rza",
         temp_path("indexed-first.c"))!).str_view();
     if (!expect(first_c.starts_with(source_prefix((String)indexed)),
             "indexed source hash")) return 1;
-    String second_c = emit_artifact("tests/indexed.rza", temp_path("indexed-second.c"))!;
+    String second_c = emit_artifact("tests/fixtures/core/indexed.rza",
+        temp_path("indexed-second.c"))!;
     if (!expect(first_c == second_c, "indexed emit is not deterministic")) return 1;
     if (!expect(first_c.contains("if ((uint64_t)r2 > 56) {") &&
             !first_c.contains("rez_cell_bounds("), "constant raw cell bounds")) return 1;
-    String casc_c = emit_artifact("tests/bounds_casc_dynamic.rza",
+    String casc_c = emit_artifact("tests/fixtures/core/bounds_casc_dynamic.rza",
         temp_path("bounds-casc.c"))!;
     if (!expect(casc_c.contains("if ((uint64_t)r0 > 0) {") &&
             !casc_c.contains("rez_cell_bounds("), "constant cascade bounds")) return 1;
@@ -154,11 +155,11 @@ fn int mediator_deref_count(String text) {
 }
 
 fn int? check_prefix_hoist_artifact() {
-    String generated = emit_artifact("tests/hoist_prefix.rza",
+    String generated = emit_artifact("tests/fixtures/core/hoist_prefix.rza",
         temp_path("hoist-prefix.c"))!;
     if (!expect(mediator_deref_count(generated) == 2,
             "prefix mediator is checked once per procedure")) return 1;
-    generated = emit_artifact("tests/hoist_call.rza", temp_path("hoist-call.c"))!;
+    generated = emit_artifact("tests/fixtures/core/hoist_call.rza", temp_path("hoist-call.c"))!;
     if (!expect(mediator_deref_count(generated) == 3,
             "call disables mediator hoisting")) return 1;
     return 0;
@@ -175,7 +176,7 @@ fn int? check_crc_dispatch_artifact() {
 }
 
 fn int? check_async_drain_artifact() {
-    String synchronous = emit_artifact("tests/hoist_prefix.rza",
+    String synchronous = emit_artifact("tests/fixtures/core/hoist_prefix.rza",
         temp_path("sync-no-drain.c"))!;
     if (!expect(!synchronous.contains("g_async.count"),
             "programs without async tasks omit the queue check")) return 1;
@@ -190,12 +191,12 @@ fn int? check_async_drain_artifact() {
             wrapper.contains("rez_async_drain(&g_async);") && wrapper.contains("rez_decay") &&
             driver.contains("g_async.count") && boot.contains("g_async.count"),
             "library cores omit internal checks; wrappers retain them")) return 1;
-    String asynchronous = emit_artifact("tests/async_fifo.rza",
+    String asynchronous = emit_artifact("tests/fixtures/async/async_fifo.rza",
         temp_path("async-drain.c"))!;
     if (!expect(asynchronous.contains("if (g_async.count != 0) (void)rez_async_drain") &&
             !asynchronous.contains("\n    (void)rez_async_drain(&g_async);"),
             "async programs retain the conditional drain call")) return 1;
-    String async_proc = emit_artifact("tests/async_framefree_drain.rza",
+    String async_proc = emit_artifact("tests/fixtures/async/async_framefree_drain.rza",
         temp_path("async-proc-drain.c"))!;
     String async_core = artifact_function(async_proc, "static bool p_framefree(void) {");
     String async_main = artifact_function(async_proc, "static bool rez3asm_main(void) {");
@@ -217,19 +218,19 @@ fn int? check_async_drain_artifact() {
 }
 
 fn int? check_fault_helper_artifact() {
-    String checked = emit_artifact("tests/checked_add_overflow.rza",
+    String checked = emit_artifact("tests/fixtures/core/checked_add_overflow.rza",
         temp_path("checked-helper.c"))!;
     if (!expect(text_count(checked, "static void rez3asm_fault(") == 1 &&
             !checked.contains("[[noreturn]]") &&
             checked.contains("rez3asm_fault(RZA_FAULT_ARITHMETIC_OVERFLOW, 2,") &&
             !checked.contains("fprintf(stderr, \"FAULT line 2: arithmetic overflow"),
             "checked overflow uses the cold helper")) return 1;
-    String bounds = emit_artifact("tests/bounds_dynamic.rza",
+    String bounds = emit_artifact("tests/fixtures/core/bounds_dynamic.rza",
         temp_path("bounds-helper.c"))!;
     if (!expect(bounds.contains("rez3asm_fault(RZA_FAULT_OUT_OF_BOUNDS, 6,") &&
             !bounds.contains("fprintf(stderr, \"FAULT line 6: out of bounds"),
             "dynamic bounds use the cold helper")) return 1;
-    String asynchronous = emit_artifact("tests/async_repeat.rza",
+    String asynchronous = emit_artifact("tests/fixtures/async/async_repeat.rza",
         temp_path("async-cold-helpers.c"))!;
     if (!expect(asynchronous.contains("rez3asm_fault(RZA_FAULT_ARENA, 1, \"cell\", \"x\");") &&
             asynchronous.contains("rez3asm_fault(RZA_FAULT_FRAME, 0,") &&
@@ -240,7 +241,7 @@ fn int? check_fault_helper_artifact() {
             !asynchronous.contains("fprintf(stderr, \"FAULT line 5:") &&
             !asynchronous.contains("fprintf(stderr, \"ABORT line 5:"),
             "async ownership and queue diagnostics use cold helpers")) return 1;
-    String library = emit_lib_artifact("tests/lib_result.rza",
+    String library = emit_lib_artifact("tests/fixtures/library/lib_result.rza",
         temp_path("controlled-library.c"))!;
     if (!expect(!library.contains("exit(") && !library.contains("fprintf(") &&
             library.contains("RzaResult rza_fail(void)"),
@@ -249,7 +250,7 @@ fn int? check_fault_helper_artifact() {
 }
 
 fn int? check_frame_free_artifact() {
-    String hello = emit_lib_artifact("tests/lib_hello.rza",
+    String hello = emit_lib_artifact("tests/fixtures/library/lib_hello.rza",
         temp_path("frame-free-hello.c"))!;
     if (!expect(hello.contains("static bool p_greet(void) {") &&
             text_count(hello, "rez_frame_reset(&f_P_greet") == 1 &&
@@ -263,13 +264,15 @@ fn int? check_frame_free_artifact() {
     if (!expect(text_count(ring, "if (!p_push()) goto rza_fault;") == 1 &&
             !ring.contains("rza_push();"),
             "internal calls bypass empty proc lifecycle")) return 1;
-    String raised = emit_lib_artifact("tests/lib_raise.rza",
+    String raised = emit_lib_artifact("tests/fixtures/library/lib_raise.rza",
         temp_path("frame-owning-raise.c"))!;
     if (!expect(raised.contains("static bool p_setup(void) {") &&
             raised.contains("RzaResult rza_setup(void) {") &&
             text_count(raised, "rez_frame_reset(&f_P_setup") == 1,
             "frame-owning procedure keeps core and host wrappers separate")) return 1;
-    String[] sources = { "tests/cascade.rza", "bench/table.rza", "bench/parser.rza" };
+    String[] sources = {
+        "tests/fixtures/cascades/cascade.rza", "bench/table.rza", "bench/parser.rza"
+    };
     for (sz i = 0; i < sources.len; i++) {
         String generated = emit_artifact(sources[i], temp_path("deref-negative.c"))!;
         if (!expect(!generated.contains("rez_deref_cell_inline("),
@@ -279,7 +282,7 @@ fn int? check_frame_free_artifact() {
 }
 
 fn int? check_self_move_artifact() {
-    String generated = emit_artifact("tests/mov_self.rza",
+    String generated = emit_artifact("tests/fixtures/core/mov_self.rza",
         temp_path("self-move.c"))!;
     if (!expect(!generated.contains("r0 = r0;"),
             "self move is omitted from generated C")) return 1;
@@ -474,7 +477,7 @@ struct Numeric64FaultCase {
 }
 
 fn int? check_numeric64_fault_case(Numeric64FaultCase item) {
-    String source = string::tformat("tests/%s.rza", item.name);
+    String source = string::tformat("tests/fixtures/numeric64/%s.rza", item.name);
     String generated = temp_path(string::tformat("%s-lib.c", item.name));
     String library = emit_lib_artifact(source, generated)!;
     char[] host = read_file("tests/host/numeric64_fault_host.c", artifact_source_buf[..])!;
