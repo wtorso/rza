@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 work=$(mktemp -d "$PWD/build/infrastructure-tests.XXXXXX")
 trap 'rm --recursive --force "$work"' EXIT

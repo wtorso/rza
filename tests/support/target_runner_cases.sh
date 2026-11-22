@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 work=build/target-runner-cases
 rm --recursive --force "$work"
@@ -29,7 +29,7 @@ expect_case() {
     if [ "$name" = missing-readelf ]; then path=/nonexistent; fi
     set +e
     PATH="$path" RZA_TARGET_ARCH="$arch" RZA_TARGET_LAUNCHER="$launcher" \
-        RZA_TARGET_LOG="$log" /bin/bash tests/target_run.sh "$program" \
+        RZA_TARGET_LOG="$log" /bin/bash tests/support/target_run.sh "$program" \
         >"$work/$name.out" 2>"$work/$name.err"
     status=$?
     set -e

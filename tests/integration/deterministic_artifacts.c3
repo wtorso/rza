@@ -477,7 +477,7 @@ fn int? check_numeric64_fault_case(Numeric64FaultCase item) {
     String source = string::tformat("tests/%s.rza", item.name);
     String generated = temp_path(string::tformat("%s-lib.c", item.name));
     String library = emit_lib_artifact(source, generated)!;
-    char[] host = read_file("tests/numeric64_fault_host.c", artifact_source_buf[..])!;
+    char[] host = read_file("tests/host/numeric64_fault_host.c", artifact_source_buf[..])!;
     DString driver = dstring::temp();
     driver.appendf("#define NUMERIC64_EXPECTED_CODE %s\n", item.code);
     driver.appendf("#define NUMERIC64_EXPECTED_LINE %d\n", item.line);

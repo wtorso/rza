@@ -66,5 +66,5 @@ LDFLAGS=""
 rza_cc_init release
 rza_cc -I "$root/include/rza" "$work/hello.c" -o "$executable"
 test "$("$executable")" = 41
-RZA_COMPILER="$compiler" bash "$root/tests/install_smoke.sh"
+RZA_COMPILER="$compiler" bash "$root/tests/support/install_smoke.sh"
 printf 'RELEASE_SMOKE OK package=%s output=41\n' "$package"

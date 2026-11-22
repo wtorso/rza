@@ -131,7 +131,7 @@ rza_run() {
         "$@"
         return
     fi
-    bash tests/target_run.sh "$@"
+    bash tests/support/target_run.sh "$@"
 }
 
 rza_cc_compile() {

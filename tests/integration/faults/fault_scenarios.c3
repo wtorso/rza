@@ -125,7 +125,7 @@ fn int? test_io_failure(bool stdout_failure) {
 
 fn int? test_abi_faults() {
     String executable = temp_path("abi_faults.exe");
-    ProcessResult compiled = compile_c("tests/abi_faults.c", executable)!;
+    ProcessResult compiled = compile_c("tests/host/abi_faults.c", executable)!;
     if (!expect(compiled.status == 0 && compiled.stderr_text.len == 0,
             "ABI fault compilation")) return 1;
     ProcessResult runtime = run_program({ executable })!;

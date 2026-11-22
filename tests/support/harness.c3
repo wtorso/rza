@@ -118,7 +118,7 @@ fn ProcessResult? run_program(String[] command) {
     wrapped.init(mem);
     defer wrapped.free();
     wrapped.push("bash");
-    wrapped.push("tests/target_run.sh");
+    wrapped.push("tests/support/target_run.sh");
     wrapped.push_all(command);
     return run_simple(wrapped.array_view());
 }

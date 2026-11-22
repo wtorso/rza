@@ -94,7 +94,7 @@ fn void function_length_bash_whitespace_before_brace() @test {
 
 fn void function_length_source_path_filter() @test {
     assert(source_path_allowed("src/pass.c3"));
-    assert(source_path_allowed("tests/runtime_safety.c"));
+    assert(source_path_allowed("tests/host/runtime_safety.c"));
     assert(!source_path_allowed("out/bad.c3"));
     assert(!source_path_allowed("build/bad.c3"));
     assert(!source_path_allowed("README.md"));

@@ -155,7 +155,7 @@ jobs:
           RZA_TARGET_LOG: ${{ github.workspace }}/build/target-${{ matrix.arch }}.exec.log
           RZA_TARGET_EXPECTED_PASS: "192"
         run: |
-          bash tests/target_runner_cases.sh
+          bash tests/support/target_runner_cases.sh
           bash run_tests.sh
           executions=$(wc -l < "$RZA_TARGET_LOG")
           test "$executions" -eq 1211

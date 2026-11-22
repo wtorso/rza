@@ -51,24 +51,43 @@ run_function_style() {
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
     fi
-    if ! "$c3c_bin" compile tests/runner.c3 tests/harness.c3 \
-            tests/function_length.c3 tests/source_style.c3 tests/deterministic_artifacts.c3 \
-            tests/tiny_budgets.c3 tests/fuzz_smoke.c3 tests/ownership_model.c3 \
-            tests/ownership_fuzz.c3 tests/execution_oracle.c3 tests/execution_proc_oracle.c3 \
-            tests/execution_proc_model.c3 tests/execution_cascade_oracle.c3 \
-            tests/execution_cascade_model.c3 tests/execution_shrink.c3 \
-            tests/execution_coverage.c3 tests/numeric8_oracle.c3 \
-            tests/numeric8_reference.c3 tests/numeric8_coverage.c3 \
-            tests/numeric16_oracle.c3 tests/numeric16_reference.c3 \
-            tests/numeric16_coverage.c3 tests/numeric32_oracle.c3 \
-            tests/numeric32_reference.c3 tests/numeric32_coverage.c3 \
-            tests/numeric64_oracle.c3 tests/numeric64_reference.c3 \
-            tests/numeric64_coverage.c3 \
-            tests/lsp_client.c3 tests/fault_scenarios.c3 \
-            tests/fault_smoke.c3 tests/proc_contracts.c3 tests/contract_model.c3 \
-            tests/contract_fuzz.c3 tests/lsp_smoke.c3 tests/lsp_navigation_smoke.c3 \
-            tests/lsp_completion_smoke.c3 tests/lsp_references_smoke.c3 \
-            tests/lsp_memory_posix.c3 tests/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
+    if ! "$c3c_bin" compile tests/support/runner.c3 tests/support/harness.c3 \
+            tests/support/function_length.c3 tests/support/source_style.c3 \
+            tests/integration/deterministic_artifacts.c3 \
+            tests/integration/tiny_budgets.c3 tests/integration/fuzz_smoke.c3 \
+            tests/oracles/ownership/ownership_model.c3 \
+            tests/oracles/ownership/ownership_fuzz.c3 \
+            tests/oracles/execution/execution_oracle.c3 \
+            tests/oracles/execution/execution_proc_oracle.c3 \
+            tests/oracles/execution/execution_proc_model.c3 \
+            tests/oracles/execution/execution_cascade_oracle.c3 \
+            tests/oracles/execution/execution_cascade_model.c3 \
+            tests/oracles/execution/execution_shrink.c3 \
+            tests/oracles/execution/execution_coverage.c3 \
+            tests/oracles/numeric8/numeric8_oracle.c3 \
+            tests/oracles/numeric8/numeric8_reference.c3 \
+            tests/oracles/numeric8/numeric8_coverage.c3 \
+            tests/oracles/numeric16/numeric16_oracle.c3 \
+            tests/oracles/numeric16/numeric16_reference.c3 \
+            tests/oracles/numeric16/numeric16_coverage.c3 \
+            tests/oracles/numeric32/numeric32_oracle.c3 \
+            tests/oracles/numeric32/numeric32_reference.c3 \
+            tests/oracles/numeric32/numeric32_coverage.c3 \
+            tests/oracles/numeric64/numeric64_oracle.c3 \
+            tests/oracles/numeric64/numeric64_reference.c3 \
+            tests/oracles/numeric64/numeric64_coverage.c3 \
+            tests/integration/lsp/lsp_client.c3 \
+            tests/integration/faults/fault_scenarios.c3 \
+            tests/integration/faults/fault_smoke.c3 \
+            tests/integration/contracts/proc_contracts.c3 \
+            tests/integration/contracts/contract_model.c3 \
+            tests/integration/contracts/contract_fuzz.c3 \
+            tests/integration/lsp/lsp_smoke.c3 \
+            tests/integration/lsp/lsp_navigation_smoke.c3 \
+            tests/integration/lsp/lsp_completion_smoke.c3 \
+            tests/integration/lsp/lsp_references_smoke.c3 \
+            tests/integration/lsp/lsp_memory_posix.c3 \
+            tests/integration/lsp/lsp_memory_win32.c3 -o "$BUILD/rza_tests" \
             >"$BUILD/function_style.out" 2>&1; then
         echo "FATAL: C3 test runner build failed" >&2
         cat "$BUILD/function_style.out" >&2
@@ -426,13 +445,15 @@ run_c3_unit() {
             src/compiler/numeric.c3 src/compiler/numeric_parse.c3 src/compiler/layout.c3 \
             src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp/server.c3 \
             src/lsp/navigation.c3 src/lsp/completion.c3 src/lsp/references.c3 \
-            src/memory_guard.c3 src/scratch_memory.c3 tests/output_writer_test.c3 \
-            tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
-            tests/numeric_model_test.c3 tests/numeric8_test.c3 tests/numeric16_test.c3 \
-            tests/numeric32_test.c3 tests/numeric64_test.c3 tests/layout_test.c3 \
-            tests/view_test.c3 tests/lsp_navigation_test.c3 tests/harness.c3 \
-            tests/function_length.c3 \
-            tests/source_style.c3 tests/source_style_test.c3 tests/function_length_test.c3 \
+            src/memory_guard.c3 src/scratch_memory.c3 tests/unit/output_writer_test.c3 \
+            tests/unit/memory_guard_test.c3 tests/unit/checker_budget_test.c3 \
+            tests/unit/numeric_model_test.c3 tests/unit/numeric8_test.c3 \
+            tests/unit/numeric16_test.c3 tests/unit/numeric32_test.c3 \
+            tests/unit/numeric64_test.c3 tests/unit/layout_test.c3 \
+            tests/unit/view_test.c3 tests/unit/lsp_navigation_test.c3 \
+            tests/support/harness.c3 tests/support/function_length.c3 \
+            tests/support/source_style.c3 tests/unit/source_style_test.c3 \
+            tests/unit/function_length_test.c3 \
             -o c3_tests --output-dir "$BUILD" >"$BUILD/c3_tests.log" 2>&1; then
         bad c3_unit "C3 unit tests failed"; cat "$BUILD/c3_tests.log"
         return
@@ -509,7 +530,7 @@ run_crc32c_portable() {
         echo "HOST_ONLY crc32c_portable_vectors non-x86 target only"
         return
     fi
-    if ! rza_cc tests/crc32c_portable_vectors.c -o "$BUILD/crc32c_portable.exe" \
+    if ! rza_cc tests/host/crc32c_portable_vectors.c -o "$BUILD/crc32c_portable.exe" \
             2>"$BUILD/crc32c_portable.ccerr"; then
         bad crc32c_portable "compile failed"; cat "$BUILD/crc32c_portable.ccerr"
         return
@@ -526,7 +547,7 @@ run_crc32c_portable() {
 }
 
 run_runtime_safety() {
-    if ! rza_cc tests/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
+    if ! rza_cc tests/host/runtime_safety.c -o "$BUILD/runtime_safety.exe" \
             2>"$BUILD/runtime_safety.ccerr"; then
         bad runtime_safety "compile failed"; cat "$BUILD/runtime_safety.ccerr"
         return
@@ -652,7 +673,7 @@ run_reference_invalid() {
 
 run_build_parallel() {
     local p1 p2 status
-    if ! bash tests/infrastructure_cases.sh >"$BUILD/infrastructure.log" 2>&1; then
+    if ! bash tests/support/infrastructure_cases.sh >"$BUILD/infrastructure.log" 2>&1; then
         bad build_parallel "compiler infrastructure contract failed"
         cat "$BUILD/infrastructure.log"
         return
