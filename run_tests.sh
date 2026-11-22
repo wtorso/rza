@@ -424,8 +424,8 @@ run_c3_unit() {
     fi
     if ! "$c3c_bin" compile-test src/rez3asm.c3 src/compiler/model.c3 \
             src/compiler/numeric.c3 src/compiler/numeric_parse.c3 src/compiler/layout.c3 \
-            src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp_server.c3 \
-            src/lsp_navigation.c3 src/lsp_completion.c3 src/lsp_references.c3 \
+            src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp/server.c3 \
+            src/lsp/navigation.c3 src/lsp/completion.c3 src/lsp/references.c3 \
             src/memory_guard.c3 src/scratch_memory.c3 tests/output_writer_test.c3 \
             tests/memory_guard_test.c3 tests/checker_budget_test.c3 \
             tests/numeric_model_test.c3 tests/numeric8_test.c3 tests/numeric16_test.c3 \

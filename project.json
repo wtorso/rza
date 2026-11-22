@@ -21,10 +21,10 @@
         "src/compiler/layout.c3",
         "src/compiler/checker.c3",
         "src/compiler/emitter.c3",
-        "src/lsp_server.c3",
-        "src/lsp_navigation.c3",
-        "src/lsp_completion.c3",
-        "src/lsp_references.c3",
+        "src/lsp/server.c3",
+        "src/lsp/navigation.c3",
+        "src/lsp/completion.c3",
+        "src/lsp/references.c3",
         "src/memory_guard.c3",
         "src/scratch_memory.c3"
       ]

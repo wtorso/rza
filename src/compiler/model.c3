@@ -275,7 +275,7 @@ NameMap proc_map;
 NameMap label_map;
 NameMap label_names;
 
-// диагностика для LSP-режима (--lsp, lsp_server.c3): те же нарушения, что
+// диагностика для LSP-режима (--lsp, src/lsp/server.c3): те же нарушения, что
 // viol() печатает в CLI, но собранные в список вместо stderr
 struct Diag {
 	int line; // 1-based, как в CLI
