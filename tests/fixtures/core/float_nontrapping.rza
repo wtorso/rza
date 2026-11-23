@@ -1,0 +1,49 @@
+mov.f32 %r0, 0x3f800000
+mov.f32 %r1, 0x00000000
+div.f32 %r2, %r0, %r1
+print %r2
+mov.f32 %r1, 0x80000000
+div.f32 %r2, %r0, %r1
+print %r2
+mov.f32 %r0, 0x00000000
+mov.f32 %r1, 0x00000000
+div.f32 %r2, %r0, %r1
+fne.f32 %r3, %r2, %r2
+print %r3
+feq.f32 %r3, %r2, %r2
+print %r3
+mov.f32 %r0, 0x7f800000
+div.f32 %r2, %r0, %r0
+fne.f32 %r3, %r2, %r2
+print %r3
+feq.f32 %r3, %r2, %r2
+print %r3
+mov.f32 %r0, 0x00000001
+mov.f32 %r1, 0x40000000
+div.f32 %r2, %r0, %r1
+print %r2
+mov.f64 %r0, 0x3ff0000000000000
+mov.f64 %r1, 0x0000000000000000
+div.f64 %r2, %r0, %r1
+print %r2
+mov.f64 %r1, 0x8000000000000000
+div.f64 %r2, %r0, %r1
+print %r2
+mov.f64 %r0, 0x0000000000000000
+mov.f64 %r1, 0x0000000000000000
+div.f64 %r2, %r0, %r1
+fne.f64 %r3, %r2, %r2
+print %r3
+feq.f64 %r3, %r2, %r2
+print %r3
+mov.f64 %r0, 0x7ff0000000000000
+div.f64 %r2, %r0, %r0
+fne.f64 %r3, %r2, %r2
+print %r3
+feq.f64 %r3, %r2, %r2
+print %r3
+mov.f64 %r0, 0x0000000000000001
+mov.f64 %r1, 0x4000000000000000
+div.f64 %r2, %r0, %r1
+print %r2
+ret

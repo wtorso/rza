@@ -76,6 +76,11 @@ run_function_style() {
             tests/oracles/numeric64/numeric64_oracle.c3 \
             tests/oracles/numeric64/numeric64_reference.c3 \
             tests/oracles/numeric64/numeric64_coverage.c3 \
+            tests/oracles/float/float_bigint.c3 \
+            tests/oracles/float/float_reference.c3 \
+            tests/oracles/float/float_coverage.c3 \
+            tests/oracles/float32/float32_oracle.c3 \
+            tests/oracles/float64/float64_oracle.c3 \
             tests/integration/lsp/lsp_client.c3 \
             tests/integration/faults/fault_scenarios.c3 \
             tests/integration/faults/fault_smoke.c3 \
@@ -366,6 +371,8 @@ run_numeric8_oracle() { run_c3 numeric8_oracle numeric8-oracle; }
 run_numeric16_oracle() { run_c3 numeric16_oracle numeric16-oracle; }
 run_numeric32_oracle() { run_c3 numeric32_oracle numeric32-oracle; }
 run_numeric64_oracle() { run_c3 numeric64_oracle numeric64-oracle; }
+run_float32_oracle() { run_c3 float32_oracle float32-oracle; }
+run_float64_oracle() { run_c3 float64_oracle float64-oracle; }
 run_fault_smoke() { run_c3 fault_smoke faults; }
 run_proc_contracts() { run_c3 proc_contracts contracts; }
 run_contract_fuzz() { run_c3 contract_fuzz contract-fuzz; }
@@ -436,6 +443,36 @@ run_async_mutants() {
     ok async_generation_exhaustion
 }
 
+run_float_async_guard_mutation() {
+    local base="$BUILD/float-async-mutant"
+    mkdir --parents "$base"
+    if ! $TR tests/fixtures/async/float_cvt_async_overflow.rza --emit-c \
+            -o "$base/clean.c" ||
+            ! sed 's/if (rez_f32_to_u64(/if (false \&\& rez_f32_to_u64(/' \
+                "$base/clean.c" >"$base/mutant.c" ||
+            ! grep --quiet 'if (false && rez_f32_to_u64(' "$base/mutant.c" ||
+            ! rza_cc "$base/mutant.c" -o "$base/mutant.exe" \
+                2>"$base/compile.err"; then
+        bad float_async_guard_mutation "mutation build or anchor failed"
+        return
+    fi
+    if [ -s "$base/compile.err" ]; then
+        bad float_async_guard_mutation "compiler warnings"
+        return
+    fi
+    if ! rza_run "$base/mutant.exe" >"$base/run.out" 2>"$base/run.err"; then
+        bad float_async_guard_mutation "mutant retained the conversion fault"
+        return
+    fi
+    printf '1\n0\n0\n' >"$base/expected"
+    if ! compare_text "$base/expected" "$base/run.out" >/dev/null 2>&1 ||
+            [ -s "$base/run.err" ]; then
+        bad float_async_guard_mutation "missing fault or OUT publication mismatch"
+        return
+    fi
+    echo "RED float_async_guard_mutation (fault removed, OUT published)"
+}
+
 run_c3_unit() {
     if [ -n "${RZA_TARGET_ARCH:-}" ]; then
         echo "HOST_ONLY c3_unit x86_64 compiler internals"
@@ -447,14 +484,16 @@ run_c3_unit() {
     fi
     if ! "$c3c_bin" compile-test src/rez3asm.c3 src/compiler/model.c3 \
             src/compiler/numeric.c3 src/compiler/numeric_parse.c3 src/compiler/layout.c3 \
-            src/compiler/checker.c3 src/compiler/emitter.c3 src/lsp/server.c3 \
+            src/compiler/checker.c3 src/compiler/float_emit.c3 src/compiler/emitter.c3 \
+            src/lsp/server.c3 \
             src/lsp/navigation.c3 src/lsp/completion.c3 src/lsp/references.c3 \
             src/memory_guard.c3 src/scratch_memory.c3 tests/unit/output_writer_test.c3 \
             tests/unit/memory_guard_test.c3 tests/unit/checker_budget_test.c3 \
             tests/unit/numeric_model_test.c3 tests/unit/numeric8_test.c3 \
             tests/unit/numeric16_test.c3 tests/unit/numeric32_test.c3 \
-            tests/unit/numeric64_test.c3 tests/unit/layout_test.c3 \
-            tests/unit/view_test.c3 tests/unit/lsp_navigation_test.c3 \
+            tests/unit/numeric64_test.c3 tests/unit/float_test.c3 \
+            tests/unit/layout_test.c3 tests/unit/view_test.c3 \
+            tests/unit/lsp_navigation_test.c3 \
             tests/support/harness.c3 tests/support/function_length.c3 \
             tests/support/source_style.c3 tests/unit/source_style_test.c3 \
             tests/unit/function_length_test.c3 \
@@ -773,6 +812,41 @@ DIR=tests/fixtures/numeric64 run_good numeric64_layout
 DIR=tests/fixtures/numeric64 run_good numeric64_wrap
 DIR=tests/fixtures/numeric64 run_good numeric64_div_shift
 DIR=tests/fixtures/numeric64 run_good numeric64_async
+DIR=tests/fixtures/core run_good float_access
+DIR=tests/fixtures/layouts run_good float_layout
+DIR=tests/fixtures/core run_good float_moves
+DIR=tests/fixtures/views run_good float_views
+DIR=tests/fixtures/async run_good float_async
+DIR=tests/fixtures/core run_good float_unaligned
+DIR=tests/fixtures/core run_good float_arith
+DIR=tests/fixtures/core run_good float_compare
+DIR=tests/fixtures/core run_good float_special
+DIR=tests/fixtures/core run_good float_nontrapping
+DIR=tests/fixtures/core run_good float_cvt
+DIR=tests/fixtures/core run_good float_bitcast
+DIR=tests/fixtures/core run_good float_cvt_boundaries
+DIR=tests/fixtures/core run_dead float_cvt_invalid "FAULT line 5: invalid conversion" exact
+DIR=tests/fixtures/async \
+    run_dead float_cvt_async_overflow "FAULT line 7: invalid conversion" exact
+if [ -n "${RZA_TARGET_ARCH:-}" ]; then run_float_async_guard_mutation; fi
+DIR=tests/fixtures/diagnostics run_viol viol_float_cvt_same STRUCT \
+    tests/fixtures/diagnostics/viol_float_cvt_same.stderr
+DIR=tests/fixtures/diagnostics run_viol viol_float_cvt_pair STRUCT \
+    tests/fixtures/diagnostics/viol_float_cvt_pair.stderr
+DIR=tests/fixtures/diagnostics run_viol viol_float_bitcast_width STRUCT \
+    tests/fixtures/diagnostics/viol_float_bitcast_width.stderr
+DIR=tests/fixtures/diagnostics run_viol viol_float_reserved STRUCT \
+    tests/fixtures/diagnostics/viol_float_reserved.stderr
+DIR=tests/fixtures/diagnostics run_viol viol_float_negative_hex STRUCT \
+    tests/fixtures/diagnostics/viol_float_negative_hex.stderr
+DIR=tests/fixtures/views run_dead float_view_raw_oob "FAULT line 5: out of bounds raw_v_m" exact
+DIR=tests/fixtures/views \
+    run_dead float_view_typed_oob "FAULT line 6: out of bounds pairs_v_m" exact
+DIR=tests/fixtures/ownership run_dead float_dead "FAULT line 5: dead mediator raw_m" exact
+DIR=tests/fixtures/diagnostics run_viol viol_float_literal STRUCT \
+    tests/fixtures/diagnostics/viol_float_literal.stderr
+DIR=tests/fixtures/diagnostics run_viol viol_float_layout_mismatch STRUCT \
+    tests/fixtures/diagnostics/viol_float_layout_mismatch.stderr
 DIR=tests/fixtures/numeric64 \
     run_dead numeric64_cadd_i64_overflow "FAULT line 2: arithmetic overflow" exact
 DIR=tests/fixtures/numeric64 \
@@ -1084,6 +1158,8 @@ run_numeric8_oracle
 run_numeric16_oracle
 run_numeric32_oracle
 run_numeric64_oracle
+run_float32_oracle
+run_float64_oracle
 run_fault_smoke
 run_proc_contracts
 run_contract_fuzz
@@ -1097,7 +1173,7 @@ run_c3_unit
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
-EXPECTED_PASS=305
+EXPECTED_PASS=332
 if [ -n "${RZA_TARGET_ARCH:-}" ]; then
     case ${RZA_TARGET_EXPECTED_PASS:-} in
         ''|*[!0-9]*)
@@ -1107,7 +1183,7 @@ if [ -n "${RZA_TARGET_ARCH:-}" ]; then
     esac
     EXPECTED_PASS=$RZA_TARGET_EXPECTED_PASS
 fi
-if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=304; fi
+if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=331; fi
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

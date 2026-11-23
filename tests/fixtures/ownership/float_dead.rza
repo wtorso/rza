@@ -1,0 +1,6 @@
+cav tmp, field
+res raw, tmp, 16
+med raw_m, raw, tmp
+decay tmp
+load.f32 %r0, [raw_m + 0]
+ret

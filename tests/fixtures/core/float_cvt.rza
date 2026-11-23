@@ -1,0 +1,95 @@
+mov.f64 %r0, 0x3ff0000000000000
+cvt.f32.f64 %r1, %r0
+print %r1
+mov.f32 %r0, 0x3f800000
+cvt.f64.f32 %r1, %r0
+print %r1
+mov.i8 %r0, -128
+cvt.f32.i8 %r1, %r0
+print %r1
+cvt.f64.i8 %r1, %r0
+print %r1
+mov.f32 %r0, 0xc3008000
+cvt.i8.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0xc060008000000000
+cvt.i8.f64 %r1, %r0
+print %r1
+mov.u8 %r0, 255
+cvt.f32.u8 %r1, %r0
+print %r1
+cvt.f64.u8 %r1, %r0
+print %r1
+mov.f32 %r0, 0x437f0000
+cvt.u8.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0x406fe00000000000
+cvt.u8.f64 %r1, %r0
+print %r1
+mov.i16 %r0, -32768
+cvt.f32.i16 %r1, %r0
+print %r1
+cvt.f64.i16 %r1, %r0
+print %r1
+mov.f32 %r0, 0xc7000000
+cvt.i16.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0xc0e0000000000000
+cvt.i16.f64 %r1, %r0
+print %r1
+mov.u16 %r0, 65535
+cvt.f32.u16 %r1, %r0
+print %r1
+cvt.f64.u16 %r1, %r0
+print %r1
+mov.f32 %r0, 0x477fff00
+cvt.u16.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0x40efffe000000000
+cvt.u16.f64 %r1, %r0
+print %r1
+mov.i32 %r0, -2147483648
+cvt.f32.i32 %r1, %r0
+print %r1
+cvt.f64.i32 %r1, %r0
+print %r1
+mov.f32 %r0, 0xcf000000
+cvt.i32.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0xc1e0000000000000
+cvt.i32.f64 %r1, %r0
+print %r1
+mov.u32 %r0, 0x80000000
+cvt.f32.u32 %r1, %r0
+print %r1
+cvt.f64.u32 %r1, %r0
+print %r1
+mov.f32 %r0, 0x4f000000
+cvt.u32.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0x41e0000000000000
+cvt.u32.f64 %r1, %r0
+print %r1
+mov.i64 %r0, -9007199254740992
+cvt.f32.i64 %r1, %r0
+print %r1
+cvt.f64.i64 %r1, %r0
+print %r1
+mov.f32 %r0, 0xdf000000
+cvt.i64.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0xc3e0000000000000
+cvt.i64.f64 %r1, %r0
+print %r1
+mov.u64 %r0, 0x8000000000000000
+cvt.f32.u64 %r1, %r0
+print %r1
+cvt.f64.u64 %r1, %r0
+print %r1
+mov.f32 %r0, 0x5f000000
+cvt.u64.f32 %r1, %r0
+print %r1
+mov.f64 %r0, 0x43e0000000000000
+cvt.u64.f64 %r1, %r0
+print %r1
+ret

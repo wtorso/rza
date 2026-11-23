@@ -27,7 +27,7 @@ trap 'rm --force "$NEW" "$NEW.exe" "$NEW.pdb" "$OLD.exe" "$OLD.pdb" \
 
 if ! $C3C compile src/rez3asm.c3 src/compiler/model.c3 src/compiler/numeric.c3 \
         src/compiler/numeric_parse.c3 src/compiler/layout.c3 src/compiler/checker.c3 \
-        src/compiler/emitter.c3 src/lsp/server.c3 \
+        src/compiler/float_emit.c3 src/compiler/emitter.c3 src/lsp/server.c3 \
         src/lsp/navigation.c3 src/lsp/completion.c3 src/lsp/references.c3 \
         src/memory_guard.c3 src/scratch_memory.c3 \
         -o "$NEW" "${RELEASE_FLAGS[@]}" \

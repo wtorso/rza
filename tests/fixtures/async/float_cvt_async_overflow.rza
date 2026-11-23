@@ -1,0 +1,17 @@
+res data, field, 8
+med data_m, data, field
+mov.f32 %r0, 0x7f800000
+store.f32 [data_m + 0], %r0
+acasc convert: data_m -> out
+    load.f32 %r0, [data_m + 0]
+    cvt.u64.f32 %r1, %r0
+    store.u64 [data_m + 0], %r1
+endc
+med out_m, out, field
+await %r0
+print %r0
+load.u64 %r0, [out_m + 0]
+print %r0
+load.u64 %r0, [data_m + 0]
+print %r0
+ret

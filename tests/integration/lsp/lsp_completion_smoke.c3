@@ -35,10 +35,13 @@ const String COMPLETION_TEXT = "layout Ring: read_pos:i64, count:i64, "
 	"loadb %r0, [ring\n"
 	"load.u32 %r0, [ring\n"
 	"store.i64 [ring\n"
+	"load.f32 %r0, [ring\n"
+	"store.f64 [ring\n"
 	"ret\n";
 
 const String COMPLETION_TYPE_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
-	"half:u16, signed_half:i16, word:i32, tail:u32, wide:i64, bits:u64\n"
+	"half:u16, signed_half:i16, word:i32, tail:u32, wide:i64, bits:u64, "
+	"single:f32, double:f64\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"load %r0, [pair_m + 0].\n"
@@ -49,6 +52,8 @@ const String COMPLETION_TYPE_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, 
 	"load.u16 %r0, [pair\n"
 	"store.u16 [pair\n"
 	"load.i64 %r0, [pair\n"
+	"load.f32 %r0, [pair\n"
+	"store.f64 [pair\n"
 	"ret\n";
 
 fn bool completion_matches(Object* response, String[] expected, bool incomplete) {
@@ -150,6 +155,16 @@ fn int? completion_view_checks(Process* child) {
 	return expect_completion(child, 130, 3, 17, { "raw_m", "raw_v_m" }, false);
 }
 
+fn int? completion_float_conversion_checks(Process* child) {
+	DString text = dstring::temp("res raw, field, 16\nmed raw_m, raw, field\n"
+		"mov.f64 %r0, 0x3ff0000000000000\ncvt.f32.f64 %r0, %r0\n"
+		"bitcast.u32.f32 %r1, %r0\nload.f32 %r0, [raw\nret\n");
+	Object* response = lsp_call_json(child, change_message(text.str_view(), 60))!;
+	if (!expect(json_diagnostics(response)!.len() > 0,
+			"incomplete float conversion mediator")) return 1;
+	return expect_completion(child, 150, 5, 18, { "raw_m" }, false);
+}
+
 fn int? completion_checks(Process* child) {
 	if (completion_name_checks(child)! != 0) return 1;
 	if (completion_scope_checks(child)! != 0) return 1;
@@ -157,6 +172,7 @@ fn int? completion_checks(Process* child) {
 	if (completion_regression_checks(child)! != 0) return 1;
 	if (completion_type_detail_checks(child)! != 0) return 1;
 	if (completion_view_checks(child)! != 0) return 1;
+	if (completion_float_conversion_checks(child)! != 0) return 1;
 	return 0;
 }
 
@@ -207,6 +223,8 @@ fn int? completion_numeric_context_checks(Process* child) {
 	if (expect_completion(child, 128, 24, 16, { "ring_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 129, 25, 19, { "ring_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 131, 26, 15, { "ring_m" }, false)! != 0) return 1;
+	if (expect_completion(child, 140, 27, 19, { "ring_m" }, false)! != 0) return 1;
+	if (expect_completion(child, 141, 28, 15, { "ring_m" }, false)! != 0) return 1;
 	return 0;
 }
 
@@ -246,7 +264,8 @@ fn int? completion_type_detail_checks(Process* child) {
 			"field completion document is intentionally invalid")) return 1;
 	Object* response = position_call(child, "textDocument/completion", 132, GOOD_URI, 3, 23)!;
 	if (!expect(completion_matches(response,
-			{ "tag", "value", "signed", "half", "signed_half", "word", "tail", "wide", "bits" },
+			{ "tag", "value", "signed", "half", "signed_half", "word", "tail", "wide", "bits",
+				"single", "double" },
 			false), "field completion labels")) return 1;
 	if (!expect(completion_detail_matches(response, "tag", "u8 field"),
 			"u8 completion detail")) return 1;
@@ -266,6 +285,10 @@ fn int? completion_type_detail_checks(Process* child) {
 			"i64 completion detail")) return 1;
 	if (!expect(completion_detail_matches(response, "bits", "u64 field"),
 			"u64 completion detail")) return 1;
+	if (!expect(completion_detail_matches(response, "single", "f32 field"),
+			"f32 completion detail")) return 1;
+	if (!expect(completion_detail_matches(response, "double", "f64 field"),
+			"f64 completion detail")) return 1;
 	if (expect_completion(child, 133, 4, 18, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 134, 5, 18, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 135, 6, 14, { "pair_m" }, false)! != 0) return 1;
@@ -273,5 +296,7 @@ fn int? completion_type_detail_checks(Process* child) {
 	if (expect_completion(child, 137, 8, 19, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 138, 9, 15, { "pair_m" }, false)! != 0) return 1;
 	if (expect_completion(child, 139, 10, 18, { "pair_m" }, false)! != 0) return 1;
+	if (expect_completion(child, 142, 11, 19, { "pair_m" }, false)! != 0) return 1;
+	if (expect_completion(child, 143, 12, 15, { "pair_m" }, false)! != 0) return 1;
 	return 0;
 }

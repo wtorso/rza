@@ -1,0 +1,39 @@
+mov.f32 %r0, 0x3f800000
+mov.f32 %r1, 0x40000000
+add.f32 %r2, %r0, 0x40000000
+print %r2
+sub.f32 %r2, %r1, 0x3f800000
+print %r2
+mul.f32 %r2, %r1, 0x40000000
+print %r2
+div.f32 %r2, %r1, 0x40000000
+print %r2
+mov.f32 %r3, 0x33800000
+add.f32 %r2, %r0, %r3
+print %r2
+mov.f32 %r3, 0x34000000
+add.f32 %r2, %r0, %r3
+print %r2
+mov.f32 %r4, 0x7f7fffff
+add.f32 %r2, %r4, %r4
+print %r2
+mov.f64 %r0, 0x3ff0000000000000
+mov.f64 %r1, 0x4000000000000000
+add.f64 %r2, %r0, 0x4000000000000000
+print %r2
+sub.f64 %r2, %r1, 0x3ff0000000000000
+print %r2
+mul.f64 %r2, %r1, 0x4000000000000000
+print %r2
+div.f64 %r2, %r1, 0x4000000000000000
+print %r2
+mov.f64 %r3, 0x3ca0000000000000
+add.f64 %r2, %r0, %r3
+print %r2
+mov.f64 %r3, 0x3cb0000000000000
+add.f64 %r2, %r0, %r3
+print %r2
+mov.f64 %r4, 0x7fefffffffffffff
+mul.f64 %r2, %r4, %r1
+print %r2
+ret

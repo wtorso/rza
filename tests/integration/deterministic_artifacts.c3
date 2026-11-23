@@ -314,6 +314,11 @@ fn int? artifacts_run() {
     if (check_numeric16_artifact()! != 0) return 1;
     if (check_numeric32_artifact()! != 0) return 1;
     if (check_numeric64_artifact()! != 0) return 1;
+    if (check_float_profile_artifact()! != 0) return 1;
+    if (check_float_memory_artifact()! != 0) return 1;
+    if (check_float_fault_artifacts()! != 0) return 1;
+    if (check_float_fault_mutations()! != 0) return 1;
+    if (check_float_rhs_mutations()! != 0) return 1;
     if (check_numeric64_fault_abi()! != 0) return 1;
     io::printn("DETERMINISTIC_ARTIFACTS OK");
     return 0;
@@ -545,5 +550,327 @@ fn int? check_numeric64_fault_abi() {
     }
     if (!expect(failures == 0, "numeric64 ABI fault cases")) return 1;
     io::printn("NUMERIC64_ABI_FAULTS OK (12 programs)");
+    return 0;
+}
+
+
+const String FLOAT_MEMORY_SOURCE = "res data, field, 32\n"
+    "med data_m, data, field\nproc canonical(data_m: rw):\n"
+    "    mov %r0, -1\n    mov.f32 %r1, %r0\n    store [data_m + 0], %r1\n"
+    "    mov.f32 %r2, 0x3f800000\n    store.f32 [data_m + 8], %r2\n"
+    "    mov.f64 %r3, 0x3ff0000000000000\n    store.f64 [data_m + 16], %r3\n"
+    "    ret\n";
+
+const String FLOAT_MEMORY_HOST = "\nstatic int float_memory_fail(const char *name) {\n"
+    "    puts(name);\n    return 1;\n}\n\n"
+    "int main(void) {\n"
+    "    RzaResult result = rza_boot();\n"
+    "    if (result.code != RZA_OK) return float_memory_fail(\"BOOT\");\n"
+    "    unsigned char *data = rza_deref_cell(rza_med_data_m());\n"
+    "    if (data == NULL) return float_memory_fail(\"DATA\");\n"
+    "    memset(data, 0x5a, 32);\n"
+    "    result = rza_canonical();\n"
+    "    if (result.code != RZA_OK) return float_memory_fail(\"CALL\");\n"
+    "    uint64_t container;\n"
+    "    memcpy(&container, data, sizeof(container));\n"
+    "    if (container != UINT64_C(0x00000000ffffffff)) {\n"
+    "        return float_memory_fail(\"F32_UPPER\");\n"
+    "    }\n"
+    "    uint32_t single;\n"
+    "    memcpy(&single, data + 8, sizeof(single));\n"
+    "    if (single != UINT32_C(0x3f800000)) return float_memory_fail(\"F32_BITS\");\n"
+    "    if (data[12] != 0x5a) return float_memory_fail(\"F32_CANARY\");\n"
+    "    uint64_t word;\n"
+    "    memcpy(&word, data + 16, sizeof(word));\n"
+    "    if (word != UINT64_C(0x3ff0000000000000)) {\n"
+    "        return float_memory_fail(\"F64_BITS\");\n"
+    "    }\n"
+    "    if (data[24] != 0x5a) return float_memory_fail(\"F64_CANARY\");\n"
+    "    return 0;\n}\n";
+
+fn String float_artifact_replace(String text, String needle, String replacement, bool* changed) {
+    DString out = dstring::temp();
+    sz? found = text.index_of(needle);
+    if (catch found) {
+        *changed = false;
+        return text;
+    }
+    out.append_string(text[:found]);
+    out.append_string(replacement);
+    out.append_string(text[found + needle.len..]);
+    *changed = true;
+    return out.str_view();
+}
+
+fn int? run_float_memory_driver(String library, String name, String expected) {
+    DString driver = dstring::temp(library);
+    driver.append_string(FLOAT_MEMORY_HOST);
+    String source = temp_path(string::tformat("%s.c", name));
+    String executable = temp_path(string::tformat("%s.exe", name));
+    write_file(source, driver.str_view())!;
+    ProcessResult compiled = compile_c(source, executable)!;
+    if (!expect(compiled.status == 0 && compiled.stderr_text.len == 0,
+            "float memory driver compilation")) {
+        print_result(compiled);
+        return 1;
+    }
+    ProcessResult runtime = run_simple({ executable })!;
+    bool clean = expected.len == 0;
+    bool valid = clean ? runtime.status == 0 && runtime.stdout_text.len == 0
+        : runtime.status == 1 && runtime.stdout_text == expected;
+    if (!expect(valid && runtime.stderr_text.len == 0, "float memory observation")) {
+        io::eprintn(name);
+        print_result(runtime);
+        return 1;
+    }
+    return 0;
+}
+
+fn int? check_float_memory_mutation(String library, String name, String before,
+        String after, String expected) {
+    bool changed;
+    String mutated = float_artifact_replace(library, before, after, &changed);
+    if (!expect(changed, "float memory mutation anchor")) return 1;
+    return run_float_memory_driver(mutated, name, expected);
+}
+
+fn int? check_float_memory_artifact() {
+    String source = temp_path("float-memory.rza");
+    write_file(source, FLOAT_MEMORY_SOURCE)!;
+    String library = emit_lib_artifact(source, temp_path("float-memory.c"))!;
+    if (run_float_memory_driver(library, "float-memory-clean", "")! != 0) return 1;
+    if (check_float_memory_mutation(library, "float-memory-upper",
+            "r1 = rez_f32_from_bits((uint64_t)r0);", "r1 = r0;",
+            "F32_UPPER\n")! != 0) return 1;
+    String f32_before = "{ uint32_t value = (uint32_t)rez_i64_bits(r2);\n"
+        "        memcpy((char*)p_data_m + 8, &value, 4);";
+    String f32_after = "{ uint64_t value[2] = { rez_i64_bits(r2), 0 };\n"
+        "        memcpy((char*)p_data_m + 8, &value, 8);";
+    if (check_float_memory_mutation(library, "float-memory-wide32", f32_before,
+            f32_after, "F32_CANARY\n")! != 0) return 1;
+    String f64_before = "{ uint64_t value = (uint64_t)rez_i64_bits(r3);\n"
+        "        memcpy((char*)p_data_m + 16, &value, 8);";
+    String f64_after = "{ uint64_t value[2] = { rez_i64_bits(r3), 0 };\n"
+        "        memcpy((char*)p_data_m + 16, &value, 16);";
+    if (check_float_memory_mutation(library, "float-memory-wide64", f64_before,
+            f64_after, "F64_CANARY\n")! != 0) return 1;
+    io::printn("FLOAT_MEMORY_ABI OK (4 programs)");
+    return 0;
+}
+
+
+struct FloatFaultCase {
+    String name;
+    String source;
+    int line;
+    String data_cell;
+    uint data_size;
+    ulong data_expected;
+    int callback_offset;
+    String out_cell;
+    String out_mediator;
+}
+
+fn int? run_float_fault_driver(FloatFaultCase item, String library,
+        String header, String variant, bool clean) {
+    String directory = temp_path(string::tformat("%s-%s", item.name, variant));
+    path::mkdir(path::tnew(directory)!, true)!;
+    DString driver = dstring::temp();
+    driver.appendf("#define FLOAT_EXPECTED_CODE RZA_FAULT_ARITHMETIC_OVERFLOW\n");
+    driver.appendf("#define FLOAT_EXPECTED_LINE %d\n", item.line);
+    if (item.data_cell.len > 0) {
+        driver.appendf("#define FLOAT_DATA_CELL %s\n", item.data_cell);
+        driver.appendf("#define FLOAT_DATA_SIZE %d\n", item.data_size);
+        driver.appendf("#define FLOAT_DATA_EXPECTED UINT64_C(0x%016x)\n", item.data_expected);
+    }
+    if (item.callback_offset > 0) {
+        driver.appendf("#define FLOAT_CALLBACK_OFFSET %d\n", item.callback_offset);
+    }
+    if (item.out_cell.len > 0) driver.appendf("#define FLOAT_OUT_CELL %s\n", item.out_cell);
+    if (item.out_mediator.len > 0) {
+        driver.appendf("#define FLOAT_OUT_MEDIATOR %s\n", item.out_mediator);
+    }
+    driver.append_string(library);
+    char[] host = read_file("tests/host/float_fault_host.c", artifact_source_buf[..])!;
+    driver.append_string((String)host);
+    String source = string::tformat("%s/driver.c", directory);
+    String executable = string::tformat("%s/driver.exe", directory);
+    write_file(source, driver.str_view())!;
+    if (header.len > 0) {
+        write_file(string::tformat("%s/rez3ext.h", directory), header)!;
+    }
+    ProcessResult compiled = compile_c(source, executable)!;
+    if (!expect(compiled.status == 0 && compiled.stderr_text.len == 0,
+            "float fault driver compilation")) {
+        print_result(compiled);
+        return 1;
+    }
+    ProcessResult runtime = run_simple({ executable })!;
+    bool valid = clean ? runtime.status == 0 && runtime.stdout_text.len == 0 &&
+        runtime.stderr_text.len == 0 : runtime.status != 0;
+    if (!expect(valid, clean ? "float fault clean driver" : "float fault mutation mismatch")) {
+        io::eprintn(item.name);
+        print_result(runtime);
+        return 1;
+    }
+    return 0;
+}
+
+fn int? check_float_fault_case(FloatFaultCase item) {
+    String library = emit_lib_artifact(item.source,
+        temp_path(string::tformat("%s.c", item.name)))!;
+    if (run_float_fault_driver(item, library, "", "clean", true)! != 0) return 1;
+    return 0;
+}
+
+fn int? check_float_fault_mutation(FloatFaultCase item, String header_before,
+        String header_after, String guard_before, String guard_after, String variant) {
+    String library = emit_lib_artifact(item.source,
+        temp_path(string::tformat("%s-mutant.c", item.name)))!;
+    String header = "";
+    if (header_before.len > 0) {
+        char[] original = read_file("include/rza/rez3ext.h", artifact_source_buf[..])!;
+        bool changed;
+        header = float_artifact_replace((String)original, header_before, header_after, &changed);
+        if (!expect(changed, "float fault header mutation anchor")) return 1;
+    }
+    if (guard_before.len > 0) {
+        bool changed;
+        library = float_artifact_replace(library, guard_before, guard_after, &changed);
+        if (!expect(changed, "float fault guard mutation anchor")) return 1;
+    }
+    return run_float_fault_driver(item, library, header, variant, false);
+}
+
+fn int? check_float_fault_artifacts() {
+    FloatFaultCase invalid = {
+        .name = "float-cvt-invalid", .source = "tests/fixtures/core/float_cvt_invalid.rza",
+        .line = 5, .data_cell = "c_data", .data_size = 16, .callback_offset = 4,
+    };
+    FloatFaultCase asynchronous = {
+        .name = "float-cvt-async", .source = "tests/fixtures/async/float_cvt_async_overflow.rza",
+        .line = 7, .data_cell = "c_data", .data_size = 8,
+        .data_expected = 0x7f800000, .out_cell = "c_out", .out_mediator = "rza_med_out_m",
+    };
+    if (check_float_fault_case(invalid)! != 0) return 1;
+    if (check_float_fault_case(asynchronous)! != 0) return 1;
+    String lower_path = temp_path("float-cvt-lower.rza");
+    write_file(lower_path, "mov.f32 %r0, 0xc3010000\ncvt.i8.f32 %r1, %r0\nret\n")!;
+    FloatFaultCase lower = { .name = "float-cvt-lower", .source = lower_path, .line = 2 };
+    if (check_float_fault_case(lower)! != 0) return 1;
+    String upper_path = temp_path("float-cvt-upper.rza");
+    write_file(upper_path, "mov.f32 %r0, 0x5f800000\ncvt.u64.f32 %r1, %r0\nret\n")!;
+    FloatFaultCase upper = { .name = "float-cvt-upper", .source = upper_path, .line = 2 };
+    if (check_float_fault_case(upper)! != 0) return 1;
+    String[] names = { "float-cvt-next32", "float-cvt-next64", "float-cvt-next64-f64" };
+    String[] sources = {
+        "mov.f32 %r0, 0xcf000001\ncvt.i32.f32 %r1, %r0\nret\n",
+        "mov.f32 %r0, 0xdf000001\ncvt.i64.f32 %r1, %r0\nret\n",
+        "mov.f64 %r0, 0xc3e0000000000001\ncvt.i64.f64 %r1, %r0\nret\n",
+    };
+    for (usz i = 0; i < names.len; i++) {
+        String source = temp_path(string::tformat("%s.rza", names[i]));
+        write_file(source, sources[i])!;
+        FloatFaultCase item = { .name = names[i], .source = source, .line = 2 };
+        if (check_float_fault_case(item)! != 0) return 1;
+    }
+    return 0;
+}
+
+fn int? check_float_fault_mutations() {
+    FloatFaultCase invalid = {
+        .name = "float-cvt-invalid", .source = "tests/fixtures/core/float_cvt_invalid.rza",
+        .line = 5, .data_cell = "c_data", .data_size = 16, .callback_offset = 4,
+    };
+    String finite_before = "static bool rez_f32_to_i32(int64_t container, int64_t *out) {\n"
+        "    assert(out != NULL);\n    if (!rez_f32_finite(container)) return true;";
+    String finite_after = "static bool rez_f32_to_i32(int64_t container, int64_t *out) {\n"
+        "    assert(out != NULL);\n    if (false) return true;";
+    if (check_float_fault_mutation(invalid, finite_before, finite_after, "", "",
+            "finite")! != 0) return 1;
+    FloatFaultCase lower = {
+        .name = "float-cvt-lower", .source = temp_path("float-cvt-lower.rza"), .line = 2,
+    };
+    if (check_float_fault_mutation(lower, "value <= -129.0f", "value < -129.0f",
+            "", "", "lower")! != 0) return 1;
+    FloatFaultCase upper = {
+        .name = "float-cvt-upper", .source = temp_path("float-cvt-upper.rza"), .line = 2,
+    };
+    if (check_float_fault_mutation(upper, "value >= 0x1p64f", "value > 0x1p64f",
+            "", "", "upper")! != 0) return 1;
+    if (check_float_fault_mutation(invalid, "", "", "if (rez_f32_to_i32(",
+            "if (false && rez_f32_to_i32(", "guard")! != 0) return 1;
+    io::printn("FLOAT_CONVERSION_FAULTS OK (11 programs)");
+    return 0;
+}
+
+
+fn int? run_float_rhs_program(String generated, String name, String expected,
+        bool require_match) {
+    String executable = temp_path(string::tformat("%s.exe", name));
+    ProcessResult compiled = compile_c(generated, executable)!;
+    if (!expect(compiled.status == 0 && compiled.stderr_text.len == 0,
+            "float RHS mutation compilation")) {
+        print_result(compiled);
+        return 1;
+    }
+    ProcessResult runtime = run_simple({ executable })!;
+    bool output_ok = require_match ? runtime.stdout_text == expected
+        : runtime.stdout_text != expected;
+    if (!expect(runtime.status == 0 && runtime.stderr_text.len == 0 && output_ok,
+            "float RHS mutation observation")) {
+        print_result(runtime);
+        return 1;
+    }
+    return 0;
+}
+
+fn int? check_float_rhs_mutation(String source_text, String name) {
+    String source = temp_path(string::tformat("%s.rza", name));
+    write_file(source, source_text)!;
+    String generated_path = temp_path(string::tformat("%s.c", name));
+    String generated = emit_artifact(source, generated_path)!;
+    if (run_float_rhs_program(generated_path, string::tformat("%s-clean", name),
+            "1077936128\n", true)! != 0) return 1;
+    bool changed;
+    String mutated = float_artifact_replace(generated, "rez_f32_add", "rez_f32_sub", &changed);
+    if (!expect(changed, "float RHS mutation anchor")) return 1;
+    String mutant_path = temp_path(string::tformat("%s-mutant.c", name));
+    write_file(mutant_path, mutated)!;
+    return run_float_rhs_program(mutant_path, string::tformat("%s-mutant", name),
+        "1077936128\n", false);
+}
+
+fn int? check_float_rhs_mutations() {
+    if (check_float_rhs_mutation("mov.f32 %r0, 0x3f800000\n"
+            "add.f32 %r2, %r0, 0x40000000\nprint %r2\nret\n",
+            "float-rhs-immediate")! != 0) return 1;
+    if (check_float_rhs_mutation("mov.f32 %r0, 0x3f800000\n"
+            "mov.f32 %r1, 0x40000000\nadd.f32 %r2, %r0, %r1\nprint %r2\nret\n",
+            "float-rhs-register")! != 0) return 1;
+    io::printn("FLOAT_RHS_MUTATIONS OK (4 programs)");
+    return 0;
+}
+
+
+fn int? check_float_profile_artifact() {
+    String legacy = emit_artifact("tests/fixtures/core/mov_self.rza",
+        temp_path("legacy-without-float.c"))!;
+    if (!expect(!legacy.contains("#include <float.h>") &&
+            !legacy.contains("FLT_EVAL_METHOD") && !legacy.contains("fp reassociate"),
+            "legacy generated C must not acquire strict FP guards")) return 1;
+    String unaligned = emit_artifact("tests/fixtures/core/float_unaligned.rza",
+        temp_path("float-exact-access.c"))!;
+    if (!expect(unaligned.contains("#include <float.h>") &&
+            unaligned.contains("#pragma GCC optimize (\"fp-contract=off\")") &&
+            unaligned.contains("memcpy((char*)p + 1, &value, 4)") &&
+            unaligned.contains("memcpy((char*)p + 9, &value, 8)"),
+            "float strict profile or exact-width access")) return 1;
+    String conversion = emit_artifact("tests/fixtures/core/float_cvt_invalid.rza",
+        temp_path("float-conversion-guard.c"))!;
+    if (!expect(conversion.contains("if (rez_f32_to_i32(r0, &r1))") &&
+            conversion.contains("\"invalid conversion\""),
+            "float conversion guard artifact")) return 1;
+    io::printn("FLOAT_ARTIFACT_PROFILE OK");
     return 0;
 }

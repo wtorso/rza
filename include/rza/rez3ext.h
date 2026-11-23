@@ -1,4 +1,4 @@
-/* RZA cell mediators and defined integer arithmetic. C23. */
+/* RZA cell mediators and defined scalar arithmetic. C23. */
 #ifndef REZ3EXT_H
 #define REZ3EXT_H
 
@@ -354,6 +354,314 @@ bool rez_view_cell(
 
 [[maybe_unused]] static int64_t rez_u64_from_bits(uint64_t bits) {
     return rez_i64_value(bits);
+}
+
+[[maybe_unused]] static int64_t rez_f32_from_bits(uint64_t bits) {
+    return rez_u32_from_bits(bits);
+}
+
+[[maybe_unused]] static int64_t rez_f64_from_bits(uint64_t bits) {
+    return rez_u64_from_bits(bits);
+}
+
+[[maybe_unused]] static float rez_f32_value(int64_t container) {
+    uint32_t bits = (uint32_t)rez_i64_bits(container);
+    float value;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+[[maybe_unused]] static double rez_f64_value(int64_t container) {
+    uint64_t bits = rez_i64_bits(container);
+    double value;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+[[maybe_unused]] static int64_t rez_f32_from_float(float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    return rez_f32_from_bits(bits);
+}
+
+[[maybe_unused]] static int64_t rez_f64_from_double(double value) {
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    return rez_f64_from_bits(bits);
+}
+
+[[maybe_unused]] static int64_t rez_f32_add(int64_t left, int64_t right) {
+    return rez_f32_from_float(rez_f32_value(left) + rez_f32_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f32_sub(int64_t left, int64_t right) {
+    return rez_f32_from_float(rez_f32_value(left) - rez_f32_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f32_mul(int64_t left, int64_t right) {
+    return rez_f32_from_float(rez_f32_value(left) * rez_f32_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f32_div(int64_t left, int64_t right) {
+    return rez_f32_from_float(rez_f32_value(left) / rez_f32_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f64_add(int64_t left, int64_t right) {
+    return rez_f64_from_double(rez_f64_value(left) + rez_f64_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f64_sub(int64_t left, int64_t right) {
+    return rez_f64_from_double(rez_f64_value(left) - rez_f64_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f64_mul(int64_t left, int64_t right) {
+    return rez_f64_from_double(rez_f64_value(left) * rez_f64_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f64_div(int64_t left, int64_t right) {
+    return rez_f64_from_double(rez_f64_value(left) / rez_f64_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f32_feq(int64_t left, int64_t right) {
+    return rez_f32_value(left) == rez_f32_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f32_fne(int64_t left, int64_t right) {
+    return !(rez_f32_value(left) == rez_f32_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f32_flt(int64_t left, int64_t right) {
+    return rez_f32_value(left) < rez_f32_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f32_fle(int64_t left, int64_t right) {
+    return rez_f32_value(left) <= rez_f32_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f32_fgt(int64_t left, int64_t right) {
+    return rez_f32_value(left) > rez_f32_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f32_fge(int64_t left, int64_t right) {
+    return rez_f32_value(left) >= rez_f32_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f64_feq(int64_t left, int64_t right) {
+    return rez_f64_value(left) == rez_f64_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f64_fne(int64_t left, int64_t right) {
+    return !(rez_f64_value(left) == rez_f64_value(right));
+}
+
+[[maybe_unused]] static int64_t rez_f64_flt(int64_t left, int64_t right) {
+    return rez_f64_value(left) < rez_f64_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f64_fle(int64_t left, int64_t right) {
+    return rez_f64_value(left) <= rez_f64_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f64_fgt(int64_t left, int64_t right) {
+    return rez_f64_value(left) > rez_f64_value(right);
+}
+
+[[maybe_unused]] static int64_t rez_f64_fge(int64_t left, int64_t right) {
+    return rez_f64_value(left) >= rez_f64_value(right);
+}
+
+[[maybe_unused]] static bool rez_f32_finite(int64_t container) {
+    uint64_t bits = rez_i64_bits(container);
+    return (bits & UINT64_C(0x7f800000)) != UINT64_C(0x7f800000);
+}
+
+[[maybe_unused]] static bool rez_f64_finite(int64_t container) {
+    uint64_t bits = rez_i64_bits(container);
+    return (bits & UINT64_C(0x7ff0000000000000)) != UINT64_C(0x7ff0000000000000);
+}
+
+[[maybe_unused]] static int64_t rez_f32_from_i64(int64_t value) {
+    return rez_f32_from_float((float)value);
+}
+
+[[maybe_unused]] static int64_t rez_f32_from_u64(int64_t value) {
+    return rez_f32_from_float((float)rez_i64_bits(value));
+}
+
+[[maybe_unused]] static int64_t rez_f64_from_i64(int64_t value) {
+    return rez_f64_from_double((double)value);
+}
+
+[[maybe_unused]] static int64_t rez_f64_from_u64(int64_t value) {
+    return rez_f64_from_double((double)rez_i64_bits(value));
+}
+
+[[maybe_unused]] static int64_t rez_f32_from_f64(int64_t container) {
+    return rez_f32_from_float((float)rez_f64_value(container));
+}
+
+[[maybe_unused]] static int64_t rez_f64_from_f32(int64_t container) {
+    return rez_f64_from_double((double)rez_f32_value(container));
+}
+
+[[maybe_unused]] static bool rez_f32_to_i8(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value <= -129.0f || value >= 128.0f) return true;
+    int8_t converted = (int8_t)value;
+    *out = rez_i8_from_bits((uint8_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f32_to_u8(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value <= -1.0f || value >= 256.0f) return true;
+    uint8_t converted = (uint8_t)value;
+    *out = rez_u8_from_bits(converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f32_to_i16(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value <= -32769.0f || value >= 32768.0f) return true;
+    int16_t converted = (int16_t)value;
+    *out = rez_i16_from_bits((uint16_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f32_to_u16(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value <= -1.0f || value >= 65536.0f) return true;
+    uint16_t converted = (uint16_t)value;
+    *out = rez_u16_from_bits(converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f32_to_i32(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value < -2147483648.0f || value >= 0x1p31f) return true;
+    int32_t converted = (int32_t)value;
+    *out = rez_i32_from_bits((uint32_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f32_to_u32(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value <= -1.0f || value >= 0x1p32f) return true;
+    uint32_t converted = (uint32_t)value;
+    *out = rez_u32_from_bits(converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f32_to_i64(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value < -0x1p63f || value >= 0x1p63f) return true;
+    int64_t converted = (int64_t)value;
+    *out = rez_i64_value((uint64_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f32_to_u64(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f32_finite(container)) return true;
+    float value = rez_f32_value(container);
+    if (value <= -1.0f || value >= 0x1p64f) return true;
+    uint64_t converted = (uint64_t)value;
+    *out = rez_u64_from_bits(converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_i8(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value <= -129.0 || value >= 128.0) return true;
+    int8_t converted = (int8_t)value;
+    *out = rez_i8_from_bits((uint8_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_u8(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value <= -1.0 || value >= 256.0) return true;
+    uint8_t converted = (uint8_t)value;
+    *out = rez_u8_from_bits(converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_i16(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value <= -32769.0 || value >= 32768.0) return true;
+    int16_t converted = (int16_t)value;
+    *out = rez_i16_from_bits((uint16_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_u16(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value <= -1.0 || value >= 65536.0) return true;
+    uint16_t converted = (uint16_t)value;
+    *out = rez_u16_from_bits(converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_i32(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value <= -2147483649.0 || value >= 0x1p31) return true;
+    int32_t converted = (int32_t)value;
+    *out = rez_i32_from_bits((uint32_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_u32(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value <= -1.0 || value >= 0x1p32) return true;
+    uint32_t converted = (uint32_t)value;
+    *out = rez_u32_from_bits(converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_i64(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value < -0x1p63 || value >= 0x1p63) return true;
+    int64_t converted = (int64_t)value;
+    *out = rez_i64_value((uint64_t)converted);
+    return false;
+}
+
+[[maybe_unused]] static bool rez_f64_to_u64(int64_t container, int64_t *out) {
+    assert(out != NULL);
+    if (!rez_f64_finite(container)) return true;
+    double value = rez_f64_value(container);
+    if (value <= -1.0 || value >= 0x1p64) return true;
+    uint64_t converted = (uint64_t)value;
+    *out = rez_u64_from_bits(converted);
+    return false;
 }
 
 [[maybe_unused]] static int64_t rez_u64_add(int64_t left, int64_t right) {

@@ -1,0 +1,28 @@
+res data, field, 16
+med data_m, data, field
+proc write(data_m: rw):
+    mov %r0, -1
+    mov.f32 %r1, %r0
+    store.f32 [data_m + 0], %r1
+    mov.f64 %r2, 0x3ff0000000000000
+    store.f64 [data_m + 8], %r2
+    ret
+call write
+casc sync: data_m -> sync_out[field]
+    load.f32 %r0, [data_m + 0]
+    mov.f32 %r1, %r0
+    store.f32 [data_m + 4], %r1
+endc
+acasc async: data_m -> async_out
+    load.f64 %r0, [data_m + 8]
+    mov.f64 %r1, %r0
+    print %r1
+    store.f64 [data_m + 8], %r1
+endc
+await %r0
+print %r0
+load.u32 %r2, [data_m + 4]
+print %r2
+load.f64 %r3, [data_m + 8]
+print %r3
+ret

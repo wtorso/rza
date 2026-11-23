@@ -13,7 +13,7 @@ fn void numeric16_typed_surface_is_closed() @test {
     assert(scalar_type_desc(ScalarType.I64).typed_syntax);
     assert(find_scalar_type("i32") ?? ScalarType.NONE == ScalarType.I32);
     assert(find_scalar_type("u64") ?? ScalarType.NONE == ScalarType.U64);
-    assert(!@ok(find_scalar_type("f32")));
+    assert(find_scalar_type("f32") ?? ScalarType.NONE == ScalarType.F32);
     OpDesc desc;
     assert(resolve_op_desc("mov.i16", &desc));
     assert(desc.op == Op.MOV && desc.scalar_type == ScalarType.I16);
@@ -21,8 +21,10 @@ fn void numeric16_typed_surface_is_closed() @test {
     assert(desc.op == Op.LOAD && desc.scalar_type == ScalarType.U16 && !desc.write);
     assert(resolve_op_desc("store.i16", &desc));
     assert(desc.op == Op.STORE && desc.scalar_type == ScalarType.I16 && desc.write);
-    assert(!resolve_op_desc("mov.f32", &desc));
-    assert(!resolve_op_desc("load.f32", &desc));
+    assert(resolve_op_desc("mov.f32", &desc));
+    assert(desc.op == Op.MOV && desc.scalar_type == ScalarType.F32);
+    assert(resolve_op_desc("load.f32", &desc));
+    assert(desc.op == Op.LOAD && desc.scalar_type == ScalarType.F32);
     assert(!resolve_op_desc("loadb.u16", &desc));
 }
 
@@ -98,7 +100,7 @@ fn void numeric16_lsp_uses_typed_memory_context() @test {
     assert(memory_completion_context("store.i16", 0) == CompletionContext.MED);
     assert(memory_completion_context("store.u16", 0) == CompletionContext.MED);
     assert(memory_completion_context("load.i64", 1) == CompletionContext.MED);
-    assert(memory_completion_context("load.f32", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("load.f32", 1) == CompletionContext.MED);
 }
 
 fn void numeric16_wrap_and_compare_resolve_by_type() @test {
@@ -118,7 +120,8 @@ fn void numeric16_wrap_and_compare_resolve_by_type() @test {
     assert(!resolve_op_desc("shr.u16", &desc));
     assert(!resolve_op_desc("slt.u16", &desc));
     assert(!resolve_op_desc("ult.i16", &desc));
-    assert(!resolve_op_desc("add.f32", &desc));
+    assert(resolve_op_desc("add.f32", &desc));
+    assert(desc.alu_op == AluOp.ADD && desc.scalar_type == ScalarType.F32);
     assert(resolve_op_desc("ult.u16", &desc));
     assert(desc.alu_op == AluOp.ULT && desc.scalar_type == ScalarType.U16);
 }
@@ -170,7 +173,7 @@ fn void numeric16_reject_in_context(String token, int context) {
 
 fn void numeric16_malformed_ops_fail_closed_in_every_context() @test {
     String[] tokens = {
-        "shr.u16", "slt.u16", "ult.i16", "ult", "load.f32", "mov.f32",
+        "shr.u16", "slt.u16", "ult.i16", "ult", "load.f16", "mov.bf16",
         "loadb.u16", "add..i16", "add.i16.more",
     };
     foreach (token : tokens) {

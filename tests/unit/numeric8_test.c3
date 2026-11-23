@@ -10,7 +10,7 @@ fn void numeric8_typed_surface_is_closed() @test {
     assert(scalar_type_desc(ScalarType.I64).typed_syntax);
     assert(find_scalar_type("i32") ?? ScalarType.NONE == ScalarType.I32);
     assert(find_scalar_type("u64") ?? ScalarType.NONE == ScalarType.U64);
-    assert(!@ok(find_scalar_type("f32")));
+    assert(find_scalar_type("f32") ?? ScalarType.NONE == ScalarType.F32);
     OpDesc desc;
     assert(resolve_op_desc("mov.i8", &desc));
     assert(desc.op == Op.MOV && desc.scalar_type == ScalarType.I8);
@@ -18,8 +18,10 @@ fn void numeric8_typed_surface_is_closed() @test {
     assert(desc.op == Op.LOAD && desc.scalar_type == ScalarType.U8 && !desc.write);
     assert(resolve_op_desc("store.i8", &desc));
     assert(desc.op == Op.STORE && desc.scalar_type == ScalarType.I8 && desc.write);
-    assert(!resolve_op_desc("mov.f32", &desc));
-    assert(!resolve_op_desc("load.f32", &desc));
+    assert(resolve_op_desc("mov.f32", &desc));
+    assert(desc.op == Op.MOV && desc.scalar_type == ScalarType.F32);
+    assert(resolve_op_desc("load.f32", &desc));
+    assert(desc.op == Op.LOAD && desc.scalar_type == ScalarType.F32);
     assert(!resolve_op_desc("loadb.u8", &desc));
     assert(resolve_op_desc("add.i8", &desc));
     assert(!resolve_op_desc("shr.u8", &desc));
@@ -95,7 +97,7 @@ fn void numeric8_lsp_uses_typed_memory_context() @test {
     assert(memory_completion_context("store.i8", 0) == CompletionContext.MED);
     assert(memory_completion_context("store.u8", 0) == CompletionContext.MED);
     assert(memory_completion_context("load.i64", 1) == CompletionContext.MED);
-    assert(memory_completion_context("load.f32", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("load.f32", 1) == CompletionContext.MED);
 }
 
 fn void numeric8_wrap_and_compare_resolve_by_type() @test {
@@ -114,7 +116,8 @@ fn void numeric8_wrap_and_compare_resolve_by_type() @test {
     assert(!resolve_op_desc("ult", &desc));
     assert(!resolve_op_desc("slt.u8", &desc));
     assert(!resolve_op_desc("ult.i8", &desc));
-    assert(!resolve_op_desc("add.f32", &desc));
+    assert(resolve_op_desc("add.f32", &desc));
+    assert(desc.alu_op == AluOp.ADD && desc.scalar_type == ScalarType.F32);
     assert(resolve_op_desc("ult.u8", &desc));
     assert(desc.alu_op == AluOp.ULT && desc.scalar_type == ScalarType.U8);
 }
@@ -137,7 +140,9 @@ fn void numeric8_fault_operations_complete_the_surface() @test {
     assert(!resolve_op_desc("ult.i8", &desc));
     assert(!resolve_op_desc("cadd.f32", &desc));
     assert(!resolve_op_desc("crc32c.i8", &desc));
-    assert(!resolve_op_desc("div.f32", &desc));
+    assert(resolve_op_desc("div.f32", &desc));
+    assert(desc.alu_op == AluOp.DIV && desc.scalar_type == ScalarType.F32);
+    assert(!resolve_op_desc("mod.f32", &desc));
     prepare_checker("shl.i8 %r2, %r0, -1\nushr.u8 %r3, %r0, 8\n");
     assert(instrs.len() == 2);
     assert(instrs[0].immediate.bits == ulong::max);
@@ -186,7 +191,7 @@ fn void numeric8_reject_in_context(String token, int context) {
 
 fn void numeric8_malformed_ops_fail_closed_in_every_context() @test {
     String[] tokens = {
-        "shr.u8", "load.f32", "ult", "loadb.u8", "add..i8", "add.i8.more",
+        "shr.u8", "load.f16", "ult", "loadb.u8", "add..i8", "add.i8.more",
     };
     foreach (token : tokens) {
         for (int context = 0; context < 4; context++) {

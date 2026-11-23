@@ -11,6 +11,9 @@ const String BAD_URI          = "file:///smoke-bad.rza";
 const String GOOD_URI         = "file:///smoke-good.rza";
 const String BAD_TEXT         = "cav a\n";
 const String GOOD_TEXT        = "cav m, field\ndecay m\nret\n";
+const String FLOAT_TEXT       = "mov.f32 %r0, 0x3f800000\n"
+    "add.f32 %r1, %r0, 0x40000000\nfeq.f32 %r2, %r1, %r1\n"
+    "mov.f64 %r0, 0x3ff0000000000000\ndiv.f64 %r1, %r0, %r0\nret\n";
 const String CASCADE_TEXT     = "cav m, field\nres x, m, 8\nmed x_m, x, m\n"
 	"casc c: x_m -> out[m]\n load %r0, [x_m + 0]\nendc\ndecay m\nret\n";
 const String LAYOUT_TEXT      = "layout Value: value:i64\nres x, field, Value[2]\n"
@@ -182,6 +185,12 @@ fn int? document_open_checks(Process* child) {
 		(params.get_string("uri") ?? "") == GOOD_URI && json_diagnostics(response)!.len() == 0,
 		"good document"
 	)) return 1;
+	response = lsp_call_json(child, change_message(FLOAT_TEXT, 2))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "floating arithmetic document")) {
+		return 1;
+	}
+	response = lsp_call_json(child, change_message(GOOD_TEXT, 3))!;
+	if (!expect(json_diagnostics(response)!.len() == 0, "restore good document")) return 1;
 	return 0;
 }
 

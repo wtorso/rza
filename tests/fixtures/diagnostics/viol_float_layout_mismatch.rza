@@ -1,0 +1,5 @@
+layout Pair: tag:u8, single:f32, guard:u16, word:f64, tail:f32
+res pair, field, Pair
+med pair_m, pair, field
+load.f64 %r0, [pair_m + 0].single
+ret

@@ -14,13 +14,33 @@
     "cadd" "csub" "cmul" "cinc" "cdec" "and" "or" "xor"
     "div" "mod" "shl" "ushr"))
 
+(defconst rza-conversion-opcodes
+  '("cvt.f32.f64" "cvt.f64.f32"
+    "cvt.f32.i8" "cvt.f32.u8" "cvt.f32.i16" "cvt.f32.u16"
+    "cvt.f32.i32" "cvt.f32.u32" "cvt.f32.i64" "cvt.f32.u64"
+    "cvt.f64.i8" "cvt.f64.u8" "cvt.f64.i16" "cvt.f64.u16"
+    "cvt.f64.i32" "cvt.f64.u32" "cvt.f64.i64" "cvt.f64.u64"
+    "cvt.i8.f32" "cvt.u8.f32" "cvt.i16.f32" "cvt.u16.f32"
+    "cvt.i32.f32" "cvt.u32.f32" "cvt.i64.f32" "cvt.u64.f32"
+    "cvt.i8.f64" "cvt.u8.f64" "cvt.i16.f64" "cvt.u16.f64"
+    "cvt.i32.f64" "cvt.u32.f64" "cvt.i64.f64" "cvt.u64.f64"
+    "bitcast.f32.i32" "bitcast.f32.u32"
+    "bitcast.i32.f32" "bitcast.u32.f32"
+    "bitcast.f64.i64" "bitcast.f64.u64"
+    "bitcast.i64.f64" "bitcast.u64.f64"))
+
 (defconst rza-typed-opcode-regexp
   (concat "\\_<" (regexp-opt rza-typed-opcode-bases)
           "\\.\\(?:i8\\|u8\\|i16\\|u16\\|i32\\|u32\\|i64\\|u64\\)\\_>"
           "\\|\\_<\\(?:shr\\|slt\\)\\.\\(?:i8\\|i16\\|i32\\|i64\\)\\_>"
-          "\\|\\_<ult\\.\\(?:u8\\|u16\\|u32\\|u64\\)\\_>"))
+          "\\|\\_<ult\\.\\(?:u8\\|u16\\|u32\\|u64\\)\\_>"
+          "\\|\\_<" (regexp-opt '("mov" "load" "store" "add" "sub" "mul" "div"
+                                  "feq" "fne" "flt" "fle" "fgt" "fge"))
+          "\\.\\(?:f32\\|f64\\)\\_>"
+          "\\|\\_<" (regexp-opt rza-conversion-opcodes) "\\_>"))
 
-(defconst rza-scalar-types '("u8" "i8" "u16" "i16" "u32" "i32" "i64" "u64"))
+(defconst rza-scalar-types
+  '("u8" "i8" "u16" "i16" "u32" "i32" "i64" "u64" "f32" "f64"))
 
 (defconst rza-font-lock-keywords
   `((,rza-typed-opcode-regexp . font-lock-keyword-face)

@@ -19,8 +19,8 @@ stable when files move.
   helpers, and source-style rules.
 - `integration/`: compiler-level integration checks. It contains `lsp/`, `faults/`, `contracts/`,
   `deterministic_artifacts.c3`, `tiny_budgets.c3`, and `fuzz_smoke.c3`.
-- `oracles/`: independent execution and ownership models plus the numeric8, numeric16,
-  numeric32, and numeric64 differential oracles.
+- `oracles/`: independent execution and ownership models plus numeric8, numeric16, numeric32,
+  numeric64, and exact-rational float32/float64 differential oracles with closed coverage masks.
 - `fixtures/`: RZA programs and their expected diagnostics or output, grouped by language area.
 - `host/`: C drivers for public ABI, fault, canary, runtime-safety, and architecture-vector checks.
 - `reference/`: the C23 reference checker and static reference program.

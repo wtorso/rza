@@ -192,6 +192,9 @@ fn void scan_regs(int func, uint* rd, uint* wr) {
                 if (ins.operand_kind == OperandKind.REGISTER && ins.a == ins.b) break;
                 *wr |= 1u << ins.a;
                 if (ins.operand_kind == OperandKind.REGISTER) *rd |= 1u << ins.b;
+            case Op.CVT: case Op.BITCAST:
+                *wr |= 1u << ins.a;
+                *rd |= 1u << ins.b;
             case Op.ALU3:
                 *wr |= 1u << ins.a;
                 if (ins.alu_op == AluOp.SLT && ins.operand_kind == OperandKind.REGISTER
@@ -501,7 +504,9 @@ fn void emit_load(Output* out, int ind, Instr* ins, bool in_casc) {
     emit_casc_view_guard(out, ind, ins, in_casc);
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
-    if (ins.scalar_type == ScalarType.U8) {
+    if (scalar_type_is_float(ins.scalar_type)) {
+        emit_float_load(out, ind, ins, ptr, oex.str_view());
+    } else if (ins.scalar_type == ScalarType.U8) {
         out.appendf("r%d = (int64_t)*(unsigned char*)((char*)%s + %s);",
                     ins.a, ptr, oex.str_view());
     } else if (ins.scalar_type == ScalarType.I8) {
@@ -560,7 +565,9 @@ fn void emit_store(Output* out, int ind, Instr* ins, bool in_casc) {
     emit_casc_view_guard(out, ind, ins, in_casc);
     emit_bounds_guard(out, ind, ins);
     pad(out, ind);
-    if (ins.scalar_type == ScalarType.I16 || ins.scalar_type == ScalarType.U16) {
+    if (scalar_type_is_float(ins.scalar_type)) {
+        emit_float_store(out, ind, ins, ptr, sex.str_view());
+    } else if (ins.scalar_type == ScalarType.I16 || ins.scalar_type == ScalarType.U16) {
         out.appendf("{ uint16_t value = (uint16_t)r%d;\n", ins.a);
         pad(out, ind + 1);
         out.appendf("memcpy((char*)%s + %s, &value, 2);\n", ptr, sex.str_view());
@@ -851,6 +858,10 @@ fn void emit_numeric8_alu1(Output* out, int ind, Instr* ins) {
 }
 
 fn void emit_alu3(Output* out, int ind, Instr* ins) {
+    if (scalar_type_is_float(ins.scalar_type)) {
+        emit_float_alu3(out, ind, ins);
+        return;
+    }
     if (ins.scalar_type != ScalarType.I64) {
         emit_numeric8_alu3(out, ind, ins);
         return;
@@ -1175,6 +1186,10 @@ fn void emit_casc_start(Output* out, int ind, Instr* ins) {
 fn void emit_mov(Output* out, int ind, Instr* ins) {
     bool immediate = ins.operand_kind == OperandKind.IMMEDIATE;
     if (ins.scalar_type == ScalarType.I64 && !immediate && ins.a == ins.b) return;
+    if (scalar_type_is_float(ins.scalar_type)) {
+        emit_float_mov(out, ind, ins);
+        return;
+    }
     if (ins.scalar_type == ScalarType.U64) {
         pad(out, ind);
         if (immediate) {
@@ -1229,6 +1244,8 @@ fn void emit_casc_instructions(Output* out, int ind, Cascade* ca) {
             case Op.VIEW: emit_view(out, ind, ins.x, blocks[ins.block].kind == 2);
             case Op.MOV:
                 emit_mov(out, ind, ins);
+            case Op.CVT: case Op.BITCAST:
+                emit_float_conversion(out, ind, ins);
             case Op.ALU3: emit_alu3(out, ind, ins);
             case Op.ALU1:
                 if (ins.scalar_type != ScalarType.I64) {
@@ -1325,6 +1342,9 @@ fn uint scan_casc_regs(Cascade* ca) {
                 if (ins.operand_kind == OperandKind.REGISTER && ins.a == ins.b) break;
                 mask |= 1u << ins.a;
                 if (ins.operand_kind == OperandKind.REGISTER) mask |= 1u << ins.b;
+            case Op.CVT: case Op.BITCAST:
+                mask |= 1u << ins.a;
+                mask |= 1u << ins.b;
             case Op.ALU3:
                 mask |= 1u << ins.a;
                 if (ins.alu_op == AluOp.SLT && ins.operand_kind == OperandKind.REGISTER
@@ -1530,8 +1550,9 @@ fn void hoist_reset() {
 
 fn bool hoist_allowed(Op op) {
     switch (op) {
-        case Op.LOAD: case Op.STORE: case Op.MOV: case Op.ALU3: case Op.ALU1:
-        case Op.PRINT: case Op.LABEL: case Op.JMP: case Op.BRZ: case Op.BRNZ:
+        case Op.LOAD: case Op.STORE: case Op.MOV: case Op.CVT: case Op.BITCAST:
+        case Op.ALU3: case Op.ALU1: case Op.PRINT: case Op.LABEL: case Op.JMP:
+        case Op.BRZ: case Op.BRNZ:
         case Op.RET: case Op.RAISE: case Op.PROBE: case Op.VIEW:
             return true;
         default:
@@ -1598,6 +1619,8 @@ fn void emit_body(Output* out, int func) {
                     out.appendf("r%d = %s(r%d, 1);\n", ins.a,
                                 ins.alu_op == AluOp.INC ? "rez_i64_add" : "rez_i64_sub", ins.a);
                 }
+            case Op.CVT: case Op.BITCAST:
+                emit_float_conversion(out, ind, ins);
             case Op.PRINT:
                 pad(out, ind);
                 out.appendf("printf(\"%%lld\\n\", (long long)r%d);\n", ins.a);
@@ -1974,6 +1997,7 @@ fn String emit() {
     out.append_string("#include <stdint.h>\n");
     out.append_string("#include <stdlib.h>\n");
     out.append_string("#include \"rez3ext.h\"\n\n");
+    emit_float_support(&out);
     out.append_string("#if defined(_MSC_VER)\n");
     out.append_string("/* Generated labels may follow unconditional jumps. */\n");
     out.append_string("#pragma warning(disable: 4702)\n#endif\n\n");

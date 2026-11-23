@@ -1,0 +1,6 @@
+res raw, field, 16
+med raw_m, raw, field
+view raw_v_m, raw_m, 1, 8
+mov %r0, 5
+load.f32 %r1, [raw_v_m + %r0]
+ret

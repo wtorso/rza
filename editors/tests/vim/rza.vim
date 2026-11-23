@@ -81,6 +81,32 @@ for opcode in ['shr.i8', 'slt.i8', 'ult.u8', 'shr.i16', 'slt.i16', 'ult.u16',
     call add(s:typed, opcode)
 endfor
 call s:Check(len(s:typed) == 172, 'typed matrix must contain 172 spellings')
+let s:floating = []
+for base in ['mov', 'load', 'store', 'add', 'sub', 'mul', 'div',
+        \ 'feq', 'fne', 'flt', 'fle', 'fgt', 'fge']
+    for type in ['f32', 'f64']
+        call add(s:floating, base . '.' . type)
+    endfor
+endfor
+for float in ['f32', 'f64']
+    for type in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64']
+        call add(s:floating, 'cvt.' . float . '.' . type)
+        call add(s:floating, 'cvt.' . type . '.' . float)
+    endfor
+endfor
+call add(s:floating, 'cvt.f64.f32')
+call add(s:floating, 'cvt.f32.f64')
+for pair in [['f32', 'i32', 'u32'], ['f64', 'i64', 'u64']]
+    for opcode in ['bitcast.' . pair[0] . '.' . pair[1],
+            \ 'bitcast.' . pair[0] . '.' . pair[2],
+            \ 'bitcast.' . pair[1] . '.' . pair[0],
+            \ 'bitcast.' . pair[2] . '.' . pair[0]]
+        call add(s:floating, opcode)
+    endfor
+endfor
+call s:Check(len(s:floating) == 68, 'floating matrix must contain 68 spellings')
+call extend(s:typed, s:floating)
+call s:Check(len(s:typed) == 240, 'typed matrix must contain 240 spellings')
 enew!
 call setline(1, s:typed)
 runtime! syntax/rza.vim
@@ -93,7 +119,9 @@ let s:inactive = [
     \ 'shr.u8', 'slt.u8', 'ult.i8', 'shr.u16', 'slt.u16', 'ult.i16',
     \ 'shr.u32', 'slt.u32', 'ult.i32', 'shr.u64', 'slt.u64', 'ult.i64',
     \ 'ult', 'loadb.u8', 'loadb.u16', 'loadb.u32', 'loadb.u64',
-    \ 'crc32c.i32', 'print.i32', 'cvt.i64', 'cvt.u64', 'add.f32', 'add.f64']
+    \ 'crc32c.i32', 'print.i32', 'cvt.i64', 'cvt.u64', 'mod.f32', 'mod.f64',
+    \ 'cadd.f32', 'feq.i32', 'cvt.f32.f32', 'cvt.i32.i64', 'bitcast.f64.u32',
+    \ 'mov.f16', 'load.bf16', 'cvt.f16.f32']
 let s:asserted_inactive = 0
 enew!
 call setline(1, s:inactive)

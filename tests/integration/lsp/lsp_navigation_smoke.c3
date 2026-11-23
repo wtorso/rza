@@ -272,7 +272,8 @@ fn int? navigation_regression_checks(Process* child) {
 }
 
 const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
-	"half:u16, signed_half:i16, word:i32, tail:u32, wide:i64, bits:u64\n"
+	"half:u16, signed_half:i16, word:i32, tail:u32, wide:i64, bits:u64, "
+	"single:f32, double:f64\n"
 	"res pair, field, Pair\n"
 	"med pair_m, pair, field\n"
 	"loadb %r0, [pair_m + 0].tag\n"
@@ -284,6 +285,8 @@ const String FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
 	"load.u32 %r6, [pair_m + 0].tail\n"
 	"load.i64 %r7, [pair_m + 0].wide\n"
 	"load.u64 %r8, [pair_m + 0].bits\n"
+	"load.f32 %r9, [pair_m + 0].single\n"
+	"load.f64 %r10, [pair_m + 0].double\n"
 	"ret\n";
 
 const String PARTIAL_FIELD_HOVER_TEXT = "layout Pair: tag:u8, value:i64, signed:i8, "
@@ -325,6 +328,8 @@ fn int? navigation_field_type_checks(Process* child) {
 	if (navigation_field_hover(child, 171, 9, 30, "tail", "u32", 28)! != 0) return 1;
 	if (navigation_field_hover(child, 172, 10, 30, "wide", "i64", 32)! != 0) return 1;
 	if (navigation_field_hover(child, 173, 11, 30, "bits", "u64", 40)! != 0) return 1;
+	if (navigation_field_hover(child, 174, 12, 30, "single", "f32", 48)! != 0) return 1;
+	if (navigation_field_hover(child, 175, 13, 30, "double", "f64", 56)! != 0) return 1;
 	response = lsp_call_json(child, change_message(PARTIAL_FIELD_HOVER_TEXT, 21))!;
 	if (!expect(json_diagnostics(response)!.len() > 0, "partial field hover document")) return 1;
 	if (navigation_field_hover(child, 162, 3, 25, "tag", "u8", 0)! != 0) return 1;
@@ -343,6 +348,13 @@ fn int? navigation_field_type_checks(Process* child) {
 		"tests/fixtures/numeric64/numeric64_wrap.rza",
 		"tests/fixtures/numeric64/numeric64_div_shift.rza",
 		"tests/fixtures/numeric64/numeric64_async.rza",
+		"tests/fixtures/core/float_arith.rza",
+		"tests/fixtures/core/float_compare.rza",
+		"tests/fixtures/core/float_special.rza",
+		"tests/fixtures/core/float_nontrapping.rza",
+		"tests/fixtures/core/float_cvt.rza",
+		"tests/fixtures/core/float_bitcast.rza",
+		"tests/fixtures/core/float_cvt_boundaries.rza",
 	};
 	int version = 22;
 	foreach (path : paths) {
@@ -355,7 +367,7 @@ fn int? navigation_field_type_checks(Process* child) {
 	String[] invalid = {
 		"shr.u8", "shr.u16", "slt.u16", "ult.i16", "shr.u32", "slt.u32",
 		"shr.u64", "slt.u64", "ult.i64", "ult.i32", "cvt.i64", "bitcast.u64",
-		"add.f32", "add.f64",
+		"mod.f32", "mod.f64",
 	};
 	foreach (token : invalid) {
 		String source = string::tformat("%s %%r0, %%r0, 1\nret\n", token);

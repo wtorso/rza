@@ -11,7 +11,7 @@ fn void numeric64_typed_surface_is_closed() @test {
     assert(unsigned_word != null && unsigned_word.bit_width == 64);
     assert(unsigned_word.alignment_bytes == 8 && unsigned_word.typed_syntax);
     assert(unsigned_word.signedness == Signedness.UNSIGNED);
-    assert(!@ok(find_scalar_type("f32")));
+    assert(find_scalar_type("f32") ?? ScalarType.NONE == ScalarType.F32);
     OpDesc desc;
     assert(resolve_op_desc("mov.i64", &desc));
     assert(desc.op == Op.MOV && desc.scalar_type == ScalarType.I64);
@@ -19,7 +19,8 @@ fn void numeric64_typed_surface_is_closed() @test {
     assert(desc.op == Op.LOAD && desc.scalar_type == ScalarType.U64 && !desc.write);
     assert(resolve_op_desc("store.i64", &desc));
     assert(desc.op == Op.STORE && desc.scalar_type == ScalarType.I64 && desc.write);
-    assert(!resolve_op_desc("mov.f32", &desc));
+    assert(resolve_op_desc("mov.f32", &desc));
+    assert(desc.op == Op.MOV && desc.scalar_type == ScalarType.F32);
     assert(!resolve_op_desc("loadb.u64", &desc));
 }
 
@@ -111,7 +112,7 @@ fn void numeric64_lsp_uses_typed_memory_context() @test {
     assert(memory_completion_context("load.u64", 1) == CompletionContext.MED);
     assert(memory_completion_context("store.i64", 0) == CompletionContext.MED);
     assert(memory_completion_context("store.u64", 0) == CompletionContext.MED);
-    assert(memory_completion_context("load.f32", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("load.f32", 1) == CompletionContext.MED);
 }
 
 fn void numeric64_layout_metrics_use_descriptor_alignment() @test {
@@ -139,7 +140,8 @@ fn void numeric64_wrap_and_compare_resolve_by_type() @test {
     assert(!resolve_op_desc("shr.u64", &desc));
     assert(!resolve_op_desc("slt.u64", &desc));
     assert(!resolve_op_desc("ult.i64", &desc));
-    assert(!resolve_op_desc("add.f32", &desc));
+    assert(resolve_op_desc("add.f32", &desc));
+    assert(desc.alu_op == AluOp.ADD && desc.scalar_type == ScalarType.F32);
     assert(resolve_op_desc("ult.u64", &desc));
     assert(desc.alu_op == AluOp.ULT && desc.scalar_type == ScalarType.U64);
 }
@@ -183,9 +185,9 @@ fn void numeric64_reject_in_context(String token, int context) {
 
 fn void numeric64_malformed_ops_fail_closed_in_every_context() @test {
     String[] tokens = {
-        "shr.u64", "slt.u64", "ult.i64", "ult", "load.f32", "mov.f32",
+        "shr.u64", "slt.u64", "ult.i64", "ult", "load.f16", "mov.bf16",
         "loadb.u64", "crc32c.i64", "print.i64", "cvt.i64", "bitcast.u64",
-        "add.f32", "add..i64", "add.i64.more",
+        "mod.f32", "add..i64", "add.i64.more",
     };
     foreach (token : tokens) {
         for (int context = 0; context < 4; context++) {

@@ -73,7 +73,22 @@ fn bool parse_typed_decimal(
 	return true;
 }
 
+fn bool parse_float_immediate(
+	String text,
+	Immediate* immediate,
+	ScalarType type,
+	int line
+) {
+	usz expected_len = type == ScalarType.F32 ? 10 : 18;
+	bool prefix = text.len >= 2 && (text.starts_with("0x") || text.starts_with("0X"));
+	if (text.len != expected_len || !prefix) return typed_immediate_error(text, type, line);
+	return parse_typed_hex(text, text, immediate, type, line);
+}
+
 fn bool parse_typed_immediate(String text, ScalarType type, int line, Immediate* immediate) {
+	if (type == ScalarType.F32 || type == ScalarType.F64) {
+		return parse_float_immediate(text, immediate, type, line);
+	}
 	if (type == ScalarType.I64) return parse_i64(text, line, immediate);
 	if (text.len == 0) return typed_immediate_error(text, type, line);
 	bool negative = text[0] == '-';

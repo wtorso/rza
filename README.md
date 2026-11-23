@@ -147,8 +147,8 @@ counts produce `FAULT`.
 The `.i8`, `.u8`, `.i16`, `.u16`, `.i32`, `.u32`, `.i64`, and `.u64` suffixes select signed
 or unsigned semantics for `mov`, `load`, `store`, `add`, `sub`, `mul`, `inc`, `dec`, `cadd`,
 `csub`, `cmul`, `cinc`, `cdec`, `and`, `or`, `xor`, `div`, `mod`, `shl`, and `ushr`. Signed
-types also support `shr` and `slt`; unsigned types support `ult`. Each width has 43
-operation/type spellings, for 172 in total. Invalid operation/type pairs are rejected.
+types also support `shr` and `slt`; unsigned types support `ult`. The integer matrix contains
+172 active operation/type spellings. Invalid operation/type pairs are rejected.
 `loadb` and `storeb` remain aliases only for `load.u8` and `store.u8`.
 
 Typed operations read only the low 8, 16, 32, or 64 bits of their register operands. Signed
@@ -179,6 +179,56 @@ values above INT64_MAX.
 `crc32c DST, STATE, WORD` updates CRC32C over the eight little-endian bytes of `WORD`.
 Initial and final XOR remain explicit. The runtime uses SSE4.2 when the CPU supports it and
 otherwise produces the same result through a bitwise fallback.
+
+### Floating-point values
+
+`f32` and `f64` are IEEE binary32 and binary64 values stored in the same 64-bit register
+containers. An f32 result occupies the low 32 bits and has zero upper bits; f64 uses all 64
+bits. `print` remains signed i64 output, so it prints the container's bits rather than a
+floating-point rendering.
+
+Floating immediates are representation literals: exactly eight hexadecimal digits for f32 and
+16 for f64, after `0x` or `0X`. Signs and decimal floating syntax are rejected. For example:
+
+```asm
+mov.f32 %r0, 0x3f800000
+add.f32 %r1, %r0, 0x40000000
+cvt.f64.f32 %r2, %r1
+bitcast.u64.f64 %r3, %r2
+print %r3
+```
+
+This prints `4613937818241073152`, the bits of `3.0` as a signed i64 container. Use raw stores
+and integer loads when a byte-level representation is needed. Bitcopy operations preserve NaN
+payloads exactly; after arithmetic or numeric conversion, only the is-NaN predicate is stable,
+not the payload, sign, or quiet/signaling bit.
+
+Both widths support `mov`, `load`, `store`, `add`, `sub`, `mul`, `div`, and ordered comparisons
+`feq`, `fne`, `flt`, `fle`, `fgt`, and `fge`. `fne` is true for NaN; the other comparisons are
+false for NaN operands. Arithmetic rounds to nearest-even at the declared result width, with
+signed zero, infinities, and subnormals. Division by zero is non-trapping: it produces the IEEE
+result rather than an integer division fault.
+
+`cvt.DST.SRC` provides 32 integer/floating conversions and the two f32/f64 conversions. Integer
+conversions use mathematical signed or unsigned values and nearest-even rounding. Conversion to
+an integer truncates toward zero; NaN, infinity, and out-of-range results produce `FAULT` with
+`invalid conversion`, before storing a result or publishing async OUT. The fault uses the
+existing arithmetic-overflow result code, without changing host ABI 5.
+
+Eight equal-width `bitcast.DST.SRC` forms connect f32 with i32/u32 and f64 with i64/u64 in both
+directions. Other pairs, same-type `cvt`, integer-to-integer `cvt`, f16/bf16, floating remainder,
+and an FMA opcode are not part of the language.
+
+Float fields use alignment 4 for f32 and 8 for f64. All float memory accesses copy exactly four
+or eight bytes with `memcpy`, including unaligned raw access and bounded views. Callbacks and
+async snapshots retain the canonical container bits.
+
+Floating C23 output requires `-fno-fast-math -ffp-contract=off -fexcess-precision=standard` on
+GCC, Clang, and Zig, or `/fp:strict /fp:except-` on MSVC. The generated translation unit checks
+the representation and disables contraction. It requires the default round-to-nearest environment
+with masked exceptions and gradual underflow; RZA does not change the host FP environment. These
+rules are limited to the compilers and targets listed in this document, not arbitrary C flags or
+untested platforms.
 
 ### Bounded views
 
@@ -336,7 +386,7 @@ CC="zig cc -target aarch64-linux-musl -static" \
 RZA_TARGET_ARCH=aarch64 \
 RZA_TARGET_LAUNCHER=qemu-aarch64-static \
 RZA_TARGET_LOG="$PWD/build/target-aarch64.exec.log" \
-RZA_TARGET_EXPECTED_PASS=192 \
+RZA_TARGET_EXPECTED_PASS=212 \
 bash run_tests.sh
 ```
 
@@ -345,10 +395,11 @@ Every target executable is checked centrally for ELF64, little-endian, and the r
 machine ID before QEMU execution. Missing settings or tools are an infrastructure failure,
 never a fallback to host execution.
 
-The validated target run has `PASS=192` and 1211 logged executions on each target. The log
-includes mutation and shrink attempts, so 1211 is not a semantic test count. It includes four
-integer differential oracles, each with 64 valid and 64 fault programs, and 75 direct RZA
-workload checks. C3/compiler internals, LSP, static diagnostics, deterministic artifacts,
+The validated target run has `PASS=212` and 1540 logged executions on each target. The log
+includes mutation and shrink attempts, so 1540 is not a semantic test count. It includes six
+numeric differential oracles, each with 64 valid and 64 fault programs, and 93 direct RZA
+workload checks, plus one directed async guard-removal execution. C3/compiler internals, LSP,
+static diagnostics, deterministic artifacts,
 release/package checks, native Rust comparisons, and timing are host-only or separate native
 gates; they are not counted as ARM/RV64 execution evidence.
 
@@ -425,10 +476,10 @@ establish a universal advantage over C or Rust.
 
 ## Current limits
 
-- Only flat `u8`/`i8`/`u16`/`i16`/`u32`/`i32`/`u64`/`i64` records and fixed-size arrays are
-  supported. Nested and packed layouts, unions, bitfields, and a portable wire ABI are not
-  implemented.
-- Floating point is not supported.
+- Flat integer and f32/f64 records and fixed-size arrays are supported. Nested and packed layouts,
+  unions, bitfields, and a portable wire ABI are not implemented.
+- Floating point is limited to strict f32/f64. There are no f16/bf16 types, decimal floating
+  literals, floating remainder, FMA opcode, floating formatter, or separate FP register file.
 - There are no OS threads, garbage collection, recursion, physical memory moves, transactional
   rollback, or general-purpose networking primitives.
 - RZA has no general SIMD or intrinsic interface and no native optimizing backend. The fixed
@@ -446,7 +497,7 @@ bash build_compiler.sh
 bash run_tests.sh
 ```
 
-Expected results are `PASS=305 FAIL=0` on POSIX and Windows MSVC, and `PASS=304 FAIL=0` on
+Expected results are `PASS=332 FAIL=0` on POSIX and Windows MSVC, and `PASS=331 FAIL=0` on
 Windows Zig. Benchmark correctness checks require `rustc` and run on POSIX and Windows MSVC.
 Windows Zig does not run the benchmark correctness checks because Rust static-library linking
 conflicts with Zig compiler-rt weak symbols; do not mask it with `FORCE:MULTIPLE`.

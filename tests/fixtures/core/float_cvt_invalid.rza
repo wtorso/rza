@@ -1,0 +1,14 @@
+res data, field, 16
+med data_m, data, field
+proc fail(data_m: rw):
+    mov.f32 %r0, 0x7fc00000
+    cvt.i32.f32 %r1, %r0
+    store.i32 [data_m + 0], %r1
+    ret
+proc mark(data_m: rw):
+    mov.i32 %r0, 0x11
+    store.i32 [data_m + 4], %r0
+    ret
+call fail
+call mark
+ret

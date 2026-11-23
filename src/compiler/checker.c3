@@ -1045,6 +1045,22 @@ fn void op_store2(String rest, int line, OpDesc* desc) {
 }
 
 // --- данные и поток ----------------------------------------------------------------
+fn void op_conversion(String rest, int line, OpDesc* desc) {
+	String[2] buf;
+	if (!split_ops_exact(rest, 2, line, desc.source_name, &buf)) return;
+	int dst = parse_reg(buf[0], line);
+	int src = parse_reg(buf[1], line);
+	if (dst < 0 || src < 0) return;
+	add_instr({
+		.op = desc.op,
+		.line = line,
+		.a = dst,
+		.b = src,
+		.scalar_type = desc.scalar_type,
+		.source_type = desc.source_type
+	});
+}
+
 fn void op_mov(String rest, int line, OpDesc* desc) {
 	assert(line > 0);
 	assert(rest.len <= SOURCE_BYTES_MAX);
@@ -1585,6 +1601,7 @@ fn void parse_instr(String line, int n, bool in_casc) {
 		case Op.LOAD: op_load2(rest, n, desc);
 		case Op.STORE: op_store2(rest, n, desc);
 		case Op.MOV: op_mov(rest, n, desc);
+		case Op.CVT: case Op.BITCAST: op_conversion(rest, n, desc);
 		case Op.ALU3: op_alu3(rest, n, desc);
 		case Op.ALU1: op_alu1(rest, n, desc);
 		case Op.PRINT: op_print(rest, n);

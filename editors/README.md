@@ -63,7 +63,7 @@ bash editors/tests/run.sh
 ```
 
 The runner requires `emacs` and `vim`, not `nvim`. It checks filetype/comment configuration,
-token groups, all 172 active fixed-width integer operation/type spellings, and inactive forms.
+token groups, all 240 active integer/floating operation/type spellings, and inactive forms.
 
 Neovim syntax and real LSP integration tests use the pinned client checkout and an executable
 compiler:

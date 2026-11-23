@@ -131,7 +131,8 @@ fn ProcessResult? compile_c(String generated, String executable) {
     if (driver.len == 0) {
         String cc = env_or("CC", "zig cc");
         String cflags = env_or("CFLAGS",
-            "-std=c23 -pedantic -Wall -Wextra -Werror -fsanitize=undefined "
+            "-std=c23 -pedantic -Wall -Wextra -Werror -fno-fast-math "
+            "-ffp-contract=off -fexcess-precision=standard -fsanitize=undefined "
             "-fno-sanitize-recover=undefined -I include/rza -I .");
         command.push_all(cc.tsplit(" ", skip_empty: true));
         command.push_all(cflags.tsplit(" ", skip_empty: true));

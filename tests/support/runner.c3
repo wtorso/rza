@@ -18,6 +18,8 @@ fn int main(String[] args) {
     if (args[1] == "numeric16-oracle") return numeric16_oracle_main();
     if (args[1] == "numeric32-oracle") return numeric32_oracle_main();
     if (args[1] == "numeric64-oracle") return numeric64_oracle_main();
+    if (args[1] == "float32-oracle") return float32_oracle_main();
+    if (args[1] == "float64-oracle") return float64_oracle_main();
     if (args[1] == "faults") return faults_main();
     if (args[1] == "contracts") return proc_contracts_main();
     if (args[1] == "contract-fuzz") return contract_fuzz_main();

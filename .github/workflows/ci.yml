@@ -61,6 +61,11 @@ jobs:
             -fsanitize=undefined -fno-sanitize-recover=undefined -I include/rza -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
+      - name: Strict FP toolchain probe
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+        run: bash tests/support/fp_toolchain_probe.sh
       - name: Full suite
         shell: bash
         env:
@@ -74,6 +79,7 @@ jobs:
           CC: clang
           CFLAGS: >-
             -std=c23 -pedantic -Wall -Wextra -Werror
+            -fno-fast-math -ffp-contract=off -fexcess-precision=standard
             -fsanitize=address,undefined -fno-sanitize-recover=undefined
             -I include/rza -I .
         run: bash run_tests.sh
@@ -146,6 +152,14 @@ jobs:
           sudo apt-get install --yes --no-install-recommends qemu-user binutils gawk
           "${{ matrix.qemu }}" --version
           readelf --version
+      - name: Strict FP toolchain probe
+        shell: bash
+        env:
+          CC: zig cc -target ${{ matrix.target }} -static
+          RZA_TARGET_ARCH: ${{ matrix.arch }}
+          RZA_TARGET_LAUNCHER: ${{ matrix.qemu }}
+          RZA_TARGET_LOG: ${{ github.workspace }}/build/fp-${{ matrix.arch }}.exec.log
+        run: bash tests/support/fp_toolchain_probe.sh
       - name: Target suite
         shell: bash
         env:
@@ -153,13 +167,13 @@ jobs:
           RZA_TARGET_ARCH: ${{ matrix.arch }}
           RZA_TARGET_LAUNCHER: ${{ matrix.qemu }}
           RZA_TARGET_LOG: ${{ github.workspace }}/build/target-${{ matrix.arch }}.exec.log
-          RZA_TARGET_EXPECTED_PASS: "192"
+          RZA_TARGET_EXPECTED_PASS: "212"
         run: |
           bash tests/support/target_runner_cases.sh
           bash run_tests.sh
           executions=$(wc -l < "$RZA_TARGET_LOG")
-          test "$executions" -eq 1211
-          printf 'TARGET %s PASS=192 EXECUTIONS=%s\n' "$RZA_TARGET_ARCH" "$executions"
+          test "$executions" -eq 1540
+          printf 'TARGET %s PASS=212 EXECUTIONS=%s\n' "$RZA_TARGET_ARCH" "$executions"
       - name: Hygiene
         shell: bash
         run: |
@@ -216,6 +230,11 @@ jobs:
             -fsanitize=undefined -fno-sanitize-recover=undefined -I include/rza -I . \
             build/hello.c -o build/hello.exe
           test "$(./build/hello.exe)" = 41
+      - name: Strict FP toolchain probe
+        shell: bash
+        env:
+          CC: zig cc
+        run: bash tests/support/fp_toolchain_probe.sh
       - name: Full suite
         shell: bash
         env:
@@ -291,6 +310,8 @@ jobs:
           & cl
           if ($LASTEXITCODE -ne 0) { throw "cl.exe failed: $LASTEXITCODE" }
           $env:CC = 'cl'
+          & bash --noprofile --norc -o pipefail -c 'bash tests/support/fp_toolchain_probe.sh'
+          if ($LASTEXITCODE -ne 0) { throw "Strict FP probe failed: $LASTEXITCODE" }
           & bash --noprofile --norc -o pipefail -c 'bash run_tests.sh | tee build/msvc-suite.log'
           if ($LASTEXITCODE -ne 0) { throw "MSVC suite failed: $LASTEXITCODE" }
       - name: Upload failed MSVC diagnostics

@@ -73,10 +73,11 @@ rza_cc_init() {
     rza_target_init || return
     if [ -z "${CFLAGS:-}" ]; then
         if rza_cc_is_msvc; then
-            CFLAGS="/nologo /std:clatest /W4 /WX /TC"
+            CFLAGS="/nologo /std:clatest /W4 /WX /TC /fp:strict /fp:except-"
             if [ "$mode" = release ]; then CFLAGS+=" /O2"; fi
         else
             CFLAGS="-std=c23 -pedantic -Wall -Wextra -Werror"
+            CFLAGS+=" -fno-fast-math -ffp-contract=off -fexcess-precision=standard"
             if [ "$mode" = sanitize ]; then
                 CFLAGS+=" -fsanitize=undefined -fno-sanitize-recover=undefined"
             else

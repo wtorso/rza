@@ -44,24 +44,49 @@
    '("shr.i8" "slt.i8" "ult.u8" "shr.i16" "slt.i16" "ult.u16"
      "shr.i32" "slt.i32" "ult.u32" "shr.i64" "slt.i64" "ult.u64")))
 
+(defconst rza-test-floating-opcodes
+  (append
+   (mapcan (lambda (base)
+             (mapcar (lambda (type) (concat base "." type)) '("f32" "f64")))
+           '("mov" "load" "store" "add" "sub" "mul" "div"
+             "feq" "fne" "flt" "fle" "fgt" "fge"))
+   (mapcan (lambda (float)
+             (mapcan (lambda (type)
+                       (list (concat "cvt." float "." type)
+                             (concat "cvt." type "." float)))
+                     '("i8" "u8" "i16" "u16" "i32" "u32" "i64" "u64")))
+           '("f32" "f64"))
+   '("cvt.f64.f32" "cvt.f32.f64")
+   (mapcan (lambda (pair)
+             (let ((float (nth 0 pair)) (signed (nth 1 pair)) (unsigned (nth 2 pair)))
+               (list (concat "bitcast." float "." signed)
+                     (concat "bitcast." float "." unsigned)
+                     (concat "bitcast." signed "." float)
+                     (concat "bitcast." unsigned "." float))))
+           '(("f32" "i32" "u32") ("f64" "i64" "u64")))))
+
 (ert-deftest rza-test-active-typed-opcodes-have-keyword-face ()
-  (should (= (length rza-test-typed-opcodes) 172))
-  (dolist (opcode rza-test-typed-opcodes)
-    (with-temp-buffer
-      (insert opcode)
-      (rza-mode)
-      (font-lock-mode 1)
-      (font-lock-ensure)
-      (should (eq (get-text-property 1 'face) 'font-lock-keyword-face))
-      (should (eq (get-text-property (length opcode) 'face)
-                  'font-lock-keyword-face)))))
+  (should (= (length rza-conversion-opcodes) 42))
+  (let ((active (append rza-test-typed-opcodes rza-test-floating-opcodes)))
+    (should (= (length active) 240))
+    (dolist (opcode active)
+      (with-temp-buffer
+        (insert opcode)
+        (rza-mode)
+        (font-lock-mode 1)
+        (font-lock-ensure)
+        (should (eq (get-text-property 1 'face) 'font-lock-keyword-face))
+        (should (eq (get-text-property (length opcode) 'face)
+                    'font-lock-keyword-face))))))
 
 (ert-deftest rza-test-inactive-typed-opcodes-have-no-keyword-suffix ()
   (dolist (opcode '("shr.u8" "slt.u8" "ult.i8" "shr.u16" "slt.u16" "ult.i16"
                     "shr.u32" "slt.u32" "ult.i32" "shr.u64" "slt.u64" "ult.i64"
                     "ult" "loadb.u8" "loadb.u16" "loadb.u32" "loadb.u64"
                     "crc32c.i32" "print.i32" "cvt.i64" "cvt.u64"
-                    "add.f32" "add.f64"))
+                    "mod.f32" "mod.f64" "cadd.f32" "feq.i32"
+                    "cvt.f32.f32" "cvt.i32.i64" "bitcast.f64.u32"
+                    "mov.f16" "load.bf16" "cvt.f16.f32"))
     (with-temp-buffer
       (insert opcode)
       (rza-mode)
@@ -129,3 +154,16 @@
     (rza-mode)
     (should (equal comment-start "; "))
     (should (equal comment-end ""))))
+
+
+(ert-deftest rza-test-float-scalar-types ()
+  (with-temp-buffer
+    (insert "layout FloatPair: single:f32, double:f64")
+    (rza-mode)
+    (font-lock-mode 1)
+    (font-lock-ensure)
+    (goto-char (point-min))
+    (search-forward "f32")
+    (should (eq (get-text-property (1- (point)) 'face) 'font-lock-builtin-face))
+    (search-forward "f64")
+    (should (eq (get-text-property (1- (point)) 'face) 'font-lock-builtin-face))))

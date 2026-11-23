@@ -1,0 +1,24 @@
+res raw, field, 24
+med raw_m, raw, field
+mov %r0, -1
+mov.f32 %r1, %r0
+store.f32 [raw_m + 0], %r1
+load.u32 %r2, [raw_m + 0]
+print %r2
+mov.u8 %r3, 0x5a
+store.u8 [raw_m + 4], %r3
+load.f32 %r4, [raw_m + 0]
+print %r4
+load.u8 %r5, [raw_m + 4]
+print %r5
+mov.f64 %r6, 0x8000000000000000
+store.f64 [raw_m + 8], %r6
+load.f64 %r7, [raw_m + 8]
+print %r7
+load.u64 %r8, [raw_m + 8]
+print %r8
+mov.f32 %r9, 0x3f800000
+store.f32 [raw_m + 16], %r9
+load.u32 %r10, [raw_m + 16]
+print %r10
+ret

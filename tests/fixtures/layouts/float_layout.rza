@@ -1,0 +1,31 @@
+layout Pair: tag:u8, single:f32, guard:u16, word:f64, tail:f32
+res pairs, field, Pair[2]
+med pairs_m, pairs, field
+mov.u8 %r0, 0x11
+store.u8 [pairs_m + 0].tag, %r0
+mov.f32 %r1, 0x3f800000
+store.f32 [pairs_m + 0].single, %r1
+mov.u16 %r2, 0x5a5a
+store.u16 [pairs_m + 0].guard, %r2
+mov.f64 %r3, 0x3ff0000000000000
+store.f64 [pairs_m + 0].word, %r3
+mov.f32 %r4, 0x40000000
+store.f32 [pairs_m + 0].tail, %r4
+mov %r5, -1
+mov.f32 %r5, %r5
+store.f32 [pairs_m + 1].single, %r5
+load.u8 %r6, [pairs_m + 0].tag
+print %r6
+load.f32 %r6, [pairs_m + 0].single
+print %r6
+load.u16 %r6, [pairs_m + 0].guard
+print %r6
+load.f64 %r6, [pairs_m + 0].word
+print %r6
+load.f32 %r6, [pairs_m + 0].tail
+print %r6
+load.f32 %r6, [pairs_m + 1].single
+print %r6
+load.u16 %r6, [pairs_m + 0].guard
+print %r6
+ret

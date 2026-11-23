@@ -67,7 +67,9 @@ enum ScalarType : char {
 	I32,
 	U32,
 	I64,
-	U64
+	U64,
+	F32,
+	F64
 }
 
 struct LayoutField {
@@ -184,6 +186,8 @@ enum Op : char {
 	MOV,
 	ALU3,
 	ALU1,
+	CVT,
+	BITCAST,
 	PRINT,
 	LABEL,
 	JMP,
@@ -206,6 +210,7 @@ struct Instr {
 	AluOp alu_op;
 	OperandKind operand_kind;
 	ScalarType scalar_type;
+	ScalarType source_type;
 }
 
 const int NAME_MAP_MAX = 32768;

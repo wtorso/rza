@@ -1,1 +1,1 @@
-VIOLATION line 1 [STRUCT]: unknown op mov.f32
+VIOLATION line 1 [STRUCT]: unknown op mov.bf16

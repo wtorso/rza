@@ -1,0 +1,24 @@
+res raw, field, 16
+med raw_m, raw, field
+view raw_v_m, raw_m, 4, 8
+mov.f32 %r0, 0x3f800000
+store.f32 [raw_v_m + 0], %r0
+mov.f32 %r1, 0x40000000
+store.f32 [raw_v_m + 4], %r1
+load.u32 %r2, [raw_m + 4]
+print %r2
+load.u32 %r2, [raw_m + 8]
+print %r2
+layout Pair: tag:u8, single:f32, guard:u16, word:f64, tail:f32
+res pairs, field, Pair[2]
+med pairs_m, pairs, field
+view pairs_v_m, pairs_m, 1, 1
+mov.f32 %r3, 0x40400000
+store.f32 [pairs_v_m + 0].single, %r3
+mov.f64 %r4, 0x4000000000000000
+store.f64 [pairs_v_m + 0].word, %r4
+load.f32 %r5, [pairs_m + 1].single
+print %r5
+load.f64 %r5, [pairs_m + 1].word
+print %r5
+ret

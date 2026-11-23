@@ -1,0 +1,9 @@
+mov %r0, -1
+mov.f32 %r1, %r0
+print %r1
+mov.f32 %r2, 0x3f800000
+print %r2
+mov.f64 %r3, 0x3ff0000000000000
+print %r3
+mov.f64 %r4, 0xffffffffffffffff
+print %r4

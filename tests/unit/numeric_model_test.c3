@@ -1,6 +1,6 @@
 module rez3asm;
 
-fn void numeric_type_descriptors_cover_only_legacy_scalars() @test {
+fn void numeric_type_descriptors_cover_integer_scalars() @test {
     TypeDesc* byte = scalar_type_desc(ScalarType.U8);
     assert(byte != null);
     assert(byte.source_name == "u8");
@@ -18,21 +18,25 @@ fn void numeric_type_descriptors_cover_only_legacy_scalars() @test {
     assert(find_scalar_type("u8") ?? ScalarType.NONE == ScalarType.U8);
     assert(find_scalar_type("i64") ?? ScalarType.NONE == ScalarType.I64);
     assert(find_scalar_type("i32") ?? ScalarType.NONE == ScalarType.I32);
-    assert(!@ok(find_scalar_type("f32")));
+    assert(find_scalar_type("f32") ?? ScalarType.NONE == ScalarType.F32);
     assert(scalar_type_desc(ScalarType.NONE) == null);
 }
 
-fn void numeric_operation_descriptors_cover_legacy_surface() @test {
+fn void numeric_operation_descriptors_cover_shared_surface() @test {
     String[] names = {
         "cav", "layout", "res", "med", "view", "raise", "decay", "probe",
-        "load", "loadb", "store", "storeb", "mov", "inc", "dec", "cinc", "cdec",
-        "add", "sub", "mul", "cadd", "csub", "cmul", "crc32c", "div", "mod",
-        "and", "or", "xor", "shl", "shr", "ushr", "slt", "print", "jmp", "brz",
+        "load", "loadb", "store", "storeb", "mov", "cvt", "bitcast", "inc", "dec",
+        "cinc", "cdec", "add", "sub", "mul", "cadd", "csub", "cmul", "crc32c",
+        "div", "mod", "and", "or", "xor", "shl", "shr", "ushr", "slt",
+        "feq", "fne", "flt", "fle", "fgt", "fge", "print", "jmp", "brz",
         "brnz", "call", "await"
     };
     foreach (name : names) assert(find_op_desc(name) != null);
-    assert(find_op_desc("add.f32") == null);
-    assert(find_op_desc("load.f32") == null);
+    OpDesc desc;
+    assert(resolve_op_desc("add.f32", &desc));
+    assert(desc.op == Op.ALU3 && desc.scalar_type == ScalarType.F32);
+    assert(resolve_op_desc("load.f32", &desc));
+    assert(desc.op == Op.LOAD && desc.scalar_type == ScalarType.F32);
     OpDesc* add = find_op_desc("add");
     assert(add.op == Op.ALU3 && add.alu_op == AluOp.ADD && add.has_scalar_type);
     OpDesc* load = find_op_desc("loadb");
@@ -98,8 +102,19 @@ fn void numeric_instruction_semantics_match_legacy_source() @test {
     assert(instrs[14].alu_op == AluOp.SLT);
     assert(instrs[15].alu_op == AluOp.CRC32C);
     free_checker();
-    start_invalid_layout("add.f32 %r0, %r1, %r2\n");
-    assert(lsp_diags[0].msg == "unknown op add.f32");
+}
+
+fn void numeric_float_instruction_semantics_match_shared_source() @test {
+    prepare_checker("add.f32 %r0, %r1, %r2\nfeq.f64 %r3, %r0, %r1\n");
+    assert(instrs.len() == 2);
+    assert(instrs[0].op == Op.ALU3 && instrs[0].alu_op == AluOp.ADD);
+    assert(instrs[0].scalar_type == ScalarType.F32);
+    assert(instrs[0].source_type == ScalarType.NONE);
+    assert(instrs[1].op == Op.ALU3 && instrs[1].alu_op == AluOp.FEQ);
+    assert(instrs[1].scalar_type == ScalarType.F64);
+    free_checker();
+    start_invalid_layout("mod.f32 %r0, %r1, %r2\n");
+    assert(lsp_diags[0].msg == "unknown op mod.f32");
     free_checker();
 }
 
@@ -141,7 +156,7 @@ fn void numeric_lsp_memory_context_uses_operation_descriptors() @test {
     assert(memory_completion_context("storeb", 0) == CompletionContext.MED);
     assert(memory_completion_context("load", 0) == CompletionContext.NONE);
     assert(memory_completion_context("store", 1) == CompletionContext.NONE);
-    assert(memory_completion_context("load.f32", 1) == CompletionContext.NONE);
+    assert(memory_completion_context("load.f32", 1) == CompletionContext.MED);
     assert(memory_completion_context("store.i64", 0) == CompletionContext.MED);
     assert(memory_completion_context("unknown", 1) == CompletionContext.NONE);
 }

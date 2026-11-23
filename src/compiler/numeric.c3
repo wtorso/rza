@@ -34,11 +34,18 @@ enum AluOp : char {
 	SHR,
 	USHR,
 	CRC32C,
-	ULT
+	ULT,
+	FEQ,
+	FNE,
+	FLT,
+	FLE,
+	FGT,
+	FGE
 }
 
 enum TypeKind : char {
-	INTEGER
+	INTEGER,
+	IEEE_FLOAT
 }
 
 enum Signedness : char {
@@ -48,8 +55,12 @@ enum Signedness : char {
 }
 
 enum ConversionClass : char {
-	INTEGER
+	INTEGER,
+	IEEE_BINARY
 }
+
+const uint TARGET_CAP_FLOAT_STORAGE = 1;
+const uint TARGET_CAP_FLOAT_ARITHMETIC = 2;
 
 struct Immediate {
 	ulong bits;
@@ -166,6 +177,30 @@ const TypeDesc[] TYPE_DESCS = {
 		.conversion_class = ConversionClass.INTEGER,
 		.target_capabilities = 0,
 		.typed_syntax = true
+	},
+	{
+		.source_name = "f32",
+		.type = ScalarType.F32,
+		.kind = TypeKind.IEEE_FLOAT,
+		.bit_width = 32,
+		.alignment_bytes = 4,
+		.signedness = Signedness.NONE,
+		.storage_only = false,
+		.conversion_class = ConversionClass.IEEE_BINARY,
+		.target_capabilities = TARGET_CAP_FLOAT_STORAGE | TARGET_CAP_FLOAT_ARITHMETIC,
+		.typed_syntax = true
+	},
+	{
+		.source_name = "f64",
+		.type = ScalarType.F64,
+		.kind = TypeKind.IEEE_FLOAT,
+		.bit_width = 64,
+		.alignment_bytes = 8,
+		.signedness = Signedness.NONE,
+		.storage_only = false,
+		.conversion_class = ConversionClass.IEEE_BINARY,
+		.target_capabilities = TARGET_CAP_FLOAT_STORAGE | TARGET_CAP_FLOAT_ARITHMETIC,
+		.typed_syntax = true
 	}
 };
 
@@ -174,6 +209,7 @@ struct OpDesc {
 	Op op;
 	AluOp alu_op;
 	ScalarType scalar_type;
+	ScalarType source_type;
 	bool has_scalar_type;
 	bool write;
 	bool cascade_ok;
@@ -203,6 +239,8 @@ const OpDesc[] OP_DESCS = {
 		.has_scalar_type = true, .write = true, .cascade_ok = true },
 	{ .source_name = "mov", .op = Op.MOV, .scalar_type = ScalarType.I64,
 		.has_scalar_type = true, .cascade_ok = true, .typed_enabled = true },
+	{ .source_name = "cvt", .op = Op.CVT, .cascade_ok = true, .typed_only = true },
+	{ .source_name = "bitcast", .op = Op.BITCAST, .cascade_ok = true, .typed_only = true },
 	{ .source_name = "inc", .op = Op.ALU1, .alu_op = AluOp.INC,
 		.scalar_type = ScalarType.I64, .has_scalar_type = true, .cascade_ok = true,
 		.typed_enabled = true },
@@ -265,6 +303,18 @@ const OpDesc[] OP_DESCS = {
 	{ .source_name = "ult", .op = Op.ALU3, .alu_op = AluOp.ULT, .cascade_ok = true,
 		.typed_enabled = true, .typed_only = true,
 		.required_signedness = Signedness.UNSIGNED },
+	{ .source_name = "feq", .op = Op.ALU3, .alu_op = AluOp.FEQ, .cascade_ok = true,
+		.typed_enabled = true, .typed_only = true },
+	{ .source_name = "fne", .op = Op.ALU3, .alu_op = AluOp.FNE, .cascade_ok = true,
+		.typed_enabled = true, .typed_only = true },
+	{ .source_name = "flt", .op = Op.ALU3, .alu_op = AluOp.FLT, .cascade_ok = true,
+		.typed_enabled = true, .typed_only = true },
+	{ .source_name = "fle", .op = Op.ALU3, .alu_op = AluOp.FLE, .cascade_ok = true,
+		.typed_enabled = true, .typed_only = true },
+	{ .source_name = "fgt", .op = Op.ALU3, .alu_op = AluOp.FGT, .cascade_ok = true,
+		.typed_enabled = true, .typed_only = true },
+	{ .source_name = "fge", .op = Op.ALU3, .alu_op = AluOp.FGE, .cascade_ok = true,
+		.typed_enabled = true, .typed_only = true },
 	{ .source_name = "print", .op = Op.PRINT, .cascade_ok = true },
 	{ .source_name = "jmp", .op = Op.JMP, .cascade_ok = true },
 	{ .source_name = "brz", .op = Op.BRZ, .cascade_ok = true },
@@ -303,6 +353,26 @@ fn OpDesc* find_op_desc(String source_name) {
 	return null;
 }
 
+fn bool float_comparison_op(AluOp op) {
+	switch (op) {
+		case AluOp.FEQ:
+		case AluOp.FNE:
+		case AluOp.FLT:
+		case AluOp.FLE:
+		case AluOp.FGT:
+		case AluOp.FGE: return true;
+		default: return false;
+	}
+}
+
+fn bool float_typed_op_allowed(OpDesc* desc) {
+	if (desc.op == Op.MOV || desc.op == Op.LOAD || desc.op == Op.STORE) return true;
+	if (desc.op != Op.ALU3) return false;
+	if (float_comparison_op(desc.alu_op)) return true;
+	return desc.alu_op == AluOp.ADD || desc.alu_op == AluOp.SUB ||
+		desc.alu_op == AluOp.MUL || desc.alu_op == AluOp.DIV;
+}
+
 fn bool resolve_typed_op_desc(String source_name, OpDesc* out) {
 	sz? separator = source_name.index_of_char('.');
 	if (catch separator) return false;
@@ -315,6 +385,8 @@ fn bool resolve_typed_op_desc(String source_name, OpDesc* out) {
 	ScalarType type = find_scalar_type(suffix) ?? ScalarType.NONE;
 	TypeDesc* type_desc = scalar_type_desc(type);
 	if (type_desc == null || !type_desc.typed_syntax) return false;
+	if (type_desc.kind == TypeKind.IEEE_FLOAT && !float_typed_op_allowed(desc)) return false;
+	if (type_desc.kind == TypeKind.INTEGER && float_comparison_op(desc.alu_op)) return false;
 	if (desc.required_signedness != Signedness.NONE &&
 			desc.required_signedness != type_desc.signedness) return false;
 	*out = *desc;
@@ -325,7 +397,22 @@ fn bool resolve_typed_op_desc(String source_name, OpDesc* out) {
 	return true;
 }
 
+fn bool resolve_conversion_op_desc(String source_name, OpDesc* out) {
+	ConversionDesc* conversion = find_conversion_desc(source_name);
+	if (conversion == null) return false;
+	OpDesc* desc = find_op_desc(conversion.op == Op.CVT ? "cvt" : "bitcast");
+	assert(desc != null);
+	*out = *desc;
+	out.source_name = source_name;
+	out.scalar_type = conversion.destination;
+	out.source_type = conversion.source;
+	out.has_scalar_type = true;
+	out.typed = true;
+	return true;
+}
+
 fn bool resolve_op_desc(String source_name, OpDesc* out) {
+	if (resolve_conversion_op_desc(source_name, out)) return true;
 	OpDesc* desc = find_op_desc(source_name);
 	if (desc != null) {
 		if (desc.typed_only) return false;
@@ -356,4 +443,106 @@ fn Immediate immediate_from_i64(long value) {
 		.literal_kind = LiteralKind.DECIMAL,
 		.has_negative_sign = value < 0
 	};
+}
+
+
+struct ConversionDesc {
+    String source_name;
+    Op op;
+    ScalarType destination;
+    ScalarType source;
+}
+
+const ConversionDesc[] CONVERSION_DESCS = {
+    { .source_name = "cvt.f32.f64", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.F64 },
+    { .source_name = "cvt.f32.i8", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.I8 },
+    { .source_name = "cvt.f32.u8", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.U8 },
+    { .source_name = "cvt.f32.i16", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.I16 },
+    { .source_name = "cvt.f32.u16", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.U16 },
+    { .source_name = "cvt.f32.i32", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.I32 },
+    { .source_name = "cvt.f32.u32", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.U32 },
+    { .source_name = "cvt.f32.i64", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.I64 },
+    { .source_name = "cvt.f32.u64", .op = Op.CVT,
+        .destination = ScalarType.F32, .source = ScalarType.U64 },
+    { .source_name = "cvt.i8.f32", .op = Op.CVT,
+        .destination = ScalarType.I8, .source = ScalarType.F32 },
+    { .source_name = "cvt.u8.f32", .op = Op.CVT,
+        .destination = ScalarType.U8, .source = ScalarType.F32 },
+    { .source_name = "cvt.i16.f32", .op = Op.CVT,
+        .destination = ScalarType.I16, .source = ScalarType.F32 },
+    { .source_name = "cvt.u16.f32", .op = Op.CVT,
+        .destination = ScalarType.U16, .source = ScalarType.F32 },
+    { .source_name = "cvt.i32.f32", .op = Op.CVT,
+        .destination = ScalarType.I32, .source = ScalarType.F32 },
+    { .source_name = "cvt.u32.f32", .op = Op.CVT,
+        .destination = ScalarType.U32, .source = ScalarType.F32 },
+    { .source_name = "cvt.i64.f32", .op = Op.CVT,
+        .destination = ScalarType.I64, .source = ScalarType.F32 },
+    { .source_name = "cvt.u64.f32", .op = Op.CVT,
+        .destination = ScalarType.U64, .source = ScalarType.F32 },
+    { .source_name = "cvt.f64.f32", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.F32 },
+    { .source_name = "cvt.f64.i8", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.I8 },
+    { .source_name = "cvt.f64.u8", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.U8 },
+    { .source_name = "cvt.f64.i16", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.I16 },
+    { .source_name = "cvt.f64.u16", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.U16 },
+    { .source_name = "cvt.f64.i32", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.I32 },
+    { .source_name = "cvt.f64.u32", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.U32 },
+    { .source_name = "cvt.f64.i64", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.I64 },
+    { .source_name = "cvt.f64.u64", .op = Op.CVT,
+        .destination = ScalarType.F64, .source = ScalarType.U64 },
+    { .source_name = "cvt.i8.f64", .op = Op.CVT,
+        .destination = ScalarType.I8, .source = ScalarType.F64 },
+    { .source_name = "cvt.u8.f64", .op = Op.CVT,
+        .destination = ScalarType.U8, .source = ScalarType.F64 },
+    { .source_name = "cvt.i16.f64", .op = Op.CVT,
+        .destination = ScalarType.I16, .source = ScalarType.F64 },
+    { .source_name = "cvt.u16.f64", .op = Op.CVT,
+        .destination = ScalarType.U16, .source = ScalarType.F64 },
+    { .source_name = "cvt.i32.f64", .op = Op.CVT,
+        .destination = ScalarType.I32, .source = ScalarType.F64 },
+    { .source_name = "cvt.u32.f64", .op = Op.CVT,
+        .destination = ScalarType.U32, .source = ScalarType.F64 },
+    { .source_name = "cvt.i64.f64", .op = Op.CVT,
+        .destination = ScalarType.I64, .source = ScalarType.F64 },
+    { .source_name = "cvt.u64.f64", .op = Op.CVT,
+        .destination = ScalarType.U64, .source = ScalarType.F64 },
+    { .source_name = "bitcast.f32.i32", .op = Op.BITCAST,
+        .destination = ScalarType.F32, .source = ScalarType.I32 },
+    { .source_name = "bitcast.f32.u32", .op = Op.BITCAST,
+        .destination = ScalarType.F32, .source = ScalarType.U32 },
+    { .source_name = "bitcast.i32.f32", .op = Op.BITCAST,
+        .destination = ScalarType.I32, .source = ScalarType.F32 },
+    { .source_name = "bitcast.u32.f32", .op = Op.BITCAST,
+        .destination = ScalarType.U32, .source = ScalarType.F32 },
+    { .source_name = "bitcast.f64.i64", .op = Op.BITCAST,
+        .destination = ScalarType.F64, .source = ScalarType.I64 },
+    { .source_name = "bitcast.f64.u64", .op = Op.BITCAST,
+        .destination = ScalarType.F64, .source = ScalarType.U64 },
+    { .source_name = "bitcast.i64.f64", .op = Op.BITCAST,
+        .destination = ScalarType.I64, .source = ScalarType.F64 },
+    { .source_name = "bitcast.u64.f64", .op = Op.BITCAST,
+        .destination = ScalarType.U64, .source = ScalarType.F64 },
+};
+
+fn ConversionDesc* find_conversion_desc(String source_name) {
+    for (usz i = 0; i < CONVERSION_DESCS.len; i++) {
+        if (CONVERSION_DESCS[i].source_name == source_name) return &CONVERSION_DESCS[i];
+    }
+    return null;
 }
