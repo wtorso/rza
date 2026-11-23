@@ -562,7 +562,7 @@ const String FLOAT_MEMORY_SOURCE = "res data, field, 32\n"
     "    ret\n";
 
 const String FLOAT_MEMORY_HOST = "\nstatic int float_memory_fail(const char *name) {\n"
-    "    puts(name);\n    return 1;\n}\n\n"
+    "    printf(\"%s\\r\\n\", name);\n    return 1;\n}\n\n"
     "int main(void) {\n"
     "    RzaResult result = rza_boot();\n"
     "    if (result.code != RZA_OK) return float_memory_fail(\"BOOT\");\n"
@@ -617,7 +617,7 @@ fn int? run_float_memory_driver(String library, String name, String expected) {
     ProcessResult runtime = run_simple({ executable })!;
     bool clean = expected.len == 0;
     bool valid = clean ? runtime.status == 0 && runtime.stdout_text.len == 0
-        : runtime.status == 1 && runtime.stdout_text == expected;
+        : runtime.status == 1 && normalize_lines(runtime.stdout_text) == normalize_lines(expected);
     if (!expect(valid && runtime.stderr_text.len == 0, "float memory observation")) {
         io::eprintn(name);
         print_result(runtime);
