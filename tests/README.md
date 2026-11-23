@@ -11,6 +11,11 @@ The root runner remains the public entry point. Source lists are explicit; do no
 with recursive file discovery. Test names, expected output, and host/target classifications stay
 stable when files move.
 
+For native development, `RZA_TEST_GROUP=core` runs the main suite and `RZA_TEST_GROUP=oracles`
+runs the eight execution, ownership, and numeric oracles. The default `all` runs everything and
+is required for target evidence. `RZA_EXPECTED_PASS` optionally enforces the expected count;
+Windows CI checks `323 + 8 = 331`, while POSIX checks `324 + 8 = 332`.
+
 ## Directory guide
 
 - `support/`: the C3 test runner, shared harness and style helpers, and shell/target

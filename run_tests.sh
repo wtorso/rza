@@ -46,7 +46,7 @@ require_c3c() {
     exit 2
 }
 
-run_function_style() {
+build_test_runner() {
     local c3c_bin="c3c"
     if ! command -v "$c3c_bin" >/dev/null 2>&1; then
         c3c_bin="${LOCALAPPDATA:-}/c3/c3c.exe"
@@ -105,6 +105,10 @@ run_function_style() {
             return
         fi
     fi
+}
+
+run_function_style() {
+    build_test_runner
     if ! "$BUILD/rza_tests.exe" function-style >>"$BUILD/function_style.out" 2>&1; then
         bad function_style "function length or scanner error"
         cat "$BUILD/function_style.out"
@@ -112,9 +116,23 @@ run_function_style() {
     fi
     ok_host function_style
 }
+
+TEST_GROUP=${RZA_TEST_GROUP:-all}
+case "$TEST_GROUP" in
+    all|core|oracles) ;;
+    *) echo "FATAL: unsupported RZA_TEST_GROUP: $TEST_GROUP" >&2; exit 2 ;;
+esac
+if [ -n "${RZA_TARGET_ARCH:-}" ] && [ "$TEST_GROUP" != all ]; then
+    echo "FATAL: target suites require RZA_TEST_GROUP=all" >&2
+    exit 2
+fi
 require_c3c
-run_function_style
-run_style
+if [ "$TEST_GROUP" = oracles ]; then
+    build_test_runner
+else
+    run_function_style
+    run_style
+fi
 
 echo "== build rez3asm (c3c) =="
 if ! bash build_compiler.sh; then
@@ -742,6 +760,7 @@ run_build_parallel() {
     ok_host build_parallel
 }
 
+if [ "$TEST_GROUP" != oracles ]; then
 run_viol_contract
 
 echo "== REZ3-ASM test run (compiler: $CC) =="
@@ -1152,24 +1171,29 @@ run_lib lib_async_fault
 run_async_mutants
 run_cli_contract
 run_lsp_smoke
-run_ownership_fuzz
-run_execution_oracle
-run_numeric8_oracle
-run_numeric16_oracle
-run_numeric32_oracle
-run_numeric64_oracle
-run_float32_oracle
-run_float64_oracle
-run_fault_smoke
-run_proc_contracts
-run_contract_fuzz
-run_deterministic_artifacts
-run_tiny_budgets
-run_fuzz
-if [ "${OS:-}" != "Windows_NT" ] || rza_cc_is_msvc; then
-    run_benchmark_sources
 fi
-run_c3_unit
+if [ "$TEST_GROUP" != core ]; then
+    run_ownership_fuzz
+    run_execution_oracle
+    run_numeric8_oracle
+    run_numeric16_oracle
+    run_numeric32_oracle
+    run_numeric64_oracle
+    run_float32_oracle
+    run_float64_oracle
+fi
+if [ "$TEST_GROUP" != oracles ]; then
+    run_fault_smoke
+    run_proc_contracts
+    run_contract_fuzz
+    run_deterministic_artifacts
+    run_tiny_budgets
+    run_fuzz
+    if [ "${OS:-}" != "Windows_NT" ] || rza_cc_is_msvc; then
+        run_benchmark_sources
+    fi
+    run_c3_unit
+fi
 echo "----------------------------------------"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -ne 0 ]; then exit 1; fi
@@ -1184,6 +1208,13 @@ if [ -n "${RZA_TARGET_ARCH:-}" ]; then
     EXPECTED_PASS=$RZA_TARGET_EXPECTED_PASS
 fi
 if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=331; fi
+if [ "$TEST_GROUP" = oracles ]; then EXPECTED_PASS=8; fi
+if [ "$TEST_GROUP" = core ]; then EXPECTED_PASS=$((EXPECTED_PASS - 8)); fi
+case ${RZA_EXPECTED_PASS:-} in
+    '') ;;
+    *[!0-9]*) echo "FATAL: RZA_EXPECTED_PASS must be a decimal integer" >&2; exit 2 ;;
+    *) EXPECTED_PASS=$RZA_EXPECTED_PASS ;;
+esac
 if [ "$PASS" -ne "$EXPECTED_PASS" ]; then
     echo "FAIL pass count: got $PASS, want $EXPECTED_PASS"
     exit 1

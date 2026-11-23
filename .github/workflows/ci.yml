@@ -293,6 +293,14 @@ jobs:
       inputs.suite == 'all' || inputs.suite == 'windows'
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: core
+            expected: "323"
+          - group: oracles
+            expected: "8"
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
@@ -336,16 +344,18 @@ jobs:
         env:
           CC: zig cc
         run: bash tests/support/fp_toolchain_probe.sh 2>&1 | tee build/windows-probe.log
-      - name: Full suite
+      - name: Full suite (${{ matrix.group }})
         shell: bash
         env:
           CC: zig cc
+          RZA_TEST_GROUP: ${{ matrix.group }}
+          RZA_EXPECTED_PASS: ${{ matrix.expected }}
         run: bash run_tests.sh
       - name: Upload failed probe diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: probe-diagnostics-windows-${{ github.run_id }}
+          name: probe-diagnostics-windows-${{ matrix.group }}-${{ github.run_id }}
           path: |
             build/windows-probe.log
             build/fp-toolchain-probe/**
