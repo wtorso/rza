@@ -119,7 +119,7 @@ run_function_style() {
 
 TEST_GROUP=${RZA_TEST_GROUP:-all}
 case "$TEST_GROUP" in
-    all|core|oracles) ;;
+    all|core|oracles|execution|integers|floats) ;;
     *) echo "FATAL: unsupported RZA_TEST_GROUP: $TEST_GROUP" >&2; exit 2 ;;
 esac
 if [ -n "${RZA_TARGET_ARCH:-}" ] && [ "$TEST_GROUP" != all ]; then
@@ -127,12 +127,13 @@ if [ -n "${RZA_TARGET_ARCH:-}" ] && [ "$TEST_GROUP" != all ]; then
     exit 2
 fi
 require_c3c
-if [ "$TEST_GROUP" = oracles ]; then
-    build_test_runner
-else
-    run_function_style
-    run_style
-fi
+case "$TEST_GROUP" in
+    all|core)
+        run_function_style
+        run_style
+        ;;
+    *) build_test_runner ;;
+esac
 
 echo "== build rez3asm (c3c) =="
 if ! bash build_compiler.sh; then
@@ -760,7 +761,7 @@ run_build_parallel() {
     ok_host build_parallel
 }
 
-if [ "$TEST_GROUP" != oracles ]; then
+if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = core ]; then
 run_viol_contract
 
 echo "== REZ3-ASM test run (compiler: $CC) =="
@@ -1172,17 +1173,21 @@ run_async_mutants
 run_cli_contract
 run_lsp_smoke
 fi
-if [ "$TEST_GROUP" != core ]; then
+if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = oracles ] || [ "$TEST_GROUP" = execution ]; then
     run_ownership_fuzz
     run_execution_oracle
+fi
+if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = oracles ] || [ "$TEST_GROUP" = integers ]; then
     run_numeric8_oracle
     run_numeric16_oracle
     run_numeric32_oracle
     run_numeric64_oracle
+fi
+if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = oracles ] || [ "$TEST_GROUP" = floats ]; then
     run_float32_oracle
     run_float64_oracle
 fi
-if [ "$TEST_GROUP" != oracles ]; then
+if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = core ]; then
     run_fault_smoke
     run_proc_contracts
     run_contract_fuzz
@@ -1208,8 +1213,13 @@ if [ -n "${RZA_TARGET_ARCH:-}" ]; then
     EXPECTED_PASS=$RZA_TARGET_EXPECTED_PASS
 fi
 if [ "${OS:-}" = "Windows_NT" ] && ! rza_cc_is_msvc; then EXPECTED_PASS=331; fi
-if [ "$TEST_GROUP" = oracles ]; then EXPECTED_PASS=8; fi
-if [ "$TEST_GROUP" = core ]; then EXPECTED_PASS=$((EXPECTED_PASS - 8)); fi
+case "$TEST_GROUP" in
+    oracles) EXPECTED_PASS=8 ;;
+    execution) EXPECTED_PASS=2 ;;
+    integers) EXPECTED_PASS=4 ;;
+    floats) EXPECTED_PASS=2 ;;
+    core) EXPECTED_PASS=$((EXPECTED_PASS - 8)) ;;
+esac
 case ${RZA_EXPECTED_PASS:-} in
     '') ;;
     *[!0-9]*) echo "FATAL: RZA_EXPECTED_PASS must be a decimal integer" >&2; exit 2 ;;

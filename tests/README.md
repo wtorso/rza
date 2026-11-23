@@ -12,9 +12,11 @@ with recursive file discovery. Test names, expected output, and host/target clas
 stable when files move.
 
 For native development, `RZA_TEST_GROUP=core` runs the main suite and `RZA_TEST_GROUP=oracles`
-runs the eight execution, ownership, and numeric oracles. The default `all` runs everything and
-is required for target evidence. `RZA_EXPECTED_PASS` optionally enforces the expected count;
-Windows CI checks `323 + 8 = 331`, while POSIX checks `324 + 8 = 332`.
+runs the eight execution, ownership, and numeric oracles. The `execution`, `integers`, and
+`floats` groups select two, four, and two of those oracles respectively. The default `all` runs
+everything and is required for target evidence. `RZA_EXPECTED_PASS` optionally enforces the
+expected count; CI checks `323 + 2 + 4 + 2 = 331` on Windows and `324 + 2 + 4 + 2 = 332` on
+POSIX.
 
 ## Directory guide
 

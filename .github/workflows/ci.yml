@@ -299,8 +299,12 @@ jobs:
         include:
           - group: core
             expected: "323"
-          - group: oracles
-            expected: "8"
+          - group: execution
+            expected: "2"
+          - group: integers
+            expected: "4"
+          - group: floats
+            expected: "2"
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
@@ -449,6 +453,18 @@ jobs:
       inputs.suite == 'all' || inputs.suite == 'msvc'
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: core
+            expected: "324"
+          - group: execution
+            expected: "2"
+          - group: integers
+            expected: "4"
+          - group: floats
+            expected: "2"
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
@@ -481,6 +497,8 @@ jobs:
           if ($env:VSCMD_ARG_TGT_ARCH -ne 'x64') { throw "MSVC target is not x64" }
           & cl
           if ($LASTEXITCODE -ne 0) { throw "cl.exe failed: $LASTEXITCODE" }
+          $env:RZA_TEST_GROUP = '${{ matrix.group }}'
+          $env:RZA_EXPECTED_PASS = '${{ matrix.expected }}'
           $env:CC = 'cl'
           & bash --noprofile --norc -o pipefail `
             -c 'bash tests/support/fp_toolchain_probe.sh 2>&1 | tee build/msvc-probe.log'
@@ -491,7 +509,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: msvc-diagnostics-${{ github.run_id }}
+          name: msvc-diagnostics-${{ matrix.group }}-${{ github.run_id }}
           path: |
             build/msvc-suite.log
             build/msvc-probe.log
