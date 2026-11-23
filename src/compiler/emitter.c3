@@ -1996,8 +1996,8 @@ fn String emit() {
     out.append_string("#include <stdio.h>\n");
     out.append_string("#include <stdint.h>\n");
     out.append_string("#include <stdlib.h>\n");
-    out.append_string("#include \"rez3ext.h\"\n\n");
     emit_float_support(&out);
+    out.append_string("#include \"rez3ext.h\"\n\n");
     out.append_string("#if defined(_MSC_VER)\n");
     out.append_string("/* Generated labels may follow unconditional jumps. */\n");
     out.append_string("#pragma warning(disable: 4702)\n#endif\n\n");

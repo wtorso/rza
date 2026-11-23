@@ -855,6 +855,21 @@ fn int? check_float_rhs_mutations() {
 }
 
 
+fn bool float_pragmas_before_runtime(String text) {
+    String[] markers = {
+        "#include <float.h>", "#pragma clang fp reassociate(off)",
+        "#pragma GCC optimize (\"fp-contract=off\")", "#pragma float_control(precise, on)",
+    };
+    foreach (marker : markers) {
+        sz? position = text.index_of(marker);
+        sz? runtime = text.index_of("#include \"rez3ext.h\"");
+        if (catch position) return false;
+        if (catch runtime) return false;
+        if (position >= runtime) return false;
+    }
+    return true;
+}
+
 fn int? check_float_profile_artifact() {
     String legacy = emit_artifact("tests/fixtures/core/mov_self.rza",
         temp_path("legacy-without-float.c"))!;
@@ -863,6 +878,11 @@ fn int? check_float_profile_artifact() {
             "legacy generated C must not acquire strict FP guards")) return 1;
     String unaligned = emit_artifact("tests/fixtures/core/float_unaligned.rza",
         temp_path("float-exact-access.c"))!;
+    if (!expect(float_pragmas_before_runtime(unaligned),
+            "floating pragmas must precede runtime helpers")) return 1;
+    char[] probe = read_file("tests/host/fp_toolchain_probe.c", artifact_source_buf[..])!;
+    if (!expect(float_pragmas_before_runtime((String)probe),
+            "probe pragmas must precede runtime helpers")) return 1;
     if (!expect(unaligned.contains("#include <float.h>") &&
             unaligned.contains("#pragma GCC optimize (\"fp-contract=off\")") &&
             unaligned.contains("memcpy((char*)p + 1, &value, 4)") &&

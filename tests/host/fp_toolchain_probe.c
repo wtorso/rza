@@ -7,8 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "rez3ext.h"
-
 #if !defined(FP_PROBE_NEGATIVE)
 #ifndef FP_PROBE_ALLOW_CONTRACTION
 #if defined(__clang__)
@@ -26,6 +24,8 @@
 #pragma fp_contract(off)
 #endif
 #endif
+
+#include "rez3ext.h"
 
 #if (defined(__FAST_MATH__) && __FAST_MATH__ != 0) || \
     (defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__ != 0)
