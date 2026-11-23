@@ -816,8 +816,9 @@ fn int? run_float_rhs_program(String generated, String name, String expected,
         return 1;
     }
     ProcessResult runtime = run_simple({ executable })!;
-    bool output_ok = require_match ? runtime.stdout_text == expected
-        : runtime.stdout_text != expected;
+    String actual = normalize_lines(runtime.stdout_text);
+    String wanted = normalize_lines(expected);
+    bool output_ok = require_match ? actual == wanted : actual != wanted;
     if (!expect(runtime.status == 0 && runtime.stderr_text.len == 0 && output_ok,
             "float RHS mutation observation")) {
         print_result(runtime);
@@ -832,14 +833,14 @@ fn int? check_float_rhs_mutation(String source_text, String name) {
     String generated_path = temp_path(string::tformat("%s.c", name));
     String generated = emit_artifact(source, generated_path)!;
     if (run_float_rhs_program(generated_path, string::tformat("%s-clean", name),
-            "1077936128\n", true)! != 0) return 1;
+            "1077936128\r\n", true)! != 0) return 1;
     bool changed;
     String mutated = float_artifact_replace(generated, "rez_f32_add", "rez_f32_sub", &changed);
     if (!expect(changed, "float RHS mutation anchor")) return 1;
     String mutant_path = temp_path(string::tformat("%s-mutant.c", name));
     write_file(mutant_path, mutated)!;
     return run_float_rhs_program(mutant_path, string::tformat("%s-mutant", name),
-        "1077936128\n", false);
+        "1077936128\r\n", false);
 }
 
 fn int? check_float_rhs_mutations() {
