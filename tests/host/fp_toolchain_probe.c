@@ -42,7 +42,7 @@ _Static_assert(FLT_MIN_EXP == -125, "binary32 minimum exponent required");
 _Static_assert(FLT_MAX_EXP == 128, "binary32 maximum exponent required");
 _Static_assert(DBL_MIN_EXP == -1021, "binary64 minimum exponent required");
 _Static_assert(DBL_MAX_EXP == 1024, "binary64 maximum exponent required");
-#if FLT_EVAL_METHOD != 0
+#if !defined(FP_PROBE_NEGATIVE) && FLT_EVAL_METHOD != 0
 #error "floating evaluation must round at the declared type"
 #endif
 #if defined(__STDC_IEC_559__) && __STDC_IEC_559__ != 1

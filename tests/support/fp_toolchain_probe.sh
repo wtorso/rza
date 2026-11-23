@@ -46,6 +46,7 @@ if grep -E 'vfmadd|fmadd|fmla' "$out/probe.asm" >/dev/null 2>&1; then
 fi
 
 if rza_cc_is_msvc; then
+    CFLAGS=${CFLAGS/\/fp:strict /}
     rza_cc "${strict[@]}" "${optimized[@]}" -DFP_PROBE_NEGATIVE /fp:fast /arch:AVX2 \
         /Fa"$out/fast.asm" "$source" -o "$out/fast.exe" >"$out/fast.out" \
         2>"$out/fast.err"
