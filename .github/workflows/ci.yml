@@ -159,7 +159,7 @@ jobs:
           RZA_TARGET_ARCH: ${{ matrix.arch }}
           RZA_TARGET_LAUNCHER: ${{ matrix.qemu }}
           RZA_TARGET_LOG: ${{ github.workspace }}/build/fp-${{ matrix.arch }}.exec.log
-        run: bash tests/support/fp_toolchain_probe.sh
+        run: bash tests/support/fp_toolchain_probe.sh 2>&1 | tee build/target-probe.log
       - name: Target suite
         shell: bash
         env:
@@ -170,10 +170,23 @@ jobs:
           RZA_TARGET_EXPECTED_PASS: "212"
         run: |
           bash tests/support/target_runner_cases.sh
-          bash run_tests.sh
+          bash run_tests.sh 2>&1 | tee build/target-suite.log
           executions=$(wc -l < "$RZA_TARGET_LOG")
           test "$executions" -eq 1540
           printf 'TARGET %s PASS=212 EXECUTIONS=%s\n' "$RZA_TARGET_ARCH" "$executions"
+      - name: Upload failed target diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-diagnostics-${{ matrix.arch }}-${{ github.run_id }}
+          path: |
+            build/target-probe.log
+            build/target-suite.log
+            build/fp-toolchain-probe/**
+            build/fp-${{ matrix.arch }}.exec.log
+            build/target-${{ matrix.arch }}.exec.log
+          if-no-files-found: warn
+          retention-days: 1
       - name: Hygiene
         shell: bash
         run: |
@@ -234,7 +247,7 @@ jobs:
         shell: bash
         env:
           CC: zig cc
-        run: bash tests/support/fp_toolchain_probe.sh
+        run: bash tests/support/fp_toolchain_probe.sh 2>&1 | tee build/windows-probe.log
       - name: Full suite
         shell: bash
         env:
@@ -254,6 +267,8 @@ jobs:
         with:
           name: package-diagnostics-windows-${{ github.run_id }}
           path: |
+            build/windows-probe.log
+            build/fp-toolchain-probe/**
             build/release-verify/**
             build/release-cross/**
           if-no-files-found: warn
@@ -310,7 +325,8 @@ jobs:
           & cl
           if ($LASTEXITCODE -ne 0) { throw "cl.exe failed: $LASTEXITCODE" }
           $env:CC = 'cl'
-          & bash --noprofile --norc -o pipefail -c 'bash tests/support/fp_toolchain_probe.sh'
+          & bash --noprofile --norc -o pipefail `
+            -c 'bash tests/support/fp_toolchain_probe.sh 2>&1 | tee build/msvc-probe.log'
           if ($LASTEXITCODE -ne 0) { throw "Strict FP probe failed: $LASTEXITCODE" }
           & bash --noprofile --norc -o pipefail -c 'bash run_tests.sh | tee build/msvc-suite.log'
           if ($LASTEXITCODE -ne 0) { throw "MSVC suite failed: $LASTEXITCODE" }
@@ -319,7 +335,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: msvc-diagnostics-${{ github.run_id }}
-          path: build/msvc-suite.log
+          path: |
+            build/msvc-suite.log
+            build/msvc-probe.log
+            build/fp-toolchain-probe/**
           if-no-files-found: warn
           retention-days: 1
       - name: Hygiene
