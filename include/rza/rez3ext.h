@@ -402,6 +402,10 @@ bool rez_view_cell(
     return rez_f32_from_float(rez_f32_value(left) * rez_f32_value(right));
 }
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4723)
+#endif
 [[maybe_unused]] static int64_t rez_f32_div(int64_t left, int64_t right) {
     return rez_f32_from_float(rez_f32_value(left) / rez_f32_value(right));
 }
@@ -421,6 +425,9 @@ bool rez_view_cell(
 [[maybe_unused]] static int64_t rez_f64_div(int64_t left, int64_t right) {
     return rez_f64_from_double(rez_f64_value(left) / rez_f64_value(right));
 }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 [[maybe_unused]] static int64_t rez_f32_feq(int64_t left, int64_t right) {
     return rez_f32_value(left) == rez_f32_value(right);
