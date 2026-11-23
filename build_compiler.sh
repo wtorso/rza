@@ -16,7 +16,7 @@ case "${RZA_RELEASE:-0}" in
         ;;
     *) echo "FATAL: RZA_RELEASE must be 0 or 1" >&2; exit 2 ;;
 esac
-BIN_DIR="build/bin"
+BIN_DIR="${RZA_BUILD_DIR:-build/bin}"
 mkdir --parents "$BIN_DIR"
 TARGET="$BIN_DIR/rez3asm"
 if [ "${OS:-}" = "Windows_NT" ]; then TARGET="$BIN_DIR/rez3asm.exe"; fi

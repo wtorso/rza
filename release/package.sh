@@ -76,9 +76,9 @@ mkdir --parents "$root"
 stage_sources "$root"
 write_release "$root" "$version" "$target" "$commit" "$dirty"
 
-compiler="build/bin/rez3asm"
-if [ "${OS:-}" = "Windows_NT" ]; then compiler="build/bin/rez3asm.exe"; fi
-RZA_RELEASE=1 bash build_compiler.sh >"$out/build.log" 2>&1
+compiler="$out/compiler-bin/rez3asm"
+if [ "${OS:-}" = "Windows_NT" ]; then compiler="$out/compiler-bin/rez3asm.exe"; fi
+RZA_BUILD_DIR="$out/compiler-bin" RZA_RELEASE=1 bash build_compiler.sh >"$out/build.log" 2>&1
 cp -p "$compiler" "$root/${compiler##*/}"
 chmod 0755 "$root/${compiler##*/}"
 chmod -R u=rwX,go=rX "$root"

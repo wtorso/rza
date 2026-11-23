@@ -173,8 +173,7 @@ jobs:
           CC: gcc
           RZA_RELEASE_REQUIRE_CLEAN: "1"
         run: |
-          bash release/verify.sh
-          bash release/cross_check.sh
+          bash release/parallel_check.sh
       - name: Hygiene
         shell: bash
         run: |
@@ -407,8 +406,7 @@ jobs:
           CC: zig cc
           RZA_RELEASE_REQUIRE_CLEAN: "1"
         run: |
-          bash release/verify.sh
-          bash release/cross_check.sh
+          bash release/parallel_check.sh
       - name: Upload failed package diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -546,10 +544,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "cl.exe failed: $LASTEXITCODE" }
           $env:CC = 'cl'
           $env:RZA_RELEASE_REQUIRE_CLEAN = '1'
-          & bash --noprofile --norc -o pipefail release/verify.sh
-          if ($LASTEXITCODE -ne 0) { throw "MSVC package verify failed: $LASTEXITCODE" }
-          & bash --noprofile --norc -o pipefail release/cross_check.sh
-          if ($LASTEXITCODE -ne 0) { throw "MSVC cross-check failed: $LASTEXITCODE" }
+          & bash --noprofile --norc -o pipefail release/parallel_check.sh
+          if ($LASTEXITCODE -ne 0) { throw "MSVC parallel package checks failed: $LASTEXITCODE" }
       - name: Upload failed package diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
