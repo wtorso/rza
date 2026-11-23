@@ -731,7 +731,8 @@ fn int? check_float_fault_mutation(FloatFaultCase item, String header_before,
     if (header_before.len > 0) {
         char[] original = read_file("include/rza/rez3ext.h", artifact_source_buf[..])!;
         bool changed;
-        header = float_artifact_replace((String)original, header_before, header_after, &changed);
+        header = float_artifact_replace(normalize_lines((String)original),
+            header_before, header_after, &changed);
         if (!expect(changed, "float fault header mutation anchor")) return 1;
     }
     if (guard_before.len > 0) {
