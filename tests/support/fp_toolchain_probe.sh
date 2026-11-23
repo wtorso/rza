@@ -47,6 +47,7 @@ fi
 
 if rza_cc_is_msvc; then
     CFLAGS=${CFLAGS/\/fp:strict /}
+    CFLAGS+=" /wd4723"
     rza_cc "${strict[@]}" "${optimized[@]}" -DFP_PROBE_NEGATIVE /fp:fast /arch:AVX2 \
         /Fa"$out/fast.asm" "$source" -o "$out/fast.exe" >"$out/fast.out" \
         2>"$out/fast.err"
