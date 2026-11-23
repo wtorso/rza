@@ -120,6 +120,7 @@ run_function_style() {
 TEST_GROUP=${RZA_TEST_GROUP:-all}
 case "$TEST_GROUP" in
     all|core|oracles|execution|integers|floats) ;;
+    numeric8|numeric16|numeric32|numeric64|float32|float64) ;;
     *) echo "FATAL: unsupported RZA_TEST_GROUP: $TEST_GROUP" >&2; exit 2 ;;
 esac
 if [ -n "${RZA_TARGET_ARCH:-}" ] && [ "$TEST_GROUP" != all ]; then
@@ -1177,16 +1178,24 @@ if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = oracles ] || [ "$TEST_GROUP" = e
     run_ownership_fuzz
     run_execution_oracle
 fi
-if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = oracles ] || [ "$TEST_GROUP" = integers ]; then
-    run_numeric8_oracle
-    run_numeric16_oracle
-    run_numeric32_oracle
-    run_numeric64_oracle
-fi
-if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = oracles ] || [ "$TEST_GROUP" = floats ]; then
-    run_float32_oracle
-    run_float64_oracle
-fi
+case "$TEST_GROUP" in
+    all|oracles|integers|numeric8) run_numeric8_oracle ;;
+esac
+case "$TEST_GROUP" in
+    all|oracles|integers|numeric16) run_numeric16_oracle ;;
+esac
+case "$TEST_GROUP" in
+    all|oracles|integers|numeric32) run_numeric32_oracle ;;
+esac
+case "$TEST_GROUP" in
+    all|oracles|integers|numeric64) run_numeric64_oracle ;;
+esac
+case "$TEST_GROUP" in
+    all|oracles|floats|float32) run_float32_oracle ;;
+esac
+case "$TEST_GROUP" in
+    all|oracles|floats|float64) run_float64_oracle ;;
+esac
 if [ "$TEST_GROUP" = all ] || [ "$TEST_GROUP" = core ]; then
     run_fault_smoke
     run_proc_contracts
@@ -1218,6 +1227,7 @@ case "$TEST_GROUP" in
     execution) EXPECTED_PASS=2 ;;
     integers) EXPECTED_PASS=4 ;;
     floats) EXPECTED_PASS=2 ;;
+    numeric8|numeric16|numeric32|numeric64|float32|float64) EXPECTED_PASS=1 ;;
     core) EXPECTED_PASS=$((EXPECTED_PASS - 8)) ;;
 esac
 case ${RZA_EXPECTED_PASS:-} in

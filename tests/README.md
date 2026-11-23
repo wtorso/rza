@@ -13,9 +13,10 @@ stable when files move.
 
 For native development, `RZA_TEST_GROUP=core` runs the main suite and `RZA_TEST_GROUP=oracles`
 runs the eight execution, ownership, and numeric oracles. The `execution`, `integers`, and
-`floats` groups select two, four, and two of those oracles respectively. The default `all` runs
-everything and is required for target evidence. `RZA_EXPECTED_PASS` optionally enforces the
-expected count; CI checks `323 + 2 + 4 + 2 = 331` on Windows and `324 + 2 + 4 + 2 = 332` on
+`floats` groups select two, four, and two of those oracles respectively. Individual
+`numeric8`/`numeric16`/`numeric32`/`numeric64` and `float32`/`float64` groups select one.
+The default `all` runs everything and is required for target evidence. `RZA_EXPECTED_PASS`
+optionally enforces the expected count; aggregate CI totals remain 331 on Windows and 332 on
 POSIX.
 
 ## Directory guide

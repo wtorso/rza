@@ -301,10 +301,18 @@ jobs:
             expected: "323"
           - group: execution
             expected: "2"
-          - group: integers
-            expected: "4"
-          - group: floats
-            expected: "2"
+          - group: numeric8
+            expected: "1"
+          - group: numeric16
+            expected: "1"
+          - group: numeric32
+            expected: "1"
+          - group: numeric64
+            expected: "1"
+          - group: float32
+            expected: "1"
+          - group: float64
+            expected: "1"
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
@@ -387,6 +395,14 @@ jobs:
       inputs.suite == 'all' || inputs.suite == 'packages'
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - check: verify
+            script: verify.sh
+          - check: cross
+            script: cross_check.sh
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
@@ -419,13 +435,12 @@ jobs:
         env:
           CC: zig cc
           RZA_RELEASE_REQUIRE_CLEAN: "1"
-        run: |
-          bash release/parallel_check.sh
+        run: bash "release/${{ matrix.script }}"
       - name: Upload failed package diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: package-diagnostics-windows-${{ github.run_id }}
+          name: package-diagnostics-windows-${{ matrix.check }}-${{ github.run_id }}
           path: |
             build/release-verify/**
             build/release-cross/**
@@ -461,10 +476,18 @@ jobs:
             expected: "324"
           - group: execution
             expected: "2"
-          - group: integers
-            expected: "4"
-          - group: floats
-            expected: "2"
+          - group: numeric8
+            expected: "1"
+          - group: numeric16
+            expected: "1"
+          - group: numeric32
+            expected: "1"
+          - group: numeric64
+            expected: "1"
+          - group: float32
+            expected: "1"
+          - group: float64
+            expected: "1"
     steps:
       - uses: actions/checkout@v5
       - name: Install C3 0.8.5_1
